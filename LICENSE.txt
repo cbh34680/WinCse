@@ -1,0 +1,4 @@
+
+WinFsp		LICENSE-GPLv3.txt
+aws-sdk-s3	LICENSE-APACHE-2.0.txt
+
