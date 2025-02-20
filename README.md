@@ -12,7 +12,7 @@ WinCse is an application that integrates AWS S3 buckets with Windows Explorer, a
 - [AWS SDK for C++](https://github.com/aws/aws-sdk-cpp)
 
 ## Installation
-1. Install [WinFsp](http://www.secfs.net/winfsp/)
+1. Install [WinFsp](https://winfsp.dev/rel/)
 2. Download WinCse (which includes AWS SDK for C++) from the [release](/release) page
 
 ## Usage
