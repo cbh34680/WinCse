@@ -1,4 +1,4 @@
-# WinCse ÅE Windows Cloud Storage Explorer
+# WinCse &middot; Windows Cloud Storage Explorer
 
 WinCse is an application that integrates AWS S3 buckets with Windows Explorer, allowing you to treat S3 buckets as if they were part of your local file system.
 
