@@ -1,6 +1,13 @@
 #pragma once
 
 #include "aws_sdk_s3.hpp"
+
+#ifdef WINCSEAWSS3_EXPORTS
+#define AWSS3_API __declspec(dllexport)
+#else
+#define AWSS3_API __declspec(dllimport)
+#endif
+
 #include "BucketCache.hpp"
 #include "ObjectCache.hpp"
 
@@ -43,13 +50,14 @@ public:
 	int getRefCount() const { return mRefCount; }
 };
 
-class AwsS3 : public ICloudStorage
+class AwsS3 : public WinCseLib::ICloudStorage
 {
 private:
+	WinCseLib::IWorker* mDelayedWorker;
+	WinCseLib::IWorker* mIdleWorker;
+
 	const std::wstring mTempDir;
-	const wchar_t* mIniSection;
-	IWorker* mDelayedWorker;
-	IWorker* mIdleWorker;
+	const std::wstring mIniSection;
 	std::wstring mWorkDir;
 	std::wstring mCacheDir;
 	UINT64 mWorkDirTime;
@@ -72,7 +80,7 @@ private:
 	BucketCache mBucketCache;
 	ObjectCache mObjectCache;
 
-	std::wstring getBucketRegion(CALLER_ARG const std::wstring& bucketName);
+	std::wstring unsafeGetBucketRegion(CALLER_ARG const std::wstring& bucketName);
 
 	template<typename T>
 	bool outcomeIsSuccess(const T& outcome)
@@ -97,17 +105,23 @@ private:
 		return suc;
 	}
 
-	bool awsapiListObjectsV2(CALLER_ARG const std::wstring& argBucket, const std::wstring& argKey,
+	bool unsafeListObjectsV2(CALLER_ARG const std::wstring& argBucket, const std::wstring& argKey,
 		std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>>* pDirInfoList,
 		const int limit, const bool delimiter);
+
+	std::shared_ptr<FSP_FSCTL_DIR_INFO> unsafeHeadObject(CALLER_ARG
+		const std::wstring& argBucket, const std::wstring& argKey);
+
+	bool prepareLocalCacheFile(CALLER_ARG
+		const std::wstring& bucket, const std::wstring& key, const std::wstring& localPath);
 
 protected:
 	bool isInBucketFiltersW(const std::wstring& arg);
 	bool isInBucketFiltersA(const std::string& arg);
 
 public:
-	AwsS3(const wchar_t* tmpdir, const wchar_t* iniSection,
-		IWorker* delayedWorker, IWorker* idleWorker);
+	AwsS3(const std::wstring& argTempDir, const std::wstring& argIniSection,
+		WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker);
 
 	~AwsS3();
 
@@ -115,8 +129,6 @@ public:
 	void OnSvcStop() override;
 	bool OnPostSvcStart() override;
 	void OnIdleTime(CALLER_ARG0);
-
-	void updateVolumeParams(FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
 
 	bool listBuckets(CALLER_ARG
 		std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>>* pDirInfoList,
@@ -131,12 +143,27 @@ public:
 	bool headObject(CALLER_ARG const std::wstring& argBucket, const std::wstring& argKey,
 		FSP_FSCTL_FILE_INFO* pFileInfo) override;
 
-	HANDLE openObject(CALLER_ARG const std::wstring& argBucket, const std::wstring& argKey,
-		UINT32 CreateOptions, UINT32 GrantedAccess) override;
+	bool openFile(CALLER_ARG
+		const std::wstring& argBucket, const std::wstring& argKey,
+		UINT32 CreateOptions, UINT32 GrantedAccess,
+		const FSP_FSCTL_FILE_INFO& fileInfo, 
+		PVOID* pCSData);
+
+	void closeFile(CALLER_ARG PVOID CSData);
+
+	bool readFile(CALLER_ARG PVOID CSData,
+		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred);
 };
 
 // ファイル名から FSP_FSCTL_DIR_INFO のヒープ領域を生成し、いくつかのメンバを設定して返却
 std::shared_ptr<FSP_FSCTL_DIR_INFO> mallocDirInfoW(const std::wstring& key, const std::wstring& bucket);
 std::shared_ptr<FSP_FSCTL_DIR_INFO> mallocDirInfoA(const std::string& key, const std::string& bucket);
+
+extern "C"
+{
+AWSS3_API WinCseLib::ICloudStorage* NewCloudStorage(
+	const wchar_t* argTempDir, const wchar_t* argIniSection,
+	WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker);
+}
 
 // EOF

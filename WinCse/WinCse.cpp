@@ -1,28 +1,27 @@
 #include "WinCseLib.h"
 #include "WinCse.hpp"
 #include <filesystem>
+#include <sstream>
+
+using namespace WinCseLib;
 
 #undef traceA
 
 
-std::atomic<int> LogBlock::mCounter(0);
-
-WinCse::WinCse(const wchar_t* tmpdir, const wchar_t* iniSection,
-	IWorker* delayedWorker, IWorker* idleWorker, ICloudStorage* storage) :
-	mTempDir(tmpdir), mIniSection(iniSection),
-	mDelayedWorker(delayedWorker),	mIdleWorker(idleWorker),
-	mStorage(storage),
+WinCse::WinCse(const std::wstring& argTempDir, const std::wstring& argIniSection,
+	IWorker* delayedWorker, IWorker* idleWorker, ICloudStorage* cloudStorage) :
+	mTempDir(argTempDir), mIniSection(argIniSection),
+	mDelayedWorker(delayedWorker), mIdleWorker(idleWorker), mStorage(cloudStorage),
 	mMaxFileSize(-1),
 	mIgnoreFileNamePattern{ LR"(.*\\(desktop\.ini|autorun\.inf|thumbs\.db)$)", std::regex_constants::icase }
 {
 	NEW_LOG_BLOCK();
 
-	APP_ASSERT(std::filesystem::exists(tmpdir));
-	APP_ASSERT(std::filesystem::is_directory(tmpdir));
-	APP_ASSERT(iniSection);
-	APP_ASSERT(storage);
+	APP_ASSERT(std::filesystem::exists(argTempDir));
+	APP_ASSERT(std::filesystem::is_directory(argTempDir));
 	APP_ASSERT(delayedWorker);
 	APP_ASSERT(idleWorker);
+	APP_ASSERT(cloudStorage);
 }
 
 WinCse::~WinCse()
@@ -213,6 +212,60 @@ NTSTATUS WinCse::FileNameToFileInfo(const wchar_t* FileName, FSP_FSCTL_FILE_INFO
 	*pFileInfo = fileInfo;
 
 	return STATUS_SUCCESS;
+}
+
+//
+// BucketKey
+//
+
+// 文字列をバケット名とキーに分割
+BucketKey::BucketKey(const wchar_t* arg)
+{
+	std::wstring str{ arg };
+
+	std::vector<std::wstring> tokens;
+	std::wistringstream stream(str);
+	std::wstring token;
+
+	while (std::getline(stream, token, L'\\'))
+	{
+		tokens.push_back(token);
+	}
+
+	switch (tokens.size())
+	{
+		case 0:
+		case 1:
+		{
+			return;
+		}
+		case 2:
+		{
+			bucket = std::move(tokens[1]);
+			break;
+		}
+		default:
+		{
+			bucket = std::move(tokens[1]);
+
+			std::wostringstream ss;
+			for (int i = 2; i < tokens.size(); ++i)
+			{
+				if (i != 2)
+				{
+					ss << L'/';
+				}
+				ss << std::move(tokens[i]);
+			}
+
+			key = ss.str();
+			HasKey = true;
+
+			break;
+		}
+	}
+
+	OK = true;
 }
 
 // EOF

@@ -8,6 +8,6 @@ if %errorlevel% neq 0 (
 
 @echo on
 echo RUN-COMMAND: %~f0
-call "%ProgramFiles(x86)%\WinFsp\bin"\fsreg.bat -u WinCse.aws-s3.Y
+call "%ProgramFiles(x86)%\WinFsp\bin\fsreg.bat" -u WinCse.aws-s3.Y
 pause
 

@@ -3,9 +3,11 @@
 #include <filesystem>
 #include <inttypes.h>
 
+using namespace WinCseLib;
+
 
 static const wchar_t* CONFIGFILE_FNAME = L"WinCse.conf";
-static const wchar_t* CACHEDIR_FNAME = L"aws-s3\\cache\\data";
+static const wchar_t* CACHEDIR_FNAME = L"aws-s3\\cache\\data";      // <-- !!! aws-s3
 
 
 static bool forEachFiles(const std::wstring& directory, const std::function<void(const WIN32_FIND_DATA& wfd)>& callback)
@@ -43,15 +45,15 @@ bool AwsS3::OnSvcStart(const wchar_t* argWorkDir)
     {
         namespace fs = std::filesystem;
 
-        std::wstring workDir{ fs::weakly_canonical(fs::path(argWorkDir)).wstring() };
+        const std::wstring workDir{ fs::weakly_canonical(fs::path(argWorkDir)).wstring() };
 
         //
         // ファイル・キャッシュ保存用ディレクトリの準備
         // システムのクリーンアップで自動的に削除されるように、%TMP% に保存する
         //
-        std::wstring cacheDir{ mTempDir + L'\\' + CACHEDIR_FNAME };
+        const std::wstring cacheDir{ mTempDir + L'\\' + CACHEDIR_FNAME };
 
-        if (!mkdirIfNotExists(cacheDir))
+        if (!MkdirIfNotExists(cacheDir))
         {
             traceW(L"%s: can not create directory", cacheDir.c_str());
             return false;
@@ -73,9 +75,9 @@ bool AwsS3::OnSvcStart(const wchar_t* argWorkDir)
 
         traceW(L"Detect credentials file path is %s", confPath.c_str());
 
-        const std::wstring iniSectionStr{ mIniSection };
-        const auto iniSection = iniSectionStr.c_str();
+        const auto iniSection = mIniSection.c_str();
 
+        // AWS 認証情報
         std::wstring str_access_key_id;
         std::wstring str_secret_access_key;
         std::wstring str_region;
@@ -91,12 +93,12 @@ bool AwsS3::OnSvcStart(const wchar_t* argWorkDir)
 
         if (GetIniStringW(confPath, iniSection, L"bucket_filters", &bucket_filters_str))
         {
-            std::wistringstream stream{ bucket_filters_str };
-            std::wstring bucket_filter;
+            std::wistringstream ss{ bucket_filters_str };
+            std::wstring token;
 
-            while (std::getline(stream, bucket_filter, L','))
+            while (std::getline(ss, token, L','))
             {
-                const auto pattern{ WildcardToRegexW(TrimW(bucket_filter)) };
+                const auto pattern{ WildcardToRegexW(TrimW(token)) };
 
                 mBucketFilters.emplace_back(pattern, std::regex_constants::icase);
             }
@@ -166,11 +168,11 @@ bool AwsS3::OnSvcStart(const wchar_t* argWorkDir)
         }
 
         mWorkDirTime = STCTimeToWinFileTimeW(workDir);
-        mWorkDir = std::move(workDir);
-        mCacheDir = std::move(cacheDir);
+        mWorkDir = workDir;
+        mCacheDir = cacheDir;
         mMaxBuckets = maxBuckets;
         mMaxObjects = maxObjects;
-        mRegion = std::move(str_region);
+        mRegion = str_region;
 
         ret = true;
     }
@@ -278,7 +280,7 @@ void AwsS3::OnIdleTime(CALLER_ARG0)
     // ファイル・キャッシュ
     //
 
-    // 最終アクセスから 24 時間以上経過したキャッシュ・ファイルを削除する
+    // 更新日時から 24 時間以上経過したキャッシュ・ファイルを削除する
 
     APP_ASSERT(std::filesystem::is_directory(mCacheDir));
 
@@ -286,12 +288,12 @@ void AwsS3::OnIdleTime(CALLER_ARG0)
 
     forEachFiles(mCacheDir, [this, nowMillis, &LOG_BLOCK()](const WIN32_FIND_DATA& wfd)
     {
-        const auto lastAccess { WinFileTimeToUtcMillis(wfd.ftLastAccessTime) };
+        const auto lastAccessTime { WinFileTimeToUtcMillis(wfd.ftLastAccessTime) };
 
         traceW(L"cache file: [%s] [%s] lastAccess=%" PRIu64,
-            wfd.cFileName, DecodeLocalNameToFileNameW(wfd.cFileName).c_str(), lastAccess);
+            wfd.cFileName, DecodeLocalNameToFileNameW(wfd.cFileName).c_str(), lastAccessTime);
 
-        const auto diffMillis = nowMillis - lastAccess;
+        const auto diffMillis = nowMillis - lastAccessTime;
         if (diffMillis > (24ULL * 60 * 60 * 1000))
         {
             const auto delPath{ mCacheDir + L'\\' + wfd.cFileName };
@@ -342,35 +344,6 @@ bool AwsS3::OnPostSvcStart()
     mIdleWorker->addTask(new IdleTask{ this }, CanIgnore::NO, Priority::LOW);
 
     return true;
-}
-
-void AwsS3::updateVolumeParams(FSP_FSCTL_VOLUME_PARAMS* VolumeParams)
-{
-    NEW_LOG_BLOCK();
-    APP_ASSERT(VolumeParams);
-
-    VolumeParams->CaseSensitiveSearch = 1;
-    VolumeParams->PersistentAcls = 0;
-
-    VolumeParams->ReadOnlyVolume = 1;
-
-    const UINT32 Timeout = 5000;
-
-    VolumeParams->FileInfoTimeout = Timeout;
-    VolumeParams->VolumeInfoTimeout = Timeout;
-    VolumeParams->DirInfoTimeout = Timeout;
-    VolumeParams->SecurityTimeout = Timeout;
-    VolumeParams->StreamInfoTimeout = Timeout;
-    VolumeParams->EaTimeout =  Timeout;
-
-    VolumeParams->VolumeInfoTimeoutValid = 1;
-    VolumeParams->DirInfoTimeoutValid = 1;
-    VolumeParams->SecurityTimeoutValid = 1;
-    VolumeParams->StreamInfoTimeoutValid = 1;
-    VolumeParams->EaTimeoutValid = 1;
-
-    //wcscpy_s(VolumeParams->Prefix, sizeof VolumeParams->Prefix / sizeof(WCHAR), L"\\\\WinCse.aws-s3");
-    wcscpy_s(VolumeParams->FileSystemName, sizeof VolumeParams->FileSystemName / sizeof(WCHAR), L"WinFsp");
 }
 
 

@@ -1,25 +1,19 @@
 #include "WinCseLib.h"
 #include "BucketCache.hpp"
 #include <algorithm>
-#include <mutex>
 #include <iterator>
 
-
-static std::mutex gGuard;
-
-#define THREAD_SAFE() \
-    std::lock_guard<std::mutex> lock_(gGuard)
+using namespace WinCseLib;
 
 
 void BucketCache::report(CALLER_ARG0)
 {
-    THREAD_SAFE();
     NEW_LOG_BLOCK();
 
     traceW(L"LastSetCallChain=%s", mLastSetCallChain.c_str());
     traceW(L"LastGetCallChain=%s", mLastGetCallChain.c_str());
-    traceW(L"LastSetTime=%lld", TimePointToUtcSeconds(mLastSetTime));
-    traceW(L"LastGetTime=%lld", TimePointToUtcSeconds(mLastGetTime));
+    traceW(L"LastSetTime=%lld", TimePointToUtcSecs(mLastSetTime));
+    traceW(L"LastGetTime=%lld", TimePointToUtcSecs(mLastGetTime));
     traceW(L"CountGet=%d", mCountGet);
     traceW(L"CountSet=%d", mCountSet);
 
@@ -27,6 +21,7 @@ void BucketCache::report(CALLER_ARG0)
     {
         traceW(L"List.size=%zu", mList.size());
 
+#pragma warning(suppress: 4456)
         NEW_LOG_BLOCK();
 
         for (const auto& it: mList)
@@ -39,6 +34,7 @@ void BucketCache::report(CALLER_ARG0)
     {
         traceW(L"RegionMap.size=%zu", mRegionMap.size());
 
+#pragma warning(suppress: 4456)
         NEW_LOG_BLOCK();
 
         for (const auto& it: mRegionMap)
@@ -50,30 +46,22 @@ void BucketCache::report(CALLER_ARG0)
 
 std::chrono::system_clock::time_point BucketCache::getLastSetTime(CALLER_ARG0) const
 {
-    THREAD_SAFE();
-
     return mLastSetTime;
 }
 
 void BucketCache::clear(CALLER_ARG0)
 {
-    THREAD_SAFE();
-
     mList.clear();
 }
 
 bool BucketCache::empty(CALLER_ARG0)
 {
-    THREAD_SAFE();
-
     return mList.empty();
 }
 
 void BucketCache::save(CALLER_ARG
     const std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>>& dirInfoList)
 {
-    THREAD_SAFE();
-
     mList = dirInfoList;
     mLastSetTime = std::chrono::system_clock::now();
     mLastSetCallChain = CALL_CHAIN();
@@ -83,8 +71,6 @@ void BucketCache::save(CALLER_ARG
 void BucketCache::load(CALLER_ARG const std::wstring& region, 
     std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>>& dirInfoList)
 {
-    THREAD_SAFE();
-
     const auto& regionMap{ mRegionMap };
 
     std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>> newList;
@@ -114,7 +100,6 @@ void BucketCache::load(CALLER_ARG const std::wstring& region,
 
 std::shared_ptr<FSP_FSCTL_DIR_INFO> BucketCache::find(CALLER_ARG const std::wstring& bucketName)
 {
-    THREAD_SAFE();
     APP_ASSERT(!bucketName.empty());
 
     const auto it = std::find_if(mList.begin(), mList.end(), [&bucketName](const auto& dirInfo)
@@ -136,7 +121,6 @@ std::shared_ptr<FSP_FSCTL_DIR_INFO> BucketCache::find(CALLER_ARG const std::wstr
 
 bool BucketCache::findRegion(CALLER_ARG const std::wstring& bucketName, std::wstring* pBucketRegion)
 {
-    THREAD_SAFE();
     APP_ASSERT(!bucketName.empty());
     APP_ASSERT(pBucketRegion);
 
@@ -153,7 +137,6 @@ bool BucketCache::findRegion(CALLER_ARG const std::wstring& bucketName, std::wst
 
 void BucketCache::updateRegion(CALLER_ARG const std::wstring& bucketName, const std::wstring& bucketRegion)
 {
-    THREAD_SAFE();
     APP_ASSERT(!bucketName.empty());
     APP_ASSERT(!bucketRegion.empty());
 

@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <mutex>
 
+using namespace WinCseLib;
 
 #undef traceA
 
@@ -44,7 +45,7 @@ static std::mutex gGuard;
 
 #define THREAD_SAFE_4DEBUG() \
 	std::lock_guard<std::mutex> lock_(gGuard); \
-    traceW(L"!!! *** WARNNING *** THREAD_SAFE_4DEBUG() ENABLE !!!")
+    traceW(L"!!! *** DANGER *** !!! THREAD_SAFE_4DEBUG() ENABLE")
 
 #else
 #define THREAD_SAFE_4DEBUG()
@@ -180,8 +181,9 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 
 	PTFS_FILE_CONTEXT* FileContext = nullptr;
 	FSP_FSCTL_FILE_INFO fileInfo = {};
+	NTSTATUS Result = STATUS_UNSUCCESSFUL;
 
-	NTSTATUS Result = FileNameToFileInfo(FileName, &fileInfo);
+	Result = FileNameToFileInfo(FileName, &fileInfo);
 	if (!NT_SUCCESS(Result))
 	{
 		traceW(L"fault: FileNameToFileInfo");
@@ -191,23 +193,6 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 	// 念のため検査
 	APP_ASSERT(fileInfo.FileAttributes);
 	APP_ASSERT(fileInfo.CreationTime);
-
-	traceW(L"FileSize: %" PRIu64, fileInfo.FileSize);
-
-	// マルチパート処理次第で最大ファイルサイズの制限をなくす
-
-	if (!(fileInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-	{
-		if (mMaxFileSize > 0)
-		{
-			if (fileInfo.FileSize > 1024ULL * 1024 * mMaxFileSize)
-			{
-				Result = STATUS_DEVICE_NOT_READY;
-				traceW(L"%" PRIu64 ": When a file size exceeds the maximum size that can be opened.", fileInfo.FileSize);
-				goto exit;
-			}
-		}
-	}
 
 	// WinFsp に保存されるファイル・コンテキストを生成
 	// このメモリは WinFsp の Close() で削除されるため解放不要
@@ -228,12 +213,63 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 		goto exit;
 	}
 
-	FileContext->Local.Handle = INVALID_HANDLE_VALUE;
+	if (wcscmp(FileName, L"\\") == 0)
+	{
+		traceW(L"root access");
 
-	FileContext->Open.CreateOptions = CreateOptions;
-	FileContext->Open.GrantedAccess = GrantedAccess;
+		APP_ASSERT(fileInfo.FileSize == 0);
+	}
+	else
+	{
+		const BucketKey bk{ FileName };
+
+		if (!bk.OK)
+		{
+			traceW(L"illegal FileName: %s", FileName);
+			return STATUS_INVALID_PARAMETER;
+		}
+
+		if (fileInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+		{
+			// ディレクトリへのアクセス
+
+			APP_ASSERT(fileInfo.FileSize == 0);
+		}
+		else
+		{
+			// ファイルへのアクセス
+
+			APP_ASSERT(bk.HasKey);
+
+			// マルチパート処理次第で最大ファイル・サイズの制限をなくす
+
+			traceW(L"FileSize: %" PRIu64, fileInfo.FileSize);
+
+			if (mMaxFileSize > 0)
+			{
+				if (fileInfo.FileSize > 1024ULL * 1024 * mMaxFileSize)
+				{
+					Result = STATUS_DEVICE_NOT_READY;
+					traceW(L"%" PRIu64 ": When a file size exceeds the maximum size that can be opened.", fileInfo.FileSize);
+					goto exit;
+				}
+			}
+
+			// クラウド・ストレージのコンテキストを CSData に保存させる
+
+			if (!mStorage->openFile(INIT_CALLER
+				bk.bucket, bk.key, CreateOptions, GrantedAccess, fileInfo, &FileContext->Open.CSData))
+			{
+				traceW(L"fault: openFile");
+				Result = STATUS_DEVICE_NOT_READY;
+				goto exit;
+			}
+		}
+	}
 
 	FileContext->Open.FileInfo = fileInfo;
+
+	// SUCSESS RETURN
 
 	*PFileContext = FileContext;
 	FileContext = nullptr;
@@ -260,9 +296,11 @@ NTSTATUS WinCse::DoClose(PTFS_FILE_CONTEXT* FileContext)
 
 	traceW(L"Open.FileName: %s", FileContext->Open.FileName);
 
-	if (FileContext->Local.Handle != INVALID_HANDLE_VALUE)
+	if (FileContext->Open.CSData)
 	{
-		::CloseHandle(FileContext->Local.Handle);
+		// クラウド・ストレージに CSData を解放させる
+
+		mStorage->closeFile(INIT_CALLER FileContext->Open.CSData);
 	}
 
 	free(FileContext->Open.FileName);
@@ -343,47 +381,18 @@ NTSTATUS WinCse::DoRead(PTFS_FILE_CONTEXT* FileContext,
 	APP_ASSERT(PBytesTransferred);
 	APP_ASSERT(!(FileContext->Open.FileInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY));
 
-	namespace fs = std::filesystem;
-
 	traceW(L"OpenFileName: %s", FileContext->Open.FileName);
 	traceW(L"OpenFileAttributes: %u", FileContext->Open.FileInfo.FileAttributes);
 
-	PCWSTR FileName = FileContext->Open.FileName;
+	bool ret = mStorage->readFile(INIT_CALLER FileContext->Open.CSData,
+		Buffer, Offset, Length, PBytesTransferred);
 
-	if (FileContext->Local.Handle == INVALID_HANDLE_VALUE)
+	traceW(L"readFile return %s", ret ? L"true" : L"false");
+
+	if (!ret)
 	{
-		const BucketKey bk(FileName);
-		if (!bk.OK)
-		{
-			traceW(L"illegal FileName/1: %s", FileName);
-			return STATUS_INVALID_PARAMETER;
-		}
-
-		if (!bk.HasKey)
-		{
-			traceW(L"illegal FileName/2: %s", FileName);
-			return STATUS_INVALID_PARAMETER;
-		}
-
-		HANDLE h = mStorage->openObject(INIT_CALLER bk.bucket, bk.key,
-			FileContext->Open.CreateOptions, FileContext->Open.GrantedAccess);
-
-		if (h == INVALID_HANDLE_VALUE)
-		{
-			traceW(L"fault: openObject");
-			return STATUS_OBJECT_NAME_NOT_FOUND;
-		}
-
-		FileContext->Local.Handle = h;
+		return STATUS_DEVICE_DATA_ERROR;
 	}
-
-	OVERLAPPED Overlapped = { 0 };
-
-	Overlapped.Offset = (DWORD)Offset;
-	Overlapped.OffsetHigh = (DWORD)(Offset >> 32);
-
-	if (!ReadFile(FileContext->Local.Handle, Buffer, Length, PBytesTransferred, &Overlapped))
-		return FspNtStatusFromWin32(GetLastError());
 
 	return STATUS_SUCCESS;
 }
@@ -433,7 +442,7 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 	{
 		// "\bucket" または "\bucket\key"
 
-		const BucketKey bk(FileName);
+		const BucketKey bk{ FileName };
 		if (!bk.OK)
 		{
 			traceW(L"illegal FileName: %s", FileName);
@@ -476,14 +485,18 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 				}
 
 				if (!FspFileSystemFillDirectoryBuffer(&FileContext->DirBuffer, dirInfo.get(), &DirBufferResult))
+				{
 					break;
+				}
 			}
 
 			FspFileSystemReleaseDirectoryBuffer(&FileContext->DirBuffer);
 		}
 
 		if (!NT_SUCCESS(DirBufferResult))
+		{
 			return DirBufferResult;
+		}
 
 		FspFileSystemReadDirectoryBuffer(&FileContext->DirBuffer,
 			Marker, Buffer, BufferLength, PBytesTransferred);

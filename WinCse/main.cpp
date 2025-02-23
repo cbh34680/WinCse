@@ -1,77 +1,191 @@
 ﻿// main.cpp : このファイルには 'main' 関数が含まれています。プログラム実行の開始と終了がそこで行われます。
 //
 #pragma comment(lib, "winfsp-x64.lib")
-#pragma comment(lib, "aws-cpp-sdk-core.lib")
-#pragma comment(lib, "aws-cpp-sdk-s3.lib")
-#pragma comment(lib, "Crypt32.lib")             // CryptBinaryToStringA
-#pragma comment(lib, "Dbghelp.lib")             // SymInitialize
+#pragma comment(lib, "WinCseLib.lib")
 
 #include "WinCseLib.h"
-#include "Logger.hpp"
 #include "DelayedWorker.hpp"
 #include "IdleWorker.hpp"
-#include "AwsS3.hpp"
 #include "WinCse.hpp"
 #include <csignal>
-#include <dbghelp.h>
+#include <iostream>
+#include <sstream>
 
+using namespace WinCseLib;
 
-static bool app_tempdir(std::wstring& wtmpdir);
+static bool app_tempdir(std::wstring* tmpDir);
 static void app_terminate();
-static void app_abort(int signum);
+static void app_sighandler(int signum);
 
-static ILogger* gLogger;
 
-static int app_main(int argc, wchar_t** argv, WCHAR* progname, const wchar_t* iniSection, const wchar_t* traceLogDir)
+// DLL 解放のための RAII
+struct DllModule
+{
+    HMODULE mModule;
+    ICloudStorage* mStorage;
+
+    DllModule() : mModule(NULL), mStorage(nullptr) {}
+    DllModule(HMODULE mod, ICloudStorage* storage) : mModule(mod), mStorage(storage) {}
+
+    ~DllModule()
+    {
+        delete mStorage;
+
+        if (mModule)
+        {
+            ::FreeLibrary(mModule);
+        }
+    }
+};
+
+//
+// 引数の名前 (dllType) からファイル名を作り、LoadLibrary を実行し
+// その中にエクスポートされた NewCloudStorage() を実行する。
+// 戻り値は ICloudStorage* になる。
+//
+bool loadCloudStorage(const std::wstring& dllType,
+    const std::wstring& tmpDir, const wchar_t* iniSection,
+	WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker,
+    DllModule* pDll)
+{
+    bool ret = false;
+
+	const std::wstring dllName{ L"WinCse-" + dllType + L".dll" };
+
+	typedef WinCseLib::ICloudStorage* (*NewCloudStorage)(
+		const wchar_t* argTempDir, const wchar_t* argIniSection,
+		WinCseLib::IWorker * delayedWorker, WinCseLib::IWorker * idleWorker);
+
+	NewCloudStorage dllFunc = nullptr;
+    ICloudStorage* pStorage = nullptr;
+
+	HMODULE hMod = ::LoadLibrary(dllName.c_str());
+	if (hMod == NULL)
+	{
+        std::wcerr << L"fault: LoadLibrary" << dllName << std::endl;
+        goto exit;
+	}
+    
+    dllFunc = (NewCloudStorage)::GetProcAddress(hMod, "NewCloudStorage");
+	if (!dllFunc)
+	{
+        std::wcerr << L"fault: GetProcAddress" << std::endl;
+        goto exit;
+    }
+
+    pStorage = dllFunc(tmpDir.c_str(), iniSection, delayedWorker, idleWorker);
+	if (!pStorage)
+	{
+        std::wcerr << L"fault: NewCloudStorage" << std::endl;
+        goto exit;
+    }
+
+    pDll->mModule = hMod;
+    pDll->mStorage = pStorage;
+
+    hMod = NULL;
+    pStorage = nullptr;
+
+    ret = true;
+
+exit:
+    delete pStorage;
+
+    if (hMod)
+    {
+        ::FreeLibrary(hMod);
+    }
+
+    return ret;
+}
+
+static int app_main(int argc, wchar_t** argv, WCHAR* progname,
+                    const wchar_t* iniSection, const wchar_t* trcDir, const std::wstring& dllType)
 {
     // これやらないと日本語が出力できない
     _wsetlocale(LC_ALL, L"");
 
-    std::signal(SIGABRT, app_abort);
+    std::signal(SIGABRT, app_sighandler);
 
     // スレッドでの捕捉されない例外を拾えるかも
     std::set_terminate(app_terminate);
 
-    std::wstring wtmpdir;
-    if (!app_tempdir(wtmpdir))
+    std::wstring tmpDir;
+    if (!app_tempdir(&tmpDir))
     {
         std::cerr << "fault: app_tempdir" << std::endl;
         return EXIT_FAILURE;
     }
 
-    std::wcout << L"use Tempdir: " << wtmpdir << std::endl;
+    std::wcout << L"use Tempdir: " << tmpDir << std::endl;
 
-    const auto tmpdir{ wtmpdir.c_str() };
+    // ここ以降は return は使わず、ret に設定して最後まで進める
+    int ret = EXIT_FAILURE;
 
-    Logger logger(tmpdir);
-
-    if (traceLogDir)
+    //
+    // ネストが深くなっているが、dll の解放と logger が複雑に絡むので
+    // このブロックの構造は変更しないこと
+    // 
+    // [順番]
+    // 1) ロガー生成 (CreateLogger)
+    // 2) ワーカー生成
+    // 3) DLL ロード & CloudStorage の取得
+    // 4) WinFspMain の実行
+    // 5) ワーカー解放 (スタックによる自動)
+    // 6) DLL アンロード (DllModule デストラクタ)
+    // 7) ロガー解放 (DeleteLogger)
+    //
+    if (CreateLogger(tmpDir.c_str(), trcDir, dllType.c_str()))
     {
-        if (!logger.SetOutputDir(traceLogDir))
-        {
-            std::wcerr << L"warn: SetTraceLogDir" << std::endl;
-            std::wcerr << traceLogDir << std::endl;
+        // メモリ解放の順番が関係するので、下の try ブロックには入れない
+        DllModule dll;
 
-            // ログが指定されたディレクトリに出力出来ない場合でも続行
-            //return EXIT_FAILURE;
+        try
+        {
+            wchar_t defaultIniSection[] = L"default";
+            if (!iniSection)
+            {
+                std::wcout << L"use default ini section" << std::endl;
+                iniSection = defaultIniSection;
+            }
+
+            DelayedWorker dworker(tmpDir, iniSection);
+            IdleWorker iworker(tmpDir, iniSection);
+
+            // dll のロード
+            if (loadCloudStorage(dllType, tmpDir, iniSection, &dworker, &iworker, &dll))
+            {
+                WinCse app(tmpDir, iniSection, &dworker, &iworker, dll.mStorage);
+
+                std::wcout << L"call WinFspMain" << std::endl;
+                ret = WinFspMain(argc, argv, progname, &app);
+
+                std::wcout << L"WinFspMain done. return=" << ret << std::endl;
+            }
+            else
+            {
+                std::wcout << L"fault: loadCloudStorage" << std::endl;
+            }
+        }
+        catch (const std::runtime_error& err)
+        {
+            std::cerr << "app_main) what: " << err.what() << std::endl;
+        }
+        catch (...)
+        {
+            std::cerr << "app_main) unknown error" << std::endl;
         }
     }
-
-    gLogger = &logger;
-
-    wchar_t defaultIniSection[] = L"default";
-    if (!iniSection)
+    else
     {
-        iniSection = defaultIniSection;
+        std::cerr << "fault: CreateLogger" << std::endl;
+        return EXIT_FAILURE;
     }
 
-    DelayedWorker dworker(tmpdir, iniSection);
-    IdleWorker iworker(tmpdir, iniSection);
+    // 順番があるので、try ブロックには入れない
+    DeleteLogger();
 
-    AwsS3 s3(tmpdir, iniSection, &dworker, &iworker);
-    WinCse app(tmpdir, iniSection, &dworker, &iworker, &s3);
-
-    return WinFspMain(argc, argv, progname, &app);
+    return ret;
 }
 
 int wmain(int argc, wchar_t** argv)
@@ -102,6 +216,7 @@ int wmain(int argc, wchar_t** argv)
     {
         wchar_t* iniSection = nullptr;
         wchar_t* traceLogDir = nullptr;
+        wchar_t* VolumePrefix = nullptr;
 
         wchar_t** argp, ** arge;
         for (argp = argv + 1, arge = argv + argc; arge > argp; argp += 2)
@@ -118,18 +233,47 @@ int wmain(int argc, wchar_t** argv)
                 case L'T':
                     traceLogDir = *(argp + 1);
                     break;
+
+                case L'u':
+                    VolumePrefix = *(argp + 1);
+                    break;
             }
         }
 
-        rc = app_main(argc, argv, progname, iniSection, traceLogDir);
+        if (!VolumePrefix)
+        {
+            // 本来は任意項目かもしれないが、ここから dll 名を解決するので
+            // ここでは必須とする
+
+            std::wcerr << L"[u] parameter not set" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        // "\WinCse.aws-s3.Y\C$\folder\to\work" から "WinCse.aws-s3.Y" を取り出す
+        const auto segments{ SplitW(VolumePrefix, L'\\', true) };
+        if (segments.size() < 1)
+        {
+            std::wcerr << L"[u] parameter parse error" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        // "WinCse.aws-s3.Y" の中から "aws-s3" を取り出す
+        const auto names{ SplitW(segments[0], L'.', false) };
+        if (names.size() < 2)
+        {
+            std::wcerr << L"[u] parameter parse error" << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        rc = app_main(argc, argv, progname, iniSection, traceLogDir, names[1]);
     }
     catch (const std::runtime_error& err)
     {
-        std::cerr << "what: " << err.what() << std::endl;
+        std::cerr << "wmain) what: " << err.what() << std::endl;
     }
     catch (...)
     {
-        std::cerr << "unknown error" << std::endl;
+        std::cerr << "wmain) unknown error" << std::endl;
     }
 
 #ifdef _DEBUG
@@ -139,104 +283,7 @@ int wmain(int argc, wchar_t** argv)
     return rc;
 }
 
-//
-// 純粋仮想デストラクタの実装
-//
-IService::~IService() { };
-ILogger::~ILogger() { }
-ITask::~ITask() { }
-IWorker::~IWorker() { }
-IStorageService::~IStorageService() { }
-ICloudStorage::~ICloudStorage() { }
-
-//
-void app_assert(const char* file, const int line, const char* func, const int signum)
-{
-    wchar_t tempPath[MAX_PATH];
-    ::GetTempPathW(MAX_PATH, tempPath);
-
-    const DWORD pid = ::GetCurrentProcessId();
-    const DWORD tid = ::GetCurrentThreadId();
-
-    std::wstring fpath;
-
-    {
-        std::wstringstream ss;
-        ss << tempPath;
-        ss << L"WinCse-abend-";
-        ss << pid;
-        ss << L'-';
-        ss << tid;
-        ss << L".log";
-
-        fpath = ss.str();
-    }
-
-    std::ofstream ofs{ fpath, std::ios_base::app };
-
-    {
-        std::stringstream ss;
-
-        ss << std::endl;
-        ss << file;
-        ss << "(";
-        ss << line;
-        ss << "); signum(";
-        ss << signum;
-        ss << "); ";
-        ss << func;
-        ss << std::endl;
-
-        const std::string ss_str{ ss.str() };
-
-        ::OutputDebugStringA(ss_str.c_str());
-
-        if (ofs)
-        {
-            ofs << ss_str;
-        }
-    }
-
-    const int maxFrames = 62;
-    void* stack[maxFrames];
-    HANDLE process = ::GetCurrentProcess();
-    ::SymInitialize(process, NULL, TRUE);
-
-    USHORT frames = ::CaptureStackBackTrace(0, maxFrames, stack, NULL);
-    SYMBOL_INFO* symbol = (SYMBOL_INFO*)malloc(sizeof(SYMBOL_INFO) + 256 * sizeof(char));
-    symbol->MaxNameLen = 255;
-    symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
-
-    for (USHORT i = 0; i < frames; i++)
-    {
-        ::SymFromAddr(process, (DWORD64)(stack[i]), 0, symbol);
-
-        std::stringstream ss;
-        ss << frames - i - 1;
-        ss << ": ";
-        ss << symbol->Name;
-        ss << " - 0x";
-        ss << symbol->Address;
-        ss << std::endl;
-
-        const std::string ss_str{ ss.str() };
-
-        ::OutputDebugStringA(ss_str.c_str());
-
-        std::cerr << ss_str;
-
-        if (ofs)
-        {
-            ofs << ss_str;
-        }
-    }
-
-    free(symbol);
-
-    ofs.close();
-}
-
-static bool app_tempdir(std::wstring& wtmpdir)
+static bool app_tempdir(std::wstring* pTmpDir)
 {
     wchar_t tmpdir[MAX_PATH];
     const auto err = ::GetTempPath(MAX_PATH, tmpdir);
@@ -249,30 +296,25 @@ static bool app_tempdir(std::wstring& wtmpdir)
 
     wcscat_s(tmpdir, L"\\WinCse");
 
-    if (!mkdirIfNotExists(tmpdir))
+    if (!MkdirIfNotExists(tmpdir))
     {
         std::wcerr << tmpdir << L": dir not exists" << std::endl;
         return false;
     }
-    wtmpdir = tmpdir;
+
+    *pTmpDir = tmpdir;
 
     return true;
 }
 
-static void app_abort(int signum)
+static void app_sighandler(int signum)
 {
-    app_assert(__FILE__, __LINE__, __FUNCTION__, signum);
+    WinCseLib::AbnormalEnd(__FILE__, __LINE__, __FUNCTION__, signum);
 }
 
 static void app_terminate()
 {
-    app_assert(__FILE__, __LINE__, __FUNCTION__, -1);
-}
-
-ILogger* GetLogger()
-{
-    APP_ASSERT(gLogger);
-    return gLogger;
+    WinCseLib::AbnormalEnd(__FILE__, __LINE__, __FUNCTION__, -1);
 }
 
 // EOF

@@ -4,13 +4,16 @@
 #include <mutex>
 #include <numeric>
 
+using namespace WinCseLib;
+
+
 #define ENABLE_TASK		(1)
 
 const int WORKER_MAX = 1;
 
 
-IdleWorker::IdleWorker(const wchar_t* tmpdir, const wchar_t* iniSection)
-	: mTempDir(tmpdir), mIniSection(iniSection)
+IdleWorker::IdleWorker(const std::wstring& argTempDir, const std::wstring& argIniSection)
+	: mTempDir(argTempDir), mIniSection(argIniSection)
 {
 	// OnSvcStart の呼び出し順によるイベントオブジェクト未生成を
 	// 回避するため、コンストラクタで生成して OnSvcStart で null チェックする
@@ -112,6 +115,9 @@ void IdleWorker::listenEvent(const int i)
 		{
 			const chrono::steady_clock::time_point start = chrono::steady_clock::now();
 
+			// 最大 10 秒間待機
+			// この数値を変えるときはログ記録回数にも注意する
+
 			traceW(L"(%d): wait for signal ...", i);
 			const auto reason = ::WaitForSingleObject(mEvent, 1000 * 10);
 
@@ -125,6 +131,8 @@ void IdleWorker::listenEvent(const int i)
 
 #if 0
 					// 毎回実行
+					traceW(L"!!! *** DANGER *** !!! force IdleTime on each timeout for DEBUG");
+
 					idleCount = IDLE_TASK_EXECUTE_THRESHOLD + 1;
 
 #else
@@ -132,7 +140,7 @@ void IdleWorker::listenEvent(const int i)
 
 					if (logCountHist9.size() < 9)
 					{
-						// リセットから 9 回はログ記録回数を収集
+						// リセットから 9 回(10s * 9 = 1m30s) はログ記録回数を収集
 
 						traceW(L"collect log count, %zu", logCountHist9.size());
 						idleCount = 0;
@@ -148,9 +156,9 @@ void IdleWorker::listenEvent(const int i)
 
 						traceW(L"sumHist9=%d, avgHist9=%d, refHist9=%d", sumHist9, avgHist9, refHist9);
 
-						if (thisCount <= refHist9)
+						if (thisCount < refHist9)
 						{
-							// 今回の記録が基準値以下ならアイドル時間としてカウント
+							// 今回の記録が基準値より下ならアイドル時間としてカウント
 
 							idleCount++;
 						}
@@ -172,7 +180,7 @@ void IdleWorker::listenEvent(const int i)
 				{
 					traceW(L"(%d): wait for signal: catch signal", i);
 
-					// シグナル到着時は即時に実行できるようにカウントを調整
+					// シグナル到着時(スレッドの終了要請) は即時に実行できるようにカウントを調整
 
 					idleCount = IDLE_TASK_EXECUTE_THRESHOLD + 1;
 
@@ -231,7 +239,7 @@ void IdleWorker::listenEvent(const int i)
 				lastExecTime = chrono::system_clock::now();
 
 				// 記録のリセット
-				logCountHist9.clear();
+				//logCountHist9.clear();
 			}
 		}
 		catch (const BreakLoopRequest&)

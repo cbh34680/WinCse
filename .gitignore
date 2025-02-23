@@ -365,8 +365,11 @@ FodyWeavers.xsd
 # ----------------------------------
 
 /cli.bat
+
 /misc/
 /work/
+/release/
+
 *.lnk
 
 # EOF

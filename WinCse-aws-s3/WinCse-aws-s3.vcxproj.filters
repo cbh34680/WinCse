@@ -15,36 +15,42 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp">
+    <ClCompile Include="AwsS3.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="WinCse_if_r.cpp">
+    <ClCompile Include="AwsS3_bucket.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="WinCse_svc.cpp">
+    <ClCompile Include="AwsS3_obj_list.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="WinCse.cpp">
+    <ClCompile Include="AwsS3_obj_read.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="DelayedWorker.cpp">
+    <ClCompile Include="AwsS3_svc.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="WinCse_if_w.cpp">
+    <ClCompile Include="BucketCache.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="IdleWorker.cpp">
+    <ClCompile Include="dllmain.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="ObjectCache.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="DelayedWorker.hpp">
+    <ClInclude Include="aws_sdk_s3.hpp">
+      <Filter>ソース ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="AwsS3.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="IdleWorker.hpp">
+    <ClInclude Include="BucketCache.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="WinCse.hpp">
+    <ClInclude Include="ObjectCache.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
   </ItemGroup>

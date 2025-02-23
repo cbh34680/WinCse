@@ -1,17 +1,16 @@
 #include "WinCseLib.h"
 #include "AwsS3.hpp"
-#include <filesystem>
-#include <fstream>
 #include <cinttypes>
 
 
-//
-// !! この関数はデバッグ時にもスレッド・セーフではないので、ここに配置しておく
+using namespace WinCseLib;
+
+
 //
 // ListObjectsV2 API を実行し結果を引数のポインタの指す変数に保存する
 // 引数の条件に合致するオブジェクトが見つからないときは false を返却
 //
-bool AwsS3::awsapiListObjectsV2(CALLER_ARG const std::wstring& argBucket, const std::wstring& argKey,
+bool AwsS3::unsafeListObjectsV2(CALLER_ARG const std::wstring& argBucket, const std::wstring& argKey,
     std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>>* pDirInfoList,
     const int limit, const bool delimiter)
 {
@@ -20,21 +19,6 @@ bool AwsS3::awsapiListObjectsV2(CALLER_ARG const std::wstring& argBucket, const 
 
     std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>> dirInfoList;
 
-    /*
-    const auto bucketRegion{ getBucketRegion(CONT_CALLER argBucket) };
-    if (bucketRegion != mRegion)
-    {
-    // バケットのリージョンに応じたエンドポイントを手動で設定
-    std::stringstream ss;
-    ss << "s3.";
-    ss << bucketRegion;
-    ss << ".amazon.com";
-
-    Aws::String endpoint{ ss.str().c_str() };
-
-    mClient.ptr->OverrideEndpoint(endpoint);
-    }
-    */
     Aws::S3::Model::ListObjectsV2Request request;
     request.SetBucket(WC2MB(argBucket).c_str());
 
@@ -77,11 +61,11 @@ bool AwsS3::awsapiListObjectsV2(CALLER_ARG const std::wstring& argBucket, const 
         //
         for (const auto& obj : result.GetContents())
         {
-            const auto lastModTime = UtcMillisToWinFileTime(obj.GetLastModified().Millis());
+            const auto lastModified = UtcMillisToWinFileTimeIn100ns(obj.GetLastModified().Millis());
 
-            if (lastModTime < commonPrefixTime)
+            if (lastModified < commonPrefixTime)
             {
-                commonPrefixTime = lastModTime;
+                commonPrefixTime = lastModified;
             }
         }
 
@@ -141,7 +125,6 @@ bool AwsS3::awsapiListObjectsV2(CALLER_ARG const std::wstring& argBucket, const 
             dirInfo->FileInfo.LastWriteTime = commonPrefixTime;
             dirInfo->FileInfo.ChangeTime = commonPrefixTime;
 
-            //dirInfoList.emplace_back(dirInfo, free_deleter<FSP_FSCTL_DIR_INFO>);
             dirInfoList.push_back(dirInfo);
 
             if (limit > 0)
@@ -221,14 +204,13 @@ bool AwsS3::awsapiListObjectsV2(CALLER_ARG const std::wstring& argBucket, const 
 
             dirInfo->FileInfo.FileAttributes |= FileAttributes;
 
-            const auto lastModTime = UtcMillisToWinFileTime(obj.GetLastModified().Millis());
+            const auto lastModified = UtcMillisToWinFileTimeIn100ns(obj.GetLastModified().Millis());
 
-            dirInfo->FileInfo.CreationTime = lastModTime;
-            dirInfo->FileInfo.LastAccessTime = lastModTime;
-            dirInfo->FileInfo.LastWriteTime = lastModTime;
-            dirInfo->FileInfo.ChangeTime = lastModTime;
+            dirInfo->FileInfo.CreationTime = lastModified;
+            dirInfo->FileInfo.LastAccessTime = lastModified;
+            dirInfo->FileInfo.LastWriteTime = lastModified;
+            dirInfo->FileInfo.ChangeTime = lastModified;
 
-            //dirInfoList.emplace_back(dirInfo, free_deleter<FSP_FSCTL_DIR_INFO>);
             dirInfoList.push_back(dirInfo);
 
             if (limit > 0)
@@ -263,26 +245,60 @@ exit:
     return !dirInfoList.empty();
 }
 
-#if 0
-// 限定的な状況でしか動作しないので注意
+std::shared_ptr<FSP_FSCTL_DIR_INFO> AwsS3::unsafeHeadObject(CALLER_ARG
+    const std::wstring& argBucket, const std::wstring& argKey)
+{
+    Aws::S3::Model::HeadObjectRequest request;
+    request.SetBucket(WC2MB(argBucket).c_str());
+    request.SetKey(WC2MB(argKey).c_str());
+
+    const auto outcome = mClient.ptr->HeadObject(request);
+    if (!outcomeIsSuccess(outcome))
+    {
+        // HeadObject の実行時エラー、またはオブジェクトが見つからない
+
+        return nullptr;
+    }
+
+    const auto& result = outcome.GetResult();
+
+    auto dirInfo = mallocDirInfoW(argKey, argBucket);
+    APP_ASSERT(dirInfo);
+
+    const auto FileSize = result.GetContentLength();
+    const auto lastModified = UtcMillisToWinFileTimeIn100ns(result.GetLastModified().Millis());
+
+    UINT32 FileAttributes = FILE_ATTRIBUTE_READONLY;
+
+    if (argKey != L"." && argKey != L".." && argKey[0] == L'.')
+    {
+        FileAttributes |= FILE_ATTRIBUTE_HIDDEN;
+    }
+
+    dirInfo->FileInfo.FileAttributes = FileAttributes;
+    dirInfo->FileInfo.FileSize = FileSize;
+    dirInfo->FileInfo.AllocationSize = (FileSize + ALLOCATION_UNIT - 1) / ALLOCATION_UNIT * ALLOCATION_UNIT;
+    dirInfo->FileInfo.CreationTime = lastModified;
+    dirInfo->FileInfo.LastAccessTime = lastModified;
+    dirInfo->FileInfo.LastWriteTime = lastModified;
+    dirInfo->FileInfo.ChangeTime = lastModified;
+    dirInfo->FileInfo.IndexNumber = HashString(argBucket + L'/' + argKey);
+
+    return dirInfo;
+}
+
 
 static std::mutex gGuard;
 
-#define THREAD_SAFE_4DEBUG() \
-	std::lock_guard<std::mutex> lock_(gGuard); \
-    traceW(L"!!! *** WARNNING *** THREAD_SAFE_4DEBUG() ENABLE !!!")
-
-#else
-#define THREAD_SAFE_4DEBUG()
-
-#endif
+#define THREAD_SAFE() \
+    std::lock_guard<std::mutex> lock_(gGuard)
 
 
-bool AwsS3::headObject(CALLER_ARG const std::wstring& argBucket,
-    const std::wstring& argKey, FSP_FSCTL_FILE_INFO* pFileInfo)
+bool AwsS3::headObject(CALLER_ARG
+    const std::wstring& argBucket, const std::wstring& argKey, FSP_FSCTL_FILE_INFO* pFileInfo)
 {
+    THREAD_SAFE();
     NEW_LOG_BLOCK();
-    THREAD_SAFE_4DEBUG();
     APP_ASSERT(!argBucket.empty());
     APP_ASSERT(!argKey.empty());
     APP_ASSERT(argKey.back() != L'/');
@@ -291,72 +307,50 @@ bool AwsS3::headObject(CALLER_ARG const std::wstring& argBucket,
 
     std::shared_ptr<FSP_FSCTL_DIR_INFO> dirInfo;
 
+    // ポジティブ・キャッシュを調べる
     {
+        // 下で dirInfoList を使っているので、ブロックに入れて回避
+
         std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>> dirInfoList;
 
         if (mObjectCache.getPositive(CONT_CALLER argBucket, argKey, -1, false, &dirInfoList))
         {
             // -1 で検索しているので一件のみであるはず
+
             APP_ASSERT(dirInfoList.size() == 1);
 
-            traceW(L"found in cache");
+            traceW(L"found in positive-cache");
             dirInfo = dirInfoList[0];
         }
     }
 
     if (!dirInfo)
     {
-        traceW(L"not found in cache");
+        traceW(L"not found in positive-cache");
 
         // ネガティブ・キャッシュを調べる
+
         if (mObjectCache.isInNegative(CONT_CALLER argBucket, argKey, -1, false))
         {
+            // ネガティブ・キャッシュにある == データは存在しない
             traceW(L"found in negative cache");
+
             return false;
         }
 
+        // HeadObject API の実行
         traceW(L"do HeadObject");
 
-        Aws::S3::Model::HeadObjectRequest request;
-        request.SetBucket(WC2MB(argBucket).c_str());
-        request.SetKey(WC2MB(argKey).c_str());
-
-        const auto outcome = mClient.ptr->HeadObject(request);
-        if (!outcomeIsSuccess(outcome))
+        dirInfo = unsafeHeadObject(CONT_CALLER argBucket, argKey);
+        if (!dirInfo)
         {
-            // HeadObject の実行時エラー、またはオブジェクトが見つからない
-
             // ネガティブ・キャッシュに登録
             traceW(L"add negative");
+
             mObjectCache.addNegative(CONT_CALLER argBucket, argKey, -1, false);
 
-            traceW(L"object not found");
             return false;
         }
-
-        const auto& result = outcome.GetResult();
-
-        dirInfo = mallocDirInfoW(argKey, argBucket);
-        APP_ASSERT(dirInfo);
-
-        const auto FileSize = result.GetContentLength();
-        const auto FileTime = UtcMillisToWinFileTime(result.GetLastModified().Millis());
-
-        UINT32 FileAttributes = FILE_ATTRIBUTE_READONLY;
-
-        if (argKey != L"." && argKey != L".." && argKey[0] == L'.')
-        {
-            FileAttributes |= FILE_ATTRIBUTE_HIDDEN;
-        }
-
-        dirInfo->FileInfo.FileAttributes = FileAttributes;
-        dirInfo->FileInfo.FileSize = FileSize;
-        dirInfo->FileInfo.AllocationSize = (FileSize + ALLOCATION_UNIT - 1) / ALLOCATION_UNIT * ALLOCATION_UNIT;
-        dirInfo->FileInfo.CreationTime = FileTime;
-        dirInfo->FileInfo.LastAccessTime = FileTime;
-        dirInfo->FileInfo.LastWriteTime = FileTime;
-        dirInfo->FileInfo.ChangeTime = FileTime;
-        dirInfo->FileInfo.IndexNumber = HashString(argBucket + L'/' + argKey);
 
         // キャッシュにコピー
         {
@@ -379,8 +373,8 @@ bool AwsS3::listObjects(CALLER_ARG const std::wstring& argBucket, const std::wst
     std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>>* pDirInfoList,
     const int limit, const bool delimiter)
 {
+    THREAD_SAFE();
     NEW_LOG_BLOCK();
-    THREAD_SAFE_4DEBUG();
     APP_ASSERT(!argBucket.empty());
     APP_ASSERT(argBucket.back() != L'/');
 
@@ -391,47 +385,47 @@ bool AwsS3::listObjects(CALLER_ARG const std::wstring& argBucket, const std::wst
 
     traceW(L"bucket: %s, key: %s, limit: %d", argBucket.c_str(), argKey.c_str(), limit);
 
-    std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>> dirInfoList;
+    // ポジティブ・キャッシュを調べる
 
+    std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>> dirInfoList;
     const bool inCache = mObjectCache.getPositive(CONT_CALLER argBucket, argKey, limit, delimiter, &dirInfoList);
 
     if (inCache)
     {
-        // キャッシュ中に見つかった
-
-        traceW(L"found in cache");
+        // ポジティブ・キャッシュ中に見つかった
+        traceW(L"found in positive-cache");
     }
     else
     {
-        traceW(L"not found in cache");
+        traceW(L"not found in positive-cache");
 
         if (mObjectCache.isInNegative(CONT_CALLER argBucket, argKey, limit, delimiter))
         {
-            traceW(L"found in negative cache");
+            // ネガティブ・キャッシュ中に見つかった
+            traceW(L"found in negative-cache");
+
             return false;
         }
 
+        // ListObjectV2() の実行
         traceW(L"call doListObjectV2");
 
-        if (!awsapiListObjectsV2(CONT_CALLER argBucket, argKey, &dirInfoList, limit, delimiter))
+        if (!this->unsafeListObjectsV2(CONT_CALLER argBucket, argKey, &dirInfoList, limit, delimiter))
         {
-            // ListObjectsV2 の実行時エラー、またはオブジェクトが見つからない
+            // 実行時エラー、またはオブジェクトが見つからない
+            traceW(L"object not found");
 
             // ネガティブ・キャッシュに登録
             traceW(L"add negative");
             mObjectCache.addNegative(CONT_CALLER argBucket, argKey, limit, delimiter);
 
-            traceW(L"object not found");
-
             return false;
         }
 
-        // キャッシュにコピー
+        // ポジティブ・キャッシュにコピー
 
         mObjectCache.setPositive(CONT_CALLER argBucket, argKey, limit, delimiter, dirInfoList);
     }
-
-    // バケットの中が空の時は dirInfoList.size()==0 となる
 
     if (pDirInfoList)
     {
@@ -439,103 +433,6 @@ bool AwsS3::listObjects(CALLER_ARG const std::wstring& argBucket, const std::wst
     }
 
     return true;
-}
-
-HANDLE AwsS3::openObject(CALLER_ARG const std::wstring& argBucket,
-    const std::wstring& argKey, UINT32 CreateOptions, UINT32 GrantedAccess)
-{
-    NEW_LOG_BLOCK();
-    THREAD_SAFE_4DEBUG();
-    APP_ASSERT(!argBucket.empty());
-    APP_ASSERT(!argKey.empty());
-    APP_ASSERT(argKey.back() != L'/');
-
-    const std::wstring localPath{ mCacheDir + L'\\' + EncodeFileNameToLocalNameW(argBucket + L'/' + argKey) };
-
-    bool needGet = false;
-
-    struct _stat st;
-    if (_wstat(localPath.c_str(), &st) == 0)
-    {
-        // ローカルにキャッシュ・ファイルが存在する
-
-        // Windows では S_ISREG() マクロが使えないので fs で代用
-        APP_ASSERT(std::filesystem::is_regular_file(localPath));
-
-        FSP_FSCTL_FILE_INFO fileInfo = {};
-
-        if (this->headObject(CONT_CALLER argBucket, argKey, &fileInfo))
-        {
-            // ローカル・ファイルの更新日時と比較
-
-            const auto mtime = UtcMillisToWinFileTime(st.st_mtime * 1000);
-
-            if (fileInfo.CreationTime > mtime)
-            {
-                // リモート・ファイルが更新されているので再取得
-
-                needGet = true;
-            }
-        }
-    }
-    else
-    {
-        // ローカルにキャッシュ・ファイルが存在しないので取得
-
-        needGet = true;
-    }
-
-    traceW(L"needGet: %s", needGet ? L"true" : L"false");
-
-    if (needGet)
-    {
-        Aws::S3::Model::GetObjectRequest request;
-        request.SetBucket(WC2MB(argBucket).c_str());
-        request.SetKey(WC2MB(argKey).c_str());
-
-        const auto outcome = mClient.ptr->GetObject(request);
-        if (!outcomeIsSuccess(outcome))
-        {
-            traceW(L"fault: GetObject");
-            return INVALID_HANDLE_VALUE;
-        }
-
-        const auto& result = outcome.GetResult();
-        std::ofstream ofs{ localPath, std::ios::binary };
-        if (!ofs)
-        {
-            traceW(L"fault: ofstream");
-            return INVALID_HANDLE_VALUE;
-        }
-
-        const std::streampos begin(ofs.tellp());
-        ofs << result.GetBody().rdbuf();
-        const std::streampos end(ofs.tellp());
-
-        ofs.close();
-
-        const auto wn = (uint64_t)(end - begin);
-
-        traceW(L"write file size %" PRIu64, wn);
-    }
-
-    //
-    ULONG CreateFlags = FILE_FLAG_BACKUP_SEMANTICS;
-    if (CreateOptions & FILE_DELETE_ON_CLOSE)
-        CreateFlags |= FILE_FLAG_DELETE_ON_CLOSE;
-
-    HANDLE h = ::CreateFileW(localPath.c_str(),
-        GrantedAccess, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
-        OPEN_EXISTING, CreateFlags, 0);
-    if (INVALID_HANDLE_VALUE == h)
-    {
-        //return FspNtStatusFromWin32(GetLastError());
-        traceW(L"fault: ofstream");
-        return INVALID_HANDLE_VALUE;
-
-    }
-
-    return h;
 }
 
 // EOF

@@ -1,31 +1,10 @@
 #pragma once
 
-//
-// メモリリーク検出にソースコード名を出力するためには、このファイルを
-// 一番最初に include しなければならない
-//
-#include "internal_define_alloc.h"
+namespace WinCseLib {
 
-#include "WinFsp_c.h"
-
-//
-// WinFsp が呼び出すアプリケーションのインターフェース
-//
-struct IService
+struct WINCSELIB_API IStorageService : public IService
 {
-	virtual ~IService() = 0;
-
-	virtual bool OnSvcStart(const wchar_t* argWorkDir) = 0;
-	virtual void OnSvcStop() = 0;
-	virtual bool OnPostSvcStart() { return true; };
-};
-
-struct IStorageService : public IService
-{
-	virtual ~IStorageService() = 0;
-
-#pragma warning(suppress: 4100)
-	virtual void UpdateVolumeParams(FSP_FSCTL_VOLUME_PARAMS* VolumeParams) { };
+	virtual ~IStorageService() = default;
 
 	// READ
 	virtual NTSTATUS DoGetSecurityByName(
@@ -61,7 +40,6 @@ struct IStorageService : public IService
 	virtual NTSTATUS DoSetDelete() = 0;
 };
 
-NTSTATUS GetFileInfoInternal(HANDLE Handle, FSP_FSCTL_FILE_INFO* FileInfo);
-int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, IStorageService* cs);
+} // namespace WinCseLib
 
 // EOF

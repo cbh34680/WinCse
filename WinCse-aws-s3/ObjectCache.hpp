@@ -92,8 +92,10 @@ private:
 	std::map<ObjectCacheKey, NegativeCacheVal> mNegative;
 	int mGetPositive = 0;
 	int mSetPositive = 0;
+	int mUpdPositive = 0;
 	int mGetNegative = 0;
 	int mSetNegative = 0;
+	int mUpdNegative = 0;
 
 protected:
 public:

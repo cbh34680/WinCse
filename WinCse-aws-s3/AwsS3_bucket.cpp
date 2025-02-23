@@ -2,8 +2,10 @@
 #include "AwsS3.hpp"
 #include <cinttypes>
 
+using namespace WinCseLib;
 
-std::wstring AwsS3::getBucketRegion(CALLER_ARG const std::wstring& bucketName)
+
+std::wstring AwsS3::unsafeGetBucketRegion(CALLER_ARG const std::wstring& bucketName)
 {
     NEW_LOG_BLOCK();
 
@@ -50,8 +52,14 @@ std::wstring AwsS3::getBucketRegion(CALLER_ARG const std::wstring& bucketName)
     return bucketRegion;
 }
 
+static std::mutex gGuard;
+
+#define THREAD_SAFE() \
+    std::lock_guard<std::mutex> lock_(gGuard)
+
 bool AwsS3::headBucket(CALLER_ARG const std::wstring& bucketName)
 {
+    THREAD_SAFE();
     NEW_LOG_BLOCK();
     APP_ASSERT(!bucketName.empty());
     APP_ASSERT(bucketName.back() != L'/');
@@ -87,7 +95,7 @@ bool AwsS3::headBucket(CALLER_ARG const std::wstring& bucketName)
         }
     }
 
-    const std::wstring bucketRegion{ getBucketRegion(CONT_CALLER bucketName) };
+    const std::wstring bucketRegion{ this->unsafeGetBucketRegion(CONT_CALLER bucketName) };
     if (bucketRegion != mRegion)
     {
         // バケットのリージョンが異なるので拒否
@@ -101,14 +109,11 @@ bool AwsS3::headBucket(CALLER_ARG const std::wstring& bucketName)
     return true;
 }
 
-//
-// Head から始まる関数は戻り値のみで存在の有無判定が可能
-// List から始まる関数の場合は、上記に加えて戻されたリストの件数を確認する
-//
 bool AwsS3::listBuckets(CALLER_ARG
     std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>>* pDirInfoList,
     const std::vector<std::wstring>& options)
 {
+    THREAD_SAFE();
     NEW_LOG_BLOCK();
 
     std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>> dirInfoList;
@@ -157,7 +162,7 @@ bool AwsS3::listBuckets(CALLER_ARG
             auto dirInfo = mallocDirInfoW(bucketName, L"");
             APP_ASSERT(dirInfo);
 
-            const auto FileTime = UtcMillisToWinFileTime(bucket.GetCreationDate().Millis());
+            const auto FileTime = UtcMillisToWinFileTimeIn100ns(bucket.GetCreationDate().Millis());
 
             dirInfo->FileInfo.FileAttributes = FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY;
             dirInfo->FileInfo.CreationTime = FileTime;
@@ -165,7 +170,6 @@ bool AwsS3::listBuckets(CALLER_ARG
             dirInfo->FileInfo.LastWriteTime = FileTime;
             dirInfo->FileInfo.ChangeTime = FileTime;
 
-            //dirInfoList.emplace_back(dirInfo, free_deleter<FSP_FSCTL_DIR_INFO>);
             dirInfoList.push_back(dirInfo);
 
             if (mMaxBuckets > 0)

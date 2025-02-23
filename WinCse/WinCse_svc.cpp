@@ -3,11 +3,18 @@
 #include <filesystem>
 #include <iostream>
 
+using namespace WinCseLib;
 
 static const wchar_t* CONFIGFILE_FNAME = L"WinCse.conf";
 static const wchar_t* FILE_REFERENCE_FNAME = L"reference.file";
 static const wchar_t* DIR_REFERENCE_FNAME = L"reference.dir";
 
+template <typename T>
+std::string getDerivedClassNames(T* baseClass)
+{
+	const std::type_info& typeInfo = typeid(*baseClass);
+	return typeInfo.name();
+}
 
 //
 // プログラム引数 "-u" から算出されたディレクトリから ini ファイルを読み
@@ -27,8 +34,7 @@ bool WinCse::OnSvcStart(const wchar_t* argWorkDir)
 
 	try
 	{
-		// move するので非 const
-		std::wstring workDir{ fs::weakly_canonical(fs::path(argWorkDir)).wstring() };
+		const std::wstring workDir{ fs::weakly_canonical(fs::path(argWorkDir)).wstring() };
 
 		//
 		// ini ファイルから値を取得
@@ -37,8 +43,7 @@ bool WinCse::OnSvcStart(const wchar_t* argWorkDir)
 
 		traceW(L"Detect credentials file path is %s", confPath.c_str());
 
-		const std::wstring iniSectionStr{ mIniSection };
-		const auto iniSection = iniSectionStr.c_str();
+		const auto iniSection = mIniSection.c_str();
 
 		//
 		// 最大ファイルサイズ(MB)
@@ -49,14 +54,14 @@ bool WinCse::OnSvcStart(const wchar_t* argWorkDir)
 		// 属性参照用ファイル/ディレクトリの準備
 		//
 		const std::wstring fileRefPath{ mTempDir + L'\\' + FILE_REFERENCE_FNAME };
-		if (!touchIfNotExists(fileRefPath))
+		if (!TouchIfNotExists(fileRefPath))
 		{
 			traceW(L"file not exists: %s", fileRefPath.c_str());
 			return false;
 		}
 
 		const std::wstring dirRefPath{ mTempDir + L'\\' + DIR_REFERENCE_FNAME };
-		if (!mkdirIfNotExists(dirRefPath))
+		if (!MkdirIfNotExists(dirRefPath))
 		{
 			traceW(L"dir not exists: %s", dirRefPath.c_str());
 			return false;
@@ -84,12 +89,12 @@ bool WinCse::OnSvcStart(const wchar_t* argWorkDir)
 		}
 
 		mMaxFileSize = maxFileSize;
-		mWorkDir = std::move(workDir);
+		mWorkDir = workDir;
 
 		traceW(L"INFO: TempDir=%s, WorkDir=%s, DirRef=%s, FileRef=%s",
 			mTempDir.c_str(), mWorkDir.c_str(), dirRefPath.c_str(), fileRefPath.c_str());
 
-		IService* services[] = { mDelayedWorker, mIdleWorker, mStorage };
+		IService* services[] = { mDelayedWorker, mIdleWorker, mStorage};
 
 		// OnSvcStart() の伝播
 		for (int i=0; i<_countof(services); i++)
@@ -145,14 +150,6 @@ void WinCse::OnSvcStop()
 
 	// ストレージの終了
 	mStorage->OnSvcStop();
-}
-
-void WinCse::UpdateVolumeParams(FSP_FSCTL_VOLUME_PARAMS* VolumeParams)
-{
-	NEW_LOG_BLOCK();
-	APP_ASSERT(VolumeParams);
-
-	mStorage->updateVolumeParams(VolumeParams);
 }
 
 // EOF

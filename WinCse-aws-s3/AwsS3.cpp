@@ -2,21 +2,28 @@
 #include "AwsS3.hpp"
 #include <filesystem>
 
+using namespace WinCseLib;
 
 //
 // AwsS3
 //
-AwsS3::AwsS3(const wchar_t* tmpdir, const wchar_t* iniSection,
+WinCseLib::ICloudStorage* NewCloudStorage(
+    const wchar_t* argTempDir, const wchar_t* argIniSection,
+    WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker)
+{
+    return new AwsS3(argTempDir, argIniSection, delayedWorker, idleWorker);
+}
+
+AwsS3::AwsS3(const std::wstring& argTempDir, const std::wstring& argIniSection,
     IWorker* delayedWorker, IWorker* idleWorker) :
-    mTempDir(tmpdir), mIniSection(iniSection),
+    mTempDir(argTempDir), mIniSection(argIniSection),
     mDelayedWorker(delayedWorker), mIdleWorker(idleWorker),
     mWorkDirTime(0), mMaxBuckets(-1), mMaxObjects(-1)
 {
     NEW_LOG_BLOCK();
 
-    APP_ASSERT(std::filesystem::exists(tmpdir));
-    APP_ASSERT(std::filesystem::is_directory(tmpdir));
-    APP_ASSERT(iniSection);
+    APP_ASSERT(std::filesystem::exists(argTempDir));
+    APP_ASSERT(std::filesystem::is_directory(argTempDir));
 }
 
 AwsS3::~AwsS3()
@@ -54,9 +61,15 @@ Aws::S3::S3Client* ClientPtr::operator->() noexcept
     return std::shared_ptr<Aws::S3::S3Client>::operator->();
 }
 
-//
+// ------------------------------------------------
 // global
 //
+// malloc, calloc で確保したメモリを shared_ptr で解放するための関数
+template <typename T>
+void free_deleter(T* ptr)
+{
+    free(ptr);
+}
 
 // ファイル名から FSP_FSCTL_DIR_INFO のヒープ領域を生成し、いくつかのメンバを設定して返却
 std::shared_ptr<FSP_FSCTL_DIR_INFO> mallocDirInfoW(const std::wstring& key, const std::wstring& bucket)

@@ -3,15 +3,28 @@
 #include <string>
 #include <regex>
 
+// 文字列をバケット名とキーに分割
+struct BucketKey
+{
+	std::wstring bucket;
+	std::wstring key;
 
-class WinCse : public IStorageService
+	bool HasKey = false;
+	bool OK = false;
+
+	BucketKey(const wchar_t* wstr);
+};
+
+class WinCse : public WinCseLib::IStorageService
 {
 private:
+	WinCseLib::IWorker* mDelayedWorker;
+	WinCseLib::IWorker* mIdleWorker;
+
+	WinCseLib::ICloudStorage* mStorage;
+
 	const std::wstring mTempDir;
-	const wchar_t* mIniSection;
-	IWorker* mDelayedWorker;
-	IWorker* mIdleWorker;
-	ICloudStorage* mStorage;
+	const std::wstring mIniSection;
 	int mMaxFileSize;
 
 	// 無視するファイル名の正規表現
@@ -31,17 +44,15 @@ protected:
 	bool isIgnoreFileName(const wchar_t* FileName);
 
 public:
-	WinCse(const wchar_t* tmpdir, const wchar_t* iniSection,
-		IWorker* delayedWorker, IWorker* idleWorker,
-		ICloudStorage* storage);
+	WinCse(const std::wstring& argTempDir, const std::wstring& argIniSection,
+		WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker,
+		WinCseLib::ICloudStorage* cloudStorage);
 
 	~WinCse();
 
 	// WinFsp から呼び出される関数
 	bool OnSvcStart(const wchar_t* argWorkDir) override;
 	void OnSvcStop() override;
-
-	void UpdateVolumeParams(FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
 
 	NTSTATUS DoGetSecurityByName(const wchar_t* FileName, PUINT32 PFileAttributes,
 		PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize) override;

@@ -4,6 +4,8 @@
 #include <mutex>
 #include <sstream>
 
+using namespace WinCseLib;
+
 
 #define ENABLE_TASK		(1)
 
@@ -18,7 +20,7 @@ const int WORKER_MAX = 0;
 
 #endif
 
-DelayedWorker::DelayedWorker(const wchar_t* tmpdir, const wchar_t* iniSection)
+DelayedWorker::DelayedWorker(const std::wstring& tmpdir, const std::wstring& iniSection)
 	: mTempDir(tmpdir), mIniSection(iniSection)
 {
 	// OnSvcStart の呼び出し順によるイベントオブジェクト未生成を
@@ -163,19 +165,6 @@ void DelayedWorker::listenEvent(const int i)
 	}
 
 	traceW(L"(%d): exit event loop", i);
-}
-
-std::wstring ITask::synonymString()
-{
-	static std::atomic<int> aint(0);
-
-	std::wstringstream ss;
-
-	ss << MB2WC(typeid(*this).name());
-	ss << L"; ";
-	ss << aint++;
-
-	return ss.str();
 }
 
 static std::mutex gGuard;

@@ -1,6 +1,8 @@
 #include "WinCseLib.h"
 #include "WinCse.hpp"
 
+using namespace WinCseLib;
+
 #undef traceA
 
 

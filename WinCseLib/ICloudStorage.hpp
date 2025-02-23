@@ -4,12 +4,11 @@
 #include <string>
 #include <memory>
 
+namespace WinCseLib {
 
-struct ICloudStorage : public IService
+struct WINCSELIB_API ICloudStorage : public IService
 {
-	virtual ~ICloudStorage() = 0;
-
-	virtual void updateVolumeParams(FSP_FSCTL_VOLUME_PARAMS* VolumeParams) = 0;
+	virtual ~ICloudStorage() = default;
 
 	virtual bool listBuckets(CALLER_ARG
 		std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>>* pDirInfoList,
@@ -26,9 +25,18 @@ struct ICloudStorage : public IService
 		const std::wstring& argBucket, const std::wstring& argKey,
 		FSP_FSCTL_FILE_INFO* pFileInfo) = 0;
 
-	virtual HANDLE openObject(CALLER_ARG
+	virtual bool openFile(CALLER_ARG
 		const std::wstring& argBucket, const std::wstring& argKey,
-		UINT32 CreateOptions, UINT32 GrantedAccess) = 0;
+		UINT32 CreateOptions, UINT32 GrantedAccess,
+		const FSP_FSCTL_FILE_INFO& fileInfo, 
+		PVOID* pCSData) = 0;
+
+	virtual void closeFile(CALLER_ARG PVOID CSData) = 0;
+
+	virtual bool readFile(CALLER_ARG PVOID CSData,
+		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred) = 0;
 };
+
+} // namespace WinCseLib
 
 // EOF

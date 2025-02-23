@@ -20,7 +20,7 @@
  */
 #pragma warning(disable: 4100)
 
-#include "storage_service_if.hpp"
+#include "WinCseLib.h"
 
 //#include <winfsp/winfsp.h>
 #include <strsafe.h>
@@ -57,7 +57,7 @@ typedef struct
 */
 
 #if !WINFSP_PASSTHROUGH
-static IStorageService* getStorageService();
+static WinCseLib::IStorageService* getStorageService();
 #endif
 
 static const FSP_FILE_SYSTEM_INTERFACE* getPtfsInterface();
@@ -813,14 +813,33 @@ static NTSTATUS PtfsCreate(PWSTR Path, PWSTR VolumePrefix, PWSTR MountPoint, UIN
     VolumeParams.FlushAndPurgeOnCleanup = 1;
     VolumeParams.UmFileContextIsUserContext2 = 1;
 
+#if !WINFSP_PASSTHROUGH
+    {
+        VolumeParams.CaseSensitiveSearch = 1;
+        VolumeParams.PersistentAcls = 0;
+        VolumeParams.ReadOnlyVolume = 1;
+
+        const UINT32 Timeout = 3000;
+
+        VolumeParams.FileInfoTimeout = Timeout;
+        VolumeParams.VolumeInfoTimeout = Timeout;
+        VolumeParams.DirInfoTimeout = Timeout;
+        //VolumeParams.SecurityTimeout = Timeout;
+        //VolumeParams.StreamInfoTimeout = Timeout;
+        //VolumeParams.EaTimeout =  Timeout;
+
+        VolumeParams.VolumeInfoTimeoutValid = 1;
+        VolumeParams.DirInfoTimeoutValid = 1;
+        //VolumeParams.SecurityTimeoutValid = 1;
+        //VolumeParams.StreamInfoTimeoutValid = 1;
+        //VolumeParams.EaTimeoutValid = 1;
+    }
+#endif
+
     if (0 != VolumePrefix)
         wcscpy_s(VolumeParams.Prefix, sizeof VolumeParams.Prefix / sizeof(WCHAR), VolumePrefix);
     wcscpy_s(VolumeParams.FileSystemName, sizeof VolumeParams.FileSystemName / sizeof(WCHAR),
         PROGNAME);
-
-#if !WINFSP_PASSTHROUGH
-    getStorageService()->UpdateVolumeParams(&VolumeParams);
-#endif
 
     {
         WCHAR STRING_NET[] = L"" FSP_FSCTL_NET_DEVICE_NAME;
@@ -1118,8 +1137,8 @@ static const FSP_FILE_SYSTEM_INTERFACE* getPtfsInterface()
 }
 
 #if !WINFSP_PASSTHROUGH
-static IStorageService* gSS_;
-static IStorageService* getStorageService()
+static WinCseLib::IStorageService* gSS_;
+static WinCseLib::IStorageService* getStorageService()
 {
     _ASSERT(gSS_);
     return gSS_;
@@ -1127,7 +1146,7 @@ static IStorageService* getStorageService()
 #endif
 
 //int wmain(int argc, wchar_t **argv)
-int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, IStorageService* ss)
+int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WinCseLib::IStorageService* ss)
 {
 #if !WINFSP_PASSTHROUGH
     gSS_ = ss;

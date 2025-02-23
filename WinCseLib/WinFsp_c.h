@@ -37,18 +37,12 @@ typedef struct
     {
         PWSTR FileName;
         FSP_FSCTL_FILE_INFO FileInfo;
-        UINT32 CreateOptions;
-        UINT32 GrantedAccess;
+        PVOID CSData;
     }
     Open;
-
-    struct
-    {
-        HANDLE Handle;
-    }
-    Local;
 }
 PTFS_FILE_CONTEXT;
 
+NTSTATUS WINCSELIB_API GetFileInfoInternal(HANDLE Handle, FSP_FSCTL_FILE_INFO* FileInfo);
 
 // EOF
