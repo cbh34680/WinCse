@@ -34,6 +34,50 @@ static bool forEachFiles(const std::wstring& directory, const std::function<void
     return true;
 }
 
+static bool decryptIfNeed(const std::string& secureKeyStr, std::string* pInOut)
+{
+    APP_ASSERT(pInOut);
+
+    std::string str{ *pInOut };
+
+    if (!str.empty())
+    {
+        if (str.length() > 8)
+        {
+            if (str.substr(0, 8) == "{AES256}")
+            {
+                // MachineGuid の値を AES の key とし、iv には key[0..16] を設定する
+                std::vector<BYTE> aesKey{ secureKeyStr.begin(), secureKeyStr.end() };
+                std::vector<BYTE> aesIV{ secureKeyStr.begin(), secureKeyStr.begin() + 16 };
+
+                // 先頭の "{AES256}" を除く
+                std::string encryptedB64Str{ str.substr(8) };
+
+                // BASE64 文字列をデコード
+                std::string encryptedStr = Base64DecodeA(encryptedB64Str);
+                std::vector<BYTE> encrypted{ encryptedStr.begin(), encryptedStr.end() };
+
+                // 復号化
+                std::vector<BYTE> decrypted;
+                if (!DecryptAES(aesKey, aesIV, encrypted, &decrypted))
+                {
+                    return false;
+                }
+
+                // これだと strlen() のサイズと一致しなくなる
+                //str.assign(decrypted.begin(), decrypted.end());
+
+                // 入力が '\0' 終端であることを前提に char* から std::string を初期化する
+                str = (char*)decrypted.data();
+
+                *pInOut = std::move(str);
+            }
+        }
+    }
+
+    return true;
+}
+
 bool AwsS3::OnSvcStart(const wchar_t* argWorkDir)
 {
     NEW_LOG_BLOCK();
@@ -72,19 +116,46 @@ bool AwsS3::OnSvcStart(const wchar_t* argWorkDir)
         // ini ファイルから値を取得
         //
         const std::wstring confPath{ workDir + L'\\' + CONFIGFILE_FNAME };
+        const std::string confPathA{ WC2MB(confPath) };
 
         traceW(L"Detect credentials file path is %s", confPath.c_str());
 
-        const auto iniSection = mIniSection.c_str();
+        const wchar_t* iniSection = mIniSection.c_str();
+        const auto iniSectionA{ WC2MB(mIniSection) };
 
         // AWS 認証情報
-        std::wstring str_access_key_id;
-        std::wstring str_secret_access_key;
-        std::wstring str_region;
+        std::string str_access_key_id;
+        std::string str_secret_access_key;
+        std::string str_region;
 
-        GetIniStringW(confPath, iniSection, L"aws_access_key_id", &str_access_key_id);
-        GetIniStringW(confPath, iniSection, L"aws_secret_access_key", &str_secret_access_key);
-        GetIniStringW(confPath, iniSection, L"region", &str_region);
+        GetIniStringA(confPathA, iniSectionA.c_str(), "aws_access_key_id", &str_access_key_id);
+        GetIniStringA(confPathA, iniSectionA.c_str(), "aws_secret_access_key", &str_secret_access_key);
+        GetIniStringA(confPathA, iniSectionA.c_str(), "region", &str_region);
+
+        // レジストリ "HKLM:\SOFTWARE\Microsoft\Cryptography" から "MachineGuid" の値を取得
+        std::string secureKeyStr;
+        if (!GetCryptKeyFromRegistry(&secureKeyStr))
+        {
+            traceW(L"fault: GetCryptKeyFromRegistry");
+            return false;
+        }
+
+        if (secureKeyStr.length() < 32)
+        {
+            traceW(L"%s: illegal data", secureKeyStr.c_str());
+            return false;
+        }
+
+        // MachineGuid の値をキーにして keyid&secret を復号化 (必要なら)
+        if (!decryptIfNeed(secureKeyStr, &str_access_key_id))
+        {
+            traceW(L"%s: keyid decrypt fault", str_access_key_id.c_str());
+        }
+
+        if (!decryptIfNeed(secureKeyStr, &str_secret_access_key))
+        {
+            traceW(L"%s: secret decrypt fault", str_secret_access_key.c_str());
+        }
 
         //
         // バケット名フィルタ
@@ -126,7 +197,7 @@ bool AwsS3::OnSvcStart(const wchar_t* argWorkDir)
         if (str_region.empty())
         {
             // とりあえずデフォルト・リージョンとして設定しておく
-            str_region = MB2WC(AWS_DEFAULT_REGION);
+            str_region = AWS_DEFAULT_REGION;
         }
 
         APP_ASSERT(!str_region.empty());
@@ -134,14 +205,14 @@ bool AwsS3::OnSvcStart(const wchar_t* argWorkDir)
         // 東京) Aws::Region::AP_NORTHEAST_1;
         // 大阪) Aws::Region::AP_NORTHEAST_3;
 
-        config.region = Aws::String{ WC2MB(str_region) };
+        config.region = Aws::String{ str_region.c_str() };
 
         Aws::S3::S3Client* client = nullptr;
 
         if (!str_access_key_id.empty() && !str_secret_access_key.empty())
         {
-            const Aws::String access_key{ WC2MB(str_access_key_id) };
-            const Aws::String secret_key{ WC2MB(str_secret_access_key) };
+            const Aws::String access_key{ str_access_key_id.c_str() };
+            const Aws::String secret_key{ str_secret_access_key.c_str() };
 
             const Aws::Auth::AWSCredentials credentials{ access_key, secret_key };
 
@@ -172,7 +243,7 @@ bool AwsS3::OnSvcStart(const wchar_t* argWorkDir)
         mCacheDir = cacheDir;
         mMaxBuckets = maxBuckets;
         mMaxObjects = maxObjects;
-        mRegion = str_region;
+        mRegion = MB2WC(str_region);
 
         ret = true;
     }

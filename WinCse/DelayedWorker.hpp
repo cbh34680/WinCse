@@ -10,6 +10,7 @@ private:
 	const std::wstring mIniSection;
 	std::vector<std::thread> mThreads;
 	std::deque<std::shared_ptr<WinCseLib::ITask>> mTaskQueue;
+	int mTaskSkipCount;
 
 	HANDLE mEvent = nullptr;
 

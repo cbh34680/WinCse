@@ -181,6 +181,7 @@ void Logger::traceA_impl(const int indent, const char* fullPath, const int line,
 	traceW_write(&st, MB2WC(buf).c_str());
 }
 
+#pragma warning(suppress: 4100)
 void Logger::traceW_write(const SYSTEMTIME* st, const wchar_t* buf) const
 {
 	const auto pid = ::GetCurrentProcessId();
@@ -278,13 +279,16 @@ static Logger* gLogger;
 
 bool CreateLogger(const wchar_t* argTempDir, const wchar_t* argTrcDir, const wchar_t* argDllType)
 {
+	APP_ASSERT(argTempDir);
+	APP_ASSERT(argDllType);
+
 	if (gLogger)
 	{
 		return false;
 	}
 
 	const std::wstring tmpDir{ argTempDir };
-	const std::wstring trcDir{ argTrcDir };
+	const std::wstring trcDir{ argTrcDir ? argTrcDir : L"" };
 	const std::wstring dllType{ argDllType };
 
 	Logger* logger = new Logger();

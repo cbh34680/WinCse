@@ -2,8 +2,12 @@
 [MS Visual Studio 2022]
 	https://visualstudio.microsoft.com/ja/downloads/
 
-	[Community Edition]
-	Workload: Desktop development with C++
+	* Community Edition
+
+	* Workload: Desktop development with C++
+
+	* PowerShell Tools for Visual Studio 2022
+		Install from the Manage Extensions menu (if need)
 
 
 [CMake]
@@ -21,11 +25,6 @@ https://winfsp.dev/rel/
 
 	[Download WinFsp Installer] and install
 		with "Developer"
-
-	[Add cpp header] (already included)
-		https://github.com/winfsp/winfsp/blob/v2.0/inc/winfsp/winfsp.hpp
-		See: $(SolutionDir)\WinFsp\inc\winfsp\install.bat
-
 
 
 [INSTALL aws-sdk-cpp]

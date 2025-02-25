@@ -11,5 +11,5 @@ if %errorlevel% neq 0 (
 )
 
 cd "%~dp0"
-powershell.exe -ExecutionPolicy Bypass -Command ".\gui.ps1 'aws-s3'"
+powershell.exe -ExecutionPolicy Bypass -Command ".\gui-aws-s3.ps1"
 

@@ -21,7 +21,7 @@ const int WORKER_MAX = 0;
 #endif
 
 DelayedWorker::DelayedWorker(const std::wstring& tmpdir, const std::wstring& iniSection)
-	: mTempDir(tmpdir), mIniSection(iniSection)
+	: mTempDir(tmpdir), mIniSection(iniSection), mTaskSkipCount(0)
 {
 	// OnSvcStart の呼び出し順によるイベントオブジェクト未生成を
 	// 回避するため、コンストラクタで生成して OnSvcStart で null チェックする
@@ -179,7 +179,7 @@ bool DelayedWorker::addTask(ITask* argTask, CanIgnore ignState, Priority priorit
 	NEW_LOG_BLOCK();
 	APP_ASSERT(argTask)
 
-	bool add = false;
+	bool added = false;
 
 #if ENABLE_TASK
 	argTask->mPriority = priority;
@@ -190,7 +190,7 @@ bool DelayedWorker::addTask(ITask* argTask, CanIgnore ignState, Priority priorit
 
 		mTaskQueue.emplace_front(argTask);
 
-		add = true;
+		added = true;
 	}
 	else
 	{
@@ -209,16 +209,21 @@ bool DelayedWorker::addTask(ITask* argTask, CanIgnore ignState, Priority priorit
 			if (it == mTaskQueue.end())
 			{
 				// 同等のものが存在しない
-				add = true;
+				added = true;
+			}
+			else
+			{
+				// skip ??
+				mTaskSkipCount++;
 			}
 		}
 		else
 		{
 			// 無視できない
-			add = true;
+			added = true;
 		}
 
-		if (add)
+		if (added)
 		{
 			// 後方に追加
 			mTaskQueue.emplace_back(argTask);
@@ -233,8 +238,11 @@ bool DelayedWorker::addTask(ITask* argTask, CanIgnore ignState, Priority priorit
 		}
 	}
 
-	// WaitForSingleObject() に通知
-	::SetEvent(mEvent);
+	if (added)
+	{
+		// WaitForSingleObject() に通知
+		::SetEvent(mEvent);
+	}
 
 #else
 	// ワーカー処理が無効な場合は、タスクのリクエストを無視
@@ -242,7 +250,7 @@ bool DelayedWorker::addTask(ITask* argTask, CanIgnore ignState, Priority priorit
 
 #endif
 
-	return add;
+	return added;
 }
 
 std::shared_ptr<ITask> DelayedWorker::dequeueTask()

@@ -2,6 +2,7 @@
 #include <Windows.h>
 
 #pragma comment(lib, "winfsp-x64.lib")
+#pragma comment(lib, "bcrypt.lib")
 
 BOOL APIENTRY DllMain( HMODULE hModule,
                        DWORD  ul_reason_for_call,

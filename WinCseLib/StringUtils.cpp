@@ -8,9 +8,6 @@
 namespace WinCseLib {
 
 // wstring ‚©‚ç string ‚Ö‚Ì•ÏŠ·
-//#define CNV_CODEPAGE		(CP_ACP)
-#define CNV_CODEPAGE		(CP_UTF8)
-
 std::string WC2MB(const std::wstring& wstr)
 {
 	if (wstr.empty())
@@ -21,13 +18,13 @@ std::string WC2MB(const std::wstring& wstr)
 	const wchar_t* pWstr = wstr.c_str();
 
 	::SetLastError(ERROR_SUCCESS);
-	const int need = ::WideCharToMultiByte(CNV_CODEPAGE, 0, pWstr, -1, NULL, 0, NULL, NULL);
+	const int need = ::WideCharToMultiByte(CP_UTF8, 0, pWstr, -1, NULL, 0, NULL, NULL);
 	APP_ASSERT(::GetLastError() == ERROR_SUCCESS);
 
 	std::vector<char> buff(need);
 	char* pStr = buff.data();
 
-	::WideCharToMultiByte(CNV_CODEPAGE, 0, pWstr, -1, pStr, need, NULL, NULL);
+	::WideCharToMultiByte(CP_UTF8, 0, pWstr, -1, pStr, need, NULL, NULL);
 	APP_ASSERT(::GetLastError() == ERROR_SUCCESS);
 
 	return std::string{ pStr };
@@ -44,13 +41,13 @@ std::wstring MB2WC(const std::string& str)
 	const char* pStr = str.c_str();
 
 	::SetLastError(ERROR_SUCCESS);
-	const int need = ::MultiByteToWideChar(CNV_CODEPAGE, 0, pStr, -1, NULL, 0);
+	const int need = ::MultiByteToWideChar(CP_UTF8, 0, pStr, -1, NULL, 0);
 	APP_ASSERT(::GetLastError() == ERROR_SUCCESS);
 
 	std::vector<wchar_t> buff(need);
 	wchar_t* pWstr = buff.data();
 
-	::MultiByteToWideChar(CNV_CODEPAGE, 0, pStr, -1, pWstr, need);
+	::MultiByteToWideChar(CP_UTF8, 0, pStr, -1, pWstr, need);
 	APP_ASSERT(::GetLastError() == ERROR_SUCCESS);
 
 	return std::wstring{ pWstr };

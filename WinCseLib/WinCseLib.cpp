@@ -108,12 +108,14 @@ void AbnormalEnd(const char* file, const int line, const char* func, const int s
 	abort();
 }
 
+#define INI_LINE_BUFSIZ		(1024)
+
 bool GetIniStringW(const std::wstring& confPath, const wchar_t* argSection, const wchar_t* keyName, std::wstring* pValue)
 {
 	APP_ASSERT(argSection);
 	APP_ASSERT(argSection[0]);
 
-	std::vector<wchar_t> buf(BUFSIZ);
+	std::vector<wchar_t> buf(INI_LINE_BUFSIZ);
 
 	::SetLastError(ERROR_SUCCESS);
 	::GetPrivateProfileStringW(argSection, keyName, L"", buf.data(), (DWORD)buf.size(), confPath.c_str());
@@ -133,7 +135,7 @@ bool GetIniStringA(const std::string& confPath, const char* argSection, const ch
 	APP_ASSERT(argSection);
 	APP_ASSERT(argSection[0]);
 
-	std::vector<char> buf(BUFSIZ);
+	std::vector<char> buf(INI_LINE_BUFSIZ);
 
 	::SetLastError(ERROR_SUCCESS);
 	::GetPrivateProfileStringA(argSection, keyName, "", buf.data(), (DWORD)buf.size(), confPath.c_str());
@@ -152,7 +154,6 @@ bool GetIniStringA(const std::string& confPath, const char* argSection, const ch
 // LogBlock
 //
 static std::atomic<int> mCounter(0);
-
 static thread_local int mDepth = 0;
 
 
@@ -180,7 +181,6 @@ int LogBlock::getCount()
 {
 	return mCounter.load();
 }
-
 
 } // namespace WinCseLib
 

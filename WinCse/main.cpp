@@ -13,9 +13,21 @@
 
 using namespace WinCseLib;
 
+static WCHAR PROGNAME[] = L"WinCse";
+
 static bool app_tempdir(std::wstring* tmpDir);
 static void app_terminate();
 static void app_sighandler(int signum);
+
+/*
+ * DEBUG ARGS
+
+    [nolog]
+        -u \WinCse.aws-s3.Y\C$\$(MSBuildProjectDirectoryNoRoot)\..\..\MOUNT -m Y:
+
+    [with log]
+        -u \WinCse.aws-s3.Y\C$\$(MSBuildProjectDirectoryNoRoot)\..\..\MOUNT -m Y: -T $(SolutionDir)\trace
+*/
 
 
 // DLL 解放のための RAII
@@ -48,9 +60,11 @@ bool loadCloudStorage(const std::wstring& dllType,
 	WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker,
     DllModule* pDll)
 {
+    NEW_LOG_BLOCK();
+
     bool ret = false;
 
-	const std::wstring dllName{ L"WinCse-" + dllType + L".dll" };
+	const std::wstring dllName{ std::wstring(PROGNAME) + L'-' + dllType + L".dll" };
 
 	typedef WinCseLib::ICloudStorage* (*NewCloudStorage)(
 		const wchar_t* argTempDir, const wchar_t* argIniSection,
@@ -63,6 +77,7 @@ bool loadCloudStorage(const std::wstring& dllType,
 	if (hMod == NULL)
 	{
         std::wcerr << L"fault: LoadLibrary" << dllName << std::endl;
+        traceW(L"fault: LoadLibrary %s", dllName.c_str());
         goto exit;
 	}
     
@@ -70,6 +85,7 @@ bool loadCloudStorage(const std::wstring& dllType,
 	if (!dllFunc)
 	{
         std::wcerr << L"fault: GetProcAddress" << std::endl;
+        traceW(L"fault: GetProcAddress");
         goto exit;
     }
 
@@ -77,6 +93,7 @@ bool loadCloudStorage(const std::wstring& dllType,
 	if (!pStorage)
 	{
         std::wcerr << L"fault: NewCloudStorage" << std::endl;
+        traceW(L"fault: NewCloudStorage");
         goto exit;
     }
 
@@ -85,6 +102,8 @@ bool loadCloudStorage(const std::wstring& dllType,
 
     hMod = NULL;
     pStorage = nullptr;
+
+    traceW(L"success");
 
     ret = true;
 
@@ -99,8 +118,8 @@ exit:
     return ret;
 }
 
-static int app_main(int argc, wchar_t** argv, WCHAR* progname,
-                    const wchar_t* iniSection, const wchar_t* trcDir, const std::wstring& dllType)
+static int app_main(int argc, wchar_t** argv,
+    const wchar_t* iniSection, const wchar_t* trcDir, const std::wstring& dllType)
 {
     // これやらないと日本語が出力できない
     _wsetlocale(LC_ALL, L"");
@@ -137,6 +156,8 @@ static int app_main(int argc, wchar_t** argv, WCHAR* progname,
     //
     if (CreateLogger(tmpDir.c_str(), trcDir, dllType.c_str()))
     {
+        NEW_LOG_BLOCK();
+
         // メモリ解放の順番が関係するので、下の try ブロックには入れない
         DllModule dll;
 
@@ -146,11 +167,18 @@ static int app_main(int argc, wchar_t** argv, WCHAR* progname,
             if (!iniSection)
             {
                 std::wcout << L"use default ini section" << std::endl;
+                traceW(L"use default ini section");
                 iniSection = defaultIniSection;
             }
 
+            std::wcout << L"iniSection: " << iniSection << std::endl;
+            traceW(L"iniSection: %s", iniSection);
+
             DelayedWorker dworker(tmpDir, iniSection);
             IdleWorker iworker(tmpDir, iniSection);
+
+            std::wcout << L"load dll type=" << dllType << std::endl;
+            traceW(L"load dll type=%s", dllType.c_str());
 
             // dll のロード
             if (loadCloudStorage(dllType, tmpDir, iniSection, &dworker, &iworker, &dll))
@@ -158,13 +186,17 @@ static int app_main(int argc, wchar_t** argv, WCHAR* progname,
                 WinCse app(tmpDir, iniSection, &dworker, &iworker, dll.mStorage);
 
                 std::wcout << L"call WinFspMain" << std::endl;
-                ret = WinFspMain(argc, argv, progname, &app);
+                traceW(L"call WinFspMain");
+
+                ret = WinFspMain(argc, argv, PROGNAME, &app);
 
                 std::wcout << L"WinFspMain done. return=" << ret << std::endl;
+                traceW(L"WinFspMain done. return=%s", ret ? L"true" : L"false");
             }
             else
             {
-                std::wcout << L"fault: loadCloudStorage" << std::endl;
+                std::wcerr << L"fault: loadCloudStorage" << std::endl;
+                traceW(L"fault: loadCloudStorage");
             }
         }
         catch (const std::runtime_error& err)
@@ -193,7 +225,7 @@ int wmain(int argc, wchar_t** argv)
 #ifdef _DEBUG
     ::_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
-    std::wcout << L"Build: 2025/02/20 23:15 JST" << std::endl;
+    std::wcout << L"Build: 2025/02/25 16:30 JST" << std::endl;
 
 #if WINFSP_PASSTHROUGH
     std::wcout << L"Type: passthrough" << std::endl;
@@ -207,7 +239,20 @@ int wmain(int argc, wchar_t** argv)
     std::wcout << L"Mode: Release" << std::endl;
 #endif
 
-    WCHAR progname[] = L"WinCse";
+    std::wcout << L"argv: ";
+    for (int i=0; i<argc; i++)
+    {
+        if (i != 0)
+        {
+            std::wcout << L' ';
+        }
+
+        std::wcout << L'"' << argv[i] << L'"';
+    }
+    std::wcout << std::endl;
+
+    const DWORD pid= ::GetCurrentProcessId();
+    std::wcout << L"ProcessId: " << pid << std::endl;
 
     // メモリリーク調査を目的としてブロックを分ける
     int rc = EXIT_FAILURE;
@@ -265,7 +310,7 @@ int wmain(int argc, wchar_t** argv)
             return EXIT_FAILURE;
         }
 
-        rc = app_main(argc, argv, progname, iniSection, traceLogDir, names[1]);
+        rc = app_main(argc, argv, iniSection, traceLogDir, names[1]);
     }
     catch (const std::runtime_error& err)
     {

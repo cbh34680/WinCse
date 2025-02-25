@@ -86,6 +86,9 @@ WINCSELIB_API bool GetIniStringA(const std::string& confPath, const char* argSec
 
 WINCSELIB_API size_t HashString(const std::wstring& str);
 
+WINCSELIB_API bool DecryptAES(const std::vector<BYTE>& key, const std::vector<BYTE>& iv, const std::vector<BYTE>& encrypted, std::vector<BYTE>* pDecrypted);
+WINCSELIB_API bool GetCryptKeyFromRegistry(std::string* pKeyStr);
+
 WINCSELIB_API void AbnormalEnd(const char* file, const int line, const char* func, const int signum);
 
 WINCSELIB_API bool CreateLogger(const wchar_t* argTempDir, const wchar_t* argTrcDir, const wchar_t* argDllType);
