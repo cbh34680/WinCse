@@ -6,15 +6,11 @@ using namespace WinCseLib;
 #undef traceA
 
 
-NTSTATUS WinCse::DoCanDelete()
-{
-	NEW_LOG_BLOCK();
 
-	return STATUS_INVALID_DEVICE_REQUEST;
-}
-
-NTSTATUS WinCse::DoCleanup()
+NTSTATUS WinCse::DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags)
 {
+	StatsIncr(DoCleanup);
+
 	NEW_LOG_BLOCK();
 
 	return STATUS_INVALID_DEVICE_REQUEST;
@@ -22,6 +18,8 @@ NTSTATUS WinCse::DoCleanup()
 
 NTSTATUS WinCse::DoCreate()
 {
+	StatsIncr(DoCreate);
+
 	NEW_LOG_BLOCK();
 
 	return STATUS_INVALID_DEVICE_REQUEST;
@@ -29,6 +27,8 @@ NTSTATUS WinCse::DoCreate()
 
 NTSTATUS WinCse::DoFlush()
 {
+	StatsIncr(DoFlush);
+
 	NEW_LOG_BLOCK();
 
 	return STATUS_INVALID_DEVICE_REQUEST;
@@ -36,14 +36,17 @@ NTSTATUS WinCse::DoFlush()
 
 NTSTATUS WinCse::DoOverwrite()
 {
+	StatsIncr(DoOverwrite);
+
 	NEW_LOG_BLOCK();
 
 	return STATUS_INVALID_DEVICE_REQUEST;
 }
 
-
 NTSTATUS WinCse::DoRename()
 {
+	StatsIncr(DoRename);
+
 	NEW_LOG_BLOCK();
 
 	return STATUS_INVALID_DEVICE_REQUEST;
@@ -51,6 +54,8 @@ NTSTATUS WinCse::DoRename()
 
 NTSTATUS WinCse::DoSetBasicInfo()
 {
+	StatsIncr(DoSetBasicInfo);
+
 	NEW_LOG_BLOCK();
 
 	return STATUS_INVALID_DEVICE_REQUEST;
@@ -58,6 +63,8 @@ NTSTATUS WinCse::DoSetBasicInfo()
 
 NTSTATUS WinCse::DoSetFileSize()
 {
+	StatsIncr(DoSetFileSize);
+
 	NEW_LOG_BLOCK();
 
 	return STATUS_INVALID_DEVICE_REQUEST;
@@ -65,6 +72,8 @@ NTSTATUS WinCse::DoSetFileSize()
 
 NTSTATUS WinCse::DoSetPath()
 {
+	StatsIncr(DoSetPath);
+
 	NEW_LOG_BLOCK();
 
 	return STATUS_INVALID_DEVICE_REQUEST;
@@ -72,6 +81,8 @@ NTSTATUS WinCse::DoSetPath()
 
 NTSTATUS WinCse::DoSetSecurity()
 {
+	StatsIncr(DoSetSecurity);
+
 	NEW_LOG_BLOCK();
 
 	return STATUS_INVALID_DEVICE_REQUEST;
@@ -79,13 +90,17 @@ NTSTATUS WinCse::DoSetSecurity()
 
 NTSTATUS WinCse::DoWrite()
 {
+	StatsIncr(DoWrite);
+
 	NEW_LOG_BLOCK();
 
 	return STATUS_INVALID_DEVICE_REQUEST;
 }
 
-NTSTATUS WinCse::DoSetDelete()
+NTSTATUS WinCse::DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOOLEAN deleteFile)
 {
+	StatsIncr(DoSetDelete);
+
 	NEW_LOG_BLOCK();
 
 	return STATUS_INVALID_DEVICE_REQUEST;

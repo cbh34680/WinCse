@@ -21,18 +21,27 @@
   <ItemGroup>
     <ClCompile Include="AwsS3.cpp" />
     <ClCompile Include="AwsS3_bucket.cpp" />
+    <ClCompile Include="AwsS3_obj_api.cpp" />
     <ClCompile Include="AwsS3_obj_list.cpp" />
+    <ClCompile Include="AwsS3_obj_open.cpp" />
     <ClCompile Include="AwsS3_obj_read.cpp" />
+    <ClCompile Include="AwsS3_obj_r_download.cpp" />
+    <ClCompile Include="AwsS3_obj_r_multipart.cpp" />
+    <ClCompile Include="AwsS3_obj_r_simple.cpp" />
+    <ClCompile Include="AwsS3_obj_r_util.cpp" />
     <ClCompile Include="AwsS3_svc.cpp" />
+    <ClCompile Include="AwsS3_svc_init.cpp" />
     <ClCompile Include="BucketCache.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="ObjectCache.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AwsS3.hpp" />
-    <ClInclude Include="aws_sdk_s3.hpp" />
+    <ClInclude Include="AwsS3_obj_read.h" />
+    <ClInclude Include="aws_sdk_s3.h" />
     <ClInclude Include="BucketCache.hpp" />
     <ClInclude Include="ObjectCache.hpp" />
+    <ClInclude Include="Purpose.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
@@ -136,7 +145,14 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
       <AdditionalLibraryDirectories>$(MSBuildProgramFiles32)\WinFsp\lib;$(SolutionDir)aws-sdk\dest\$(Configuration)\bin;$(OutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <DelayLoadDLLs>winfsp-$(PlatformTarget).dll</DelayLoadDLLs>
     </Link>
+    <PostBuildEvent>
+      <Command>$(SolutionDir)\util\build-after.bat $(Configuration)</Command>
+    </PostBuildEvent>
+    <PreBuildEvent>
+      <Command>$(SolutionDir)util\build-before.bat</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -158,7 +174,14 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
       <AdditionalLibraryDirectories>$(MSBuildProgramFiles32)\WinFsp\lib;$(SolutionDir)aws-sdk\dest\$(Configuration)\bin;$(OutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <DelayLoadDLLs>winfsp-$(PlatformTarget).dll</DelayLoadDLLs>
     </Link>
+    <PostBuildEvent>
+      <Command>$(SolutionDir)\util\build-after.bat $(Configuration)</Command>
+    </PostBuildEvent>
+    <PreBuildEvent>
+      <Command>$(SolutionDir)util\build-before.bat</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

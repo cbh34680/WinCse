@@ -1,4 +1,3 @@
-#include "WinCseLib.h"
 #include "AwsS3.hpp"
 #include <filesystem>
 
@@ -7,18 +6,17 @@ using namespace WinCseLib;
 //
 // AwsS3
 //
-WinCseLib::ICloudStorage* NewCloudStorage(
+WinCseLib::ICSDevice* NewCSDevice(
     const wchar_t* argTempDir, const wchar_t* argIniSection,
-    WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker)
+    WinCseLib::IWorker* argDelayedWorker, WinCseLib::IWorker* argIdleWorker)
 {
-    return new AwsS3(argTempDir, argIniSection, delayedWorker, idleWorker);
+    return new AwsS3(argTempDir, argIniSection, argDelayedWorker, argIdleWorker);
 }
 
 AwsS3::AwsS3(const std::wstring& argTempDir, const std::wstring& argIniSection,
-    IWorker* delayedWorker, IWorker* idleWorker) :
+    IWorker* argDelayedWorker, IWorker* argIdleWorker) :
     mTempDir(argTempDir), mIniSection(argIniSection),
-    mDelayedWorker(delayedWorker), mIdleWorker(idleWorker),
-    mWorkDirTime(0), mMaxBuckets(-1), mMaxObjects(-1)
+    mDelayedWorker(argDelayedWorker), mIdleWorker(argIdleWorker)
 {
     NEW_LOG_BLOCK();
 
@@ -29,6 +27,8 @@ AwsS3::AwsS3(const std::wstring& argTempDir, const std::wstring& argIniSection,
 AwsS3::~AwsS3()
 {
     NEW_LOG_BLOCK();
+
+    this->OnSvcStop();
 }
 
 bool AwsS3::isInBucketFiltersW(const std::wstring& arg)
@@ -58,12 +58,13 @@ Aws::S3::S3Client* ClientPtr::operator->() noexcept
 {
     mRefCount++;
 
-    return std::shared_ptr<Aws::S3::S3Client>::operator->();
+    return std::unique_ptr<Aws::S3::S3Client>::operator->();
 }
 
 // ------------------------------------------------
 // global
 //
+
 // malloc, calloc で確保したメモリを shared_ptr で解放するための関数
 template <typename T>
 void free_deleter(T* ptr)
@@ -72,11 +73,11 @@ void free_deleter(T* ptr)
 }
 
 // ファイル名から FSP_FSCTL_DIR_INFO のヒープ領域を生成し、いくつかのメンバを設定して返却
-std::shared_ptr<FSP_FSCTL_DIR_INFO> mallocDirInfoW(const std::wstring& key, const std::wstring& bucket)
+DirInfoType mallocDirInfoW(const std::wstring& argKey, const std::wstring& argBucket)
 {
-    APP_ASSERT(!key.empty());
+    APP_ASSERT(!argKey.empty());
 
-    const auto keyLen = key.length();
+    const auto keyLen = argKey.length();
     const auto keyLenBytes = keyLen * sizeof(WCHAR);
     const auto offFileNameBuf = FIELD_OFFSET(FSP_FSCTL_DIR_INFO, FileNameBuf);
     const auto dirInfoSize = offFileNameBuf + keyLenBytes;
@@ -86,7 +87,7 @@ std::shared_ptr<FSP_FSCTL_DIR_INFO> mallocDirInfoW(const std::wstring& key, cons
     APP_ASSERT(dirInfo);
 
     dirInfo->Size = (UINT16)dirInfoSize;
-    dirInfo->FileInfo.IndexNumber = HashString(bucket + L'/' + key);
+    dirInfo->FileInfo.IndexNumber = HashString(argBucket + L'/' + argKey);
 
     //
     // 実行時にエラーとなる (Buffer is too small)
@@ -97,16 +98,38 @@ std::shared_ptr<FSP_FSCTL_DIR_INFO> mallocDirInfoW(const std::wstring& key, cons
     // 
     //wcscpy_s(dirInfo->FileNameBuf, wkeyLen, wkey.c_str());
 
-    memmove(dirInfo->FileNameBuf, key.c_str(), keyLenBytes);
+    memcpy(dirInfo->FileNameBuf, argKey.c_str(), keyLenBytes);
 
-    return std::shared_ptr<FSP_FSCTL_DIR_INFO>(dirInfo, free_deleter<FSP_FSCTL_DIR_INFO>);
+    return DirInfoType(dirInfo, free_deleter<FSP_FSCTL_DIR_INFO>);
 }
 
-std::shared_ptr<FSP_FSCTL_DIR_INFO> mallocDirInfoA(const std::string& key, const std::string& bucket)
+DirInfoType mallocDirInfoA(const std::string& argKey, const std::string& argBucket)
 {
-    return mallocDirInfoW(MB2WC(key), MB2WC(bucket));
+    return mallocDirInfoW(MB2WC(argKey), MB2WC(argBucket));
 }
 
-const char* AWS_DEFAULT_REGION = Aws::Region::US_EAST_1;
+DirInfoType AwsS3::mallocDirInfoW_dir(
+    const std::wstring& argKey, const std::wstring& argBucket, const UINT64 argFileTime)
+{
+    auto dirInfo = mallocDirInfoW(argKey, argBucket);
+    APP_ASSERT(dirInfo);
+
+    UINT32 FileAttributes = FILE_ATTRIBUTE_DIRECTORY | mDefaultFileAttributes;
+
+    if (argKey != L"." && argKey != L".." && argKey[0] == L'.')
+    {
+        // 隠しファイル
+        FileAttributes |= FILE_ATTRIBUTE_HIDDEN;
+    }
+
+    dirInfo->FileInfo.FileAttributes = FileAttributes;
+
+    dirInfo->FileInfo.CreationTime = argFileTime;
+    dirInfo->FileInfo.LastAccessTime = argFileTime;
+    dirInfo->FileInfo.LastWriteTime = argFileTime;
+    dirInfo->FileInfo.ChangeTime = argFileTime;
+
+    return dirInfo;
+}
 
 // EOF

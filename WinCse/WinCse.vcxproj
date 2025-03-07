@@ -117,6 +117,9 @@
     <PostBuildEvent>
       <Command>$(SolutionDir)\util\build-after.bat $(Configuration)</Command>
     </PostBuildEvent>
+    <PreBuildEvent>
+      <Command>$(SolutionDir)util\build-before.bat</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -141,6 +144,9 @@
     <PostBuildEvent>
       <Command>$(SolutionDir)\util\build-after.bat $(Configuration)</Command>
     </PostBuildEvent>
+    <PreBuildEvent>
+      <Command>$(SolutionDir)util\build-before.bat</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="IdleWorker.cpp" />
@@ -150,6 +156,7 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="WinCse_if_r.cpp" />
     <ClCompile Include="DelayedWorker.cpp" />
+    <ClCompile Include="WinCse_util.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="IdleWorker.hpp" />

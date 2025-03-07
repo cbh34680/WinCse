@@ -6,41 +6,36 @@
 using namespace WinCseLib;
 
 
-void BucketCache::report(CALLER_ARG0)
+#define LN              L"\n"
+#define INDENT1         L"\t"
+#define INDENT2         L"\t\t"
+#define INDENT3         L"\t\t\t"
+#define INDENT4         L"\t\t\t\t"
+#define INDENT5         L"\t\t\t\t\t"
+
+void BucketCache::report(CALLER_ARG FILE* fp)
 {
-    NEW_LOG_BLOCK();
+    fwprintf(fp, L"LastSetCallChain=%s" LN, mLastSetCallChain.c_str());
+    fwprintf(fp, L"LastGetCallChain=%s" LN, mLastGetCallChain.c_str());
+    fwprintf(fp, L"LastSetTime=%s" LN, TimePointToLocalTimeStringW(mLastSetTime).c_str());
+    fwprintf(fp, L"LastGetTime=%s" LN, TimePointToLocalTimeStringW(mLastGetTime).c_str());
+    fwprintf(fp, L"CountGet=%d" LN, mCountGet);
+    fwprintf(fp, L"CountSet=%d" LN, mCountSet);
 
-    traceW(L"LastSetCallChain=%s", mLastSetCallChain.c_str());
-    traceW(L"LastGetCallChain=%s", mLastGetCallChain.c_str());
-    traceW(L"LastSetTime=%lld", TimePointToUtcSecs(mLastSetTime));
-    traceW(L"LastGetTime=%lld", TimePointToUtcSecs(mLastGetTime));
-    traceW(L"CountGet=%d", mCountGet);
-    traceW(L"CountSet=%d", mCountSet);
+    fwprintf(fp, L"[BucketNames]" LN);
+    fwprintf(fp, INDENT1 L"List.size=%zu" LN, mList.size());
 
-    traceW(L"[BucketNames]");
+    for (const auto& it: mList)
     {
-        traceW(L"List.size=%zu", mList.size());
-
-#pragma warning(suppress: 4456)
-        NEW_LOG_BLOCK();
-
-        for (const auto& it: mList)
-        {
-            traceW(L"%s", it->FileNameBuf);
-        }
+        fwprintf(fp, INDENT2 L"%s" LN, it->FileNameBuf);
     }
 
-    traceW(L"[Region Map]");
+    fwprintf(fp, INDENT1 L"[Region Map]" LN);
+    fwprintf(fp, INDENT2 L"RegionMap.size=%zu" LN, mRegionMap.size());
+
+    for (const auto& it: mRegionMap)
     {
-        traceW(L"RegionMap.size=%zu", mRegionMap.size());
-
-#pragma warning(suppress: 4456)
-        NEW_LOG_BLOCK();
-
-        for (const auto& it: mRegionMap)
-        {
-            traceW(L"bucket=[%s] region=[%s]", it.first.c_str(), it.second.c_str());
-        }
+        fwprintf(fp, INDENT3 L"bucket=[%s] region=[%s]" LN, it.first.c_str(), it.second.c_str());
     }
 }
 
@@ -60,7 +55,7 @@ bool BucketCache::empty(CALLER_ARG0)
 }
 
 void BucketCache::save(CALLER_ARG
-    const std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>>& dirInfoList)
+    const DirInfoListType& dirInfoList)
 {
     mList = dirInfoList;
     mLastSetTime = std::chrono::system_clock::now();
@@ -69,11 +64,11 @@ void BucketCache::save(CALLER_ARG
 }
 
 void BucketCache::load(CALLER_ARG const std::wstring& region, 
-    std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>>& dirInfoList)
+    DirInfoListType& dirInfoList)
 {
     const auto& regionMap{ mRegionMap };
 
-    std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>> newList;
+    DirInfoListType newList;
 
     std::copy_if(mList.begin(), mList.end(),
         std::back_inserter(newList), [&regionMap, &region](const auto& dirInfo)
@@ -98,7 +93,7 @@ void BucketCache::load(CALLER_ARG const std::wstring& region,
     mCountGet++;
 }
 
-std::shared_ptr<FSP_FSCTL_DIR_INFO> BucketCache::find(CALLER_ARG const std::wstring& bucketName)
+DirInfoType BucketCache::find(CALLER_ARG const std::wstring& bucketName)
 {
     APP_ASSERT(!bucketName.empty());
 

@@ -20,10 +20,13 @@ std::string getDerivedClassNames(T* baseClass)
 // プログラム引数 "-u" から算出されたディレクトリから ini ファイルを読み
 // S3 クライアントを生成する
 //
-bool WinCse::OnSvcStart(const wchar_t* argWorkDir)
+bool WinCse::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams)
 {
+	StatsIncr(PreCreateFilesystem);
+
 	NEW_LOG_BLOCK();
 	APP_ASSERT(argWorkDir);
+	APP_ASSERT(VolumeParams);
 
 	namespace fs = std::filesystem;
 
@@ -51,16 +54,41 @@ bool WinCse::OnSvcStart(const wchar_t* argWorkDir)
 		const int maxFileSize = (int)::GetPrivateProfileIntW(iniSection, L"max_filesize_mb", 4, confPath.c_str());
 
 		//
+		// 無視するファイル名のパターン
+		//
+		std::wstring re_ignored_patterns;
+		GetIniStringW(confPath.c_str(), iniSection, L"re_ignored_patterns", &re_ignored_patterns);
+
+		if (!re_ignored_patterns.empty())
+		{
+			try
+			{
+				// conf で指定された正規表現パターンの整合性テスト
+				// 不正なパターンの場合は例外で catch されるので反映されない
+
+				std::wregex reTest{ re_ignored_patterns, std::regex_constants::icase };
+
+				// OK
+				mIgnoredFileNamePatterns = std::move(reTest);
+			}
+			catch (const std::regex_error& ex)
+			{
+				traceA("regex_error: %s", ex.what());
+				traceW(L"%s: ignored, set default patterns", re_ignored_patterns.c_str());
+			}
+		}
+
+		//
 		// 属性参照用ファイル/ディレクトリの準備
 		//
-		const std::wstring fileRefPath{ mTempDir + L'\\' + FILE_REFERENCE_FNAME };
+		const std::wstring fileRefPath{ workDir + L'\\' + FILE_REFERENCE_FNAME };
 		if (!TouchIfNotExists(fileRefPath))
 		{
 			traceW(L"file not exists: %s", fileRefPath.c_str());
 			return false;
 		}
 
-		const std::wstring dirRefPath{ mTempDir + L'\\' + DIR_REFERENCE_FNAME };
+		const std::wstring dirRefPath{ workDir + L'\\' + DIR_REFERENCE_FNAME };
 		if (!MkdirIfNotExists(dirRefPath))
 		{
 			traceW(L"dir not exists: %s", dirRefPath.c_str());
@@ -94,43 +122,28 @@ bool WinCse::OnSvcStart(const wchar_t* argWorkDir)
 		traceW(L"INFO: TempDir=%s, WorkDir=%s, DirRef=%s, FileRef=%s",
 			mTempDir.c_str(), mWorkDir.c_str(), dirRefPath.c_str(), fileRefPath.c_str());
 
-		IService* services[] = { mDelayedWorker, mIdleWorker, mStorage};
+		ICSService* services[] = { mDelayedWorker, mIdleWorker, mCSDevice };
 
-		// OnSvcStart() の伝播
+		// PreCreateFilesystem() の伝播
 		for (int i=0; i<_countof(services); i++)
 		{
 			const auto service = services[i];
-			const auto className = getDerivedClassNames(service);
+			const auto klassName = getDerivedClassNames(service);
 
-			traceA("%s::OnSvcStart()", className.c_str());
+			traceA("%s::PreCreateFilesystem()", klassName.c_str());
 
-			if (!services[i]->OnSvcStart(argWorkDir))
+			if (!services[i]->PreCreateFilesystem(argWorkDir, VolumeParams))
 			{
-				traceA("fault: OnSvcStart()");
-				return false;
-			}
-		}
-
-		// OnPostSvcStart() の伝播
-		for (int i=0; i<_countof(services); i++)
-		{
-			const auto service = services[i];
-			const auto className = getDerivedClassNames(service);
-
-			traceA("%s::OnPostSvcStart()", className.c_str());
-
-			if (!services[i]->OnPostSvcStart())
-			{
-				traceA("fault: OnPostSvcStart()");
+				traceA("fault: PreCreateFilesystem");
 				return false;
 			}
 		}
 
 		ret = true;
 	}
-	catch (const std::runtime_error& err)
+	catch (const std::exception& ex)
 	{
-		std::cerr << "what: " << err.what() << std::endl;
+		std::cerr << "what: " << ex.what() << std::endl;
 	}
 	catch (...)
 	{
@@ -140,16 +153,67 @@ bool WinCse::OnSvcStart(const wchar_t* argWorkDir)
 	return ret;		// 例外発生時に false
 }
 
+bool WinCse::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
+{
+	StatsIncr(OnSvcStart);
+
+	NEW_LOG_BLOCK();
+	APP_ASSERT(argWorkDir);
+	APP_ASSERT(FileSystem);
+
+	bool ret = false;
+
+	try
+	{
+		ICSService* services[] = { mDelayedWorker, mIdleWorker, mCSDevice };
+
+		// OnSvcStart() の伝播
+		for (int i=0; i<_countof(services); i++)
+		{
+			const auto service = services[i];
+			const auto klassName = getDerivedClassNames(service);
+
+			traceA("%s::OnSvcStart()", klassName.c_str());
+
+			if (!services[i]->OnSvcStart(argWorkDir, FileSystem))
+			{
+				traceA("fault: OnSvcStart");
+				return false;
+			}
+		}
+
+		ret = true;
+	}
+	catch (const std::exception& ex)
+	{
+		std::cerr << "what: " << ex.what() << std::endl;
+	}
+	catch (...)
+	{
+		std::cerr << "unknown error" << std::endl;
+	}
+
+	return ret;
+}
+
 void WinCse::OnSvcStop()
 {
+	StatsIncr(OnSvcStop);
+
 	NEW_LOG_BLOCK();
 
-	// ワーカー・スレッドの停止
-	mDelayedWorker->OnSvcStop();
-	mIdleWorker->OnSvcStop();
+	ICSService* services[] = { mDelayedWorker, mIdleWorker, mCSDevice };
 
-	// ストレージの終了
-	mStorage->OnSvcStop();
+	// OnSvcStop() の伝播
+	for (int i=0; i<_countof(services); i++)
+	{
+		const auto service = services[i];
+		const auto klassName = getDerivedClassNames(service);
+
+		traceA("%s::OnSvcStop()", klassName.c_str());
+
+		services[i]->OnSvcStop();
+	}
 }
 
 // EOF

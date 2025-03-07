@@ -20,7 +20,7 @@ thread_local uint64_t Logger::mTLFlushTime = 0;
 //
 // プログラム引数 "-T" で指定されたディレクトリをログ出力用に保存する
 //
-bool Logger::init(const std::wstring& argTempDir, const std::wstring& argTrcDir, const std::wstring& argDllType)
+bool Logger::internalInit(const std::wstring& argTempDir, const std::wstring& argTrcDir, const std::wstring& argDllType)
 {
 	namespace fs = std::filesystem;
 
@@ -210,8 +210,9 @@ void Logger::traceW_write(const SYSTEMTIME* st, const wchar_t* buf) const
 		{
 			std::wstringstream ss;
 
-#ifdef _DEBUG
+#ifdef _DEBUGS
 			ss << mTraceLogDir << L"\\trace-";
+			ss << tid % 1000 << L'-';
 
 #else
 			ss << mTraceLogDir << L"\\WinCse-trace-";
@@ -274,7 +275,7 @@ void Logger::traceW_write(const SYSTEMTIME* st, const wchar_t* buf) const
 	}
 }
 
-// Create & Delete
+// single instance
 static Logger* gLogger;
 
 bool CreateLogger(const wchar_t* argTempDir, const wchar_t* argTrcDir, const wchar_t* argDllType)
@@ -292,7 +293,7 @@ bool CreateLogger(const wchar_t* argTempDir, const wchar_t* argTrcDir, const wch
 	const std::wstring dllType{ argDllType };
 
 	Logger* logger = new Logger();
-	if (!logger->init(tmpDir, trcDir, dllType))
+	if (!logger->internalInit(tmpDir, trcDir, dllType))
 	{
 		return false;
 	}

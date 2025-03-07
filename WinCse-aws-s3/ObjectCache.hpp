@@ -1,86 +1,115 @@
 #pragma once
 
-#include <string>
-#include <vector>
+#define USE_UNORDERED_MAP		(0)
+
+#if USE_UNORDERED_MAP
+#include <unordered_map>
+#else
 #include <map>
+#endif
+
 #include <set>
 #include <chrono>
-#include <memory>
 #include <functional>
+#include "Purpose.h"
+
 
 // S3 オブジェクト・キャッシュのキー
 struct ObjectCacheKey
 {
-	std::wstring bucket;
-	std::wstring key;
-	int limit;
-	bool delimiter;
+	Purpose mPurpose = Purpose::None;
+	std::wstring mBucket;
+	std::wstring mKey;
 
-	ObjectCacheKey() : limit(0), delimiter(false) { }
+	ObjectCacheKey() = default;
 
-	ObjectCacheKey(const std::wstring& argBucket,
-		const std::wstring& argKey, const int argLimit, const bool argDelimiter)
-		: bucket(argBucket), key(argKey), limit(argLimit), delimiter(argDelimiter) { }
+	ObjectCacheKey(const Purpose argPurpose,
+		const std::wstring& argBucket, const std::wstring& argKey)
+		: mPurpose(argPurpose), mBucket(argBucket), mKey(argKey)
+	{
+	}
 
 	ObjectCacheKey(const ObjectCacheKey& other)
 	{
-		bucket = other.bucket;
-		key = other.key;
-		limit = other.limit;
-		delimiter = other.delimiter;
+		mPurpose = other.mPurpose;
+		mBucket = other.mBucket;
+		mKey = other.mKey;
 	}
 
+#if USE_UNORDERED_MAP
+	// unorderd_map のキーになるために必要
+	bool operator==(const ObjectCacheKey& other) const
+	{
+		return mBucket == other.mBucket && mKey == other.mKey && mPurpose == other.mPurpose;
+	}
+
+#else
+	//
+	// std::map のキーにする場合に必要
+	//
 	bool operator<(const ObjectCacheKey& other) const
 	{
-		if (bucket < other.bucket) {			// bucket
+		if (mBucket < other.mBucket) {			// bucket
 			return true;
 		}
-		else if (bucket > other.bucket) {
+		else if (mBucket > other.mBucket) {
 			return false;
 		}
-		else if (key < other.key) {				// key
+		else if (mKey < other.mKey) {				// key
 			return true;
 		}
-		else if (key > other.key) {
+		else if (mKey > other.mKey) {
 			return false;
 		}
-		else if (limit < other.limit) {			// limit
+		else if (mPurpose < other.mPurpose) {		// purpose
 			return true;
 		}
-		else if (limit > other.limit) {
-			return false;
-		}
-		else if (delimiter < other.delimiter) {	// delimiter
-			return true;
-		}
-		else if (delimiter > other.delimiter) {
+		else if (mPurpose > other.mPurpose) {
 			return false;
 		}
 
 		return false;
 	}
+#endif
 };
+
+#if USE_UNORDERED_MAP
+// カスタムハッシュ関数 ... unorderd_map のキーになるために必要
+namespace std
+{
+	template <>
+	struct hash<ObjectCacheKey>
+	{
+		size_t operator()(const ObjectCacheKey& that) const
+		{
+			return hash<wstring>()(that.mBucket) ^ (hash<wstring>()(that.mKey) << 1) ^ (hash<int>()(that.mPurpose) << 2);
+		}
+	};
+}
+#endif
 
 struct NegativeCacheVal
 {
-	std::wstring lastCallChain;
-	std::chrono::system_clock::time_point lastAccessTime;
-	int refCount = 0;
+	std::wstring mCreateCallChain;
+	std::wstring mAccessCallChain;
+	std::chrono::system_clock::time_point mCreateTime;
+	std::chrono::system_clock::time_point mAccessTime;
+	int mRefCount = 0;
 
 	NegativeCacheVal(CALLER_ARG0)
-		: lastCallChain(CALL_CHAIN())
 	{
-		lastAccessTime = std::chrono::system_clock::now();
+		mCreateCallChain = mAccessCallChain = CALL_CHAIN();
+		mCreateTime = mAccessTime = std::chrono::system_clock::now();
 	}
 };
 
 struct PosisiveCacheVal : public NegativeCacheVal
 {
-	std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>> dirInfoList;
+	DirInfoListType mDirInfoList;
 
 	PosisiveCacheVal(CALLER_ARG
-		const std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>>& argDirInfoList)
-		: NegativeCacheVal(CONT_CALLER0), dirInfoList(argDirInfoList)
+		const DirInfoListType& argDirInfoList)
+		: NegativeCacheVal(CONT_CALLER0), mDirInfoList(argDirInfoList)
 	{
 	}
 };
@@ -88,34 +117,55 @@ struct PosisiveCacheVal : public NegativeCacheVal
 class ObjectCache
 {
 private:
+#if USE_UNORDERED_MAP
+	std::unordered_map<ObjectCacheKey, PosisiveCacheVal> mPositive;
+	std::unordered_map<ObjectCacheKey, NegativeCacheVal> mNegative;
+#else
 	std::map<ObjectCacheKey, PosisiveCacheVal> mPositive;
 	std::map<ObjectCacheKey, NegativeCacheVal> mNegative;
+#endif
+
 	int mGetPositive = 0;
 	int mSetPositive = 0;
 	int mUpdPositive = 0;
+
 	int mGetNegative = 0;
 	int mSetNegative = 0;
 	int mUpdNegative = 0;
 
 protected:
 public:
-	void report(CALLER_ARG0);
+	void report(CALLER_ARG FILE* fp);
 
 	int deleteOldRecords(CALLER_ARG std::chrono::system_clock::time_point threshold);
 
-	bool getPositive(CALLER_ARG
-		const std::wstring& argBucket, const std::wstring& argKey, const int limit, const bool delimiter,
-		std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>>* dirInfoList);
+	bool getPositive(CALLER_ARG const Purpose argPurpose,
+		const std::wstring& argBucket, const std::wstring& argKey,
+		DirInfoListType* pDirInfoList);
 
-	void setPositive(CALLER_ARG
-		const std::wstring& argBucket, const std::wstring& argKey, const int limit, const bool delimiter,
-		std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>>& dirInfoList);
+	void setPositive(CALLER_ARG const Purpose argPurpose,
+		const std::wstring& argBucket, const std::wstring& argKey,
+		DirInfoListType& pDirInfoList);
 
-	bool isInNegative(CALLER_ARG
-		const std::wstring& argBucket, const std::wstring& argKey, const int limit, const bool delimiter);
+	bool getPositive_File(CALLER_ARG
+		const std::wstring& argBucket, const std::wstring& argKey,
+		DirInfoType* pDirInfo);
 
-	void addNegative(CALLER_ARG
-		const std::wstring& argBucket, const std::wstring& argKey, const int limit, const bool delimiter);
+	void setPositive_File(CALLER_ARG
+		const std::wstring& argBucket, const std::wstring& argKey,
+		DirInfoType& pDirInfo);
+
+	bool isInNegative(CALLER_ARG const Purpose argPurpose,
+		const std::wstring& argBucket, const std::wstring& argKey);
+
+	void addNegative(CALLER_ARG const Purpose argPurpose,
+		const std::wstring& argBucket, const std::wstring& argKey);
+
+	bool isInNegative_File(CALLER_ARG
+		const std::wstring& argBucket, const std::wstring& argKey);
+
+	void addNegative_File(CALLER_ARG
+		const std::wstring& argBucket, const std::wstring& argKey);
 };
 
 // EOF

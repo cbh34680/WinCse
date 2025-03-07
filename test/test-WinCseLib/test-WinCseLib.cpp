@@ -6,7 +6,10 @@
 #include <iostream>
 #include <thread>
 #include <mutex>
-#include <map>
+//#include <map>
+#include <unordered_map>
+#include <regex>
+#include <sstream>
 #include <bcrypt.h>
 
 using namespace WinCseLib;
@@ -17,6 +20,9 @@ void test1()
     wcout << MB2WC("abc 012") << endl;
     cout << WC2MB(L"abc 012") << endl;
 
+    wcout << L"JP[" << MB2WC("日本語") << L"]" << endl;
+    cout << "JP[" << WC2MB(L"日本語") << "]" << endl;
+
     cout << Base64EncodeA("C:\\Windows\\system32\\drivers\\hosts") << endl;
     cout << Base64DecodeA("QzpcV2luZG93c1xzeXN0ZW0zMlxkcml2ZXJzXGhvc3Rz") << endl;
 
@@ -25,12 +31,46 @@ void test1()
 
     wcout << TrimW(L" \t [a][\t][ ][b]\t \t") << std::endl;
 
+    auto hosts = STCTimeToUTCMilliSecW(L"C:\\Windows\\System32\\Drivers\\etc\\hosts");
+    cout << hosts << endl;
+
+    // 1670547095000
+    // 1670547095000
+    stringstream ss;
+    ss << hosts;
+    auto s{ ss.str() };
+
+    cout << s << endl;
+
+    FILETIME ftCreate, ftAccess, ftWrite;
+    PathToWinFileTimes(L"C:\\Windows\\System32\\Drivers\\etc\\hosts", &ftCreate, &ftAccess, &ftWrite);
+
+    // 133150206954262405
+    // 133150206954262405
+    auto crtW100ns = WinFileTimeToWinFileTime100ns(ftCreate);
+    cout << crtW100ns << endl;
+
+    // 1670547095426
+    // 1670547095426
+    auto crtUtcMSec = WinFileTimeToUtcMillis(ftCreate);
+    cout << crtUtcMSec << endl;
+
+    auto utcMSec = WinFileTime100nsToUtcMillis(crtW100ns);
+    cout << utcMSec << endl;
+
+    auto utcW100ns = UtcMillisToWinFileTime100ns(utcMSec);
+    cout << utcW100ns << endl;
+
+    FILETIME ftTemp;
+    UtcMillisToWinFileTime(utcMSec, &ftTemp);
+    auto tempW100ns = WinFileTimeToWinFileTime100ns(ftTemp);
+    cout << tempW100ns << endl;
 
     wcout << "DONE" << endl;
 }
 
 mutex lock_map;
-map<string, shared_ptr<mutex>> mutex_map;
+unordered_map<string, shared_ptr<mutex>> mutex_map;
 
 shared_ptr<mutex> getlock(const string& id)
 {
@@ -87,18 +127,25 @@ void test3()
 
     // MachineGuid の値を AES の key とし、iv には key[0..16] を設定する
     std::vector<BYTE> aesKey{ secureKeyStr.begin(), secureKeyStr.end() };
-    std::vector<BYTE> aesIV{ secureKeyStr.begin(), secureKeyStr.begin() + 16 };
+    //std::vector<BYTE> aesIV{ secureKeyStr.begin(), secureKeyStr.begin() + 16 };
 
-    // test-encrypt-str.ps1 で作成した BASE64 文字列
-    std::string encryptedB64Str{ "lnsb3SErHgurhMvgiYaROQ==" };
+    // test-encrypt-str.ps1 で作成した DATA の BASE64 文字列
+    std::string concatB64Str{ "60sNtN3sCNXh2uKRWFAK5M2KiQYxNNO0N/JZRHSL20Y=" };
 
-    // BASE64 文字列をデコード
-    std::string encryptedStr = Base64DecodeA(encryptedB64Str);
-    std::vector<BYTE> encrypted{ encryptedStr.begin(), encryptedStr.end() };
+    // DATA の BASE64 文字列をデコード
+    std::string concatStr = Base64DecodeA(concatB64Str);
+    std::vector<BYTE> concatBytes{ concatStr.begin(), concatStr.end() };
+
+    // 先頭の 16 byte が IV
+    std::vector<BYTE> aesIV{ concatBytes.begin(), concatBytes.begin() + 16 };
+
+    // それ以降がデータ
+    std::vector<BYTE> data{ concatBytes.begin() + 16, concatBytes.end() };
+
 
     // 復号化
     std::vector<unsigned char> decrypted;
-    if (DecryptAES(aesKey, aesIV, encrypted, &decrypted))
+    if (DecryptAES(aesKey, aesIV, data, &decrypted))
     {
         const std::string str{ (char*)decrypted.data() };
 
@@ -117,19 +164,105 @@ void test3()
     }
 }
 
+void test4()
+{
+    //std::wregex pattern{ LR"(.*\\(desktop\.ini|autorun\.inf|thumbs\.db|\.DS_Store)$)", std::regex_constants::icase };
+    //std::wregex pattern{ L"(.*\\(desktop\.ini|autorun\.inf|thumbs\.db|\.DS_Store)$)", std::regex_constants::icase };
+    std::wregex pattern{ L".*\\\\(desktop\\.ini|autorun\\.inf|thumbs\\.db|\\.DS_Store)$", std::regex_constants::icase };
+
+    if (std::regex_search(L"abc\\desktop.ini", pattern))
+    {
+        puts("hit");
+    }
+    else
+    {
+        puts("no");
+    }
+
+    int iii = 0;
+    iii++;
+}
+
+std::mutex test5_guard;
+
+void test5_worker()
+{
+    std::lock_guard<std::mutex> lock_(test5_guard);
+
+}
+
+void test5()
+{
+    const chrono::steady_clock::time_point start{ chrono::steady_clock::now() };
+
+    thread t1(test5_worker);
+    thread t2(test5_worker);
+    thread t3(test5_worker);
+
+    t1.join();
+    t2.join();
+    t3.join();
+
+    const chrono::steady_clock::time_point end{ chrono::steady_clock::now() };
+    const auto duration{ std::chrono::duration_cast<std::chrono::milliseconds>(end - start) };
+
+    std::cout << duration.count() << std::endl;
+}
+
+void test6()
+{
+    struct A
+    {
+        int i;
+        A(int x) : i(x)
+        {
+            std::cout << "CONSTRACT: " << i << std::endl;
+        }
+        A(const A& other) : i(other.i)
+        {
+            std::cout << "COPY CONSTRACT: " << i << std::endl;
+        }
+        ~A()
+        {
+            std::cout << "DESTRACT: " << i << std::endl;
+        }
+    };
+
+    std::vector<A> arr;
+
+    arr.emplace_back( 1 );
+    arr.emplace_back( 2 );
+    arr.emplace_back( 3 );
+
+    std::cout << "done" << std::endl;
+}
+
+void test7()
+{
+    std::vector<char> cs{ '1', '2', '3', '4', '5' };
+    std::vector<char> cs2{ cs.begin() + 5, cs.end() };
+
+    int iii = 0;
+}
+
 int main()
 {
+    // chcp 65001
     ::SetConsoleOutputCP(CP_UTF8);
+    //std::locale::global(std::locale(""));
     _wsetlocale(LC_ALL, L"");
-    setlocale(LC_ALL, "");
     wcout.imbue(locale(""));
     wcerr.imbue(locale(""));
-    cout.imbue(locale(""));
+    //cout.imbue(locale(""));
     cerr.imbue(locale(""));
 
     //test1();
     //test2();
-    test3();
+    //test3();
+    //test4();
+    //test5();
+    //test6();
+    test7();
 
     return EXIT_SUCCESS;
 }

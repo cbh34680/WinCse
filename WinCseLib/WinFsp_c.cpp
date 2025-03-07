@@ -56,14 +56,22 @@ typedef struct
 } PTFS_FILE_CONTEXT;
 */
 
-#if !WINFSP_PASSTHROUGH
-static WinCseLib::IStorageService* getStorageService();
+#if WINFSP_PASSTHROUGH
+#define StatsIncr(fname)
+
+#else
+WINFSP_IF* gWinFspIf;
+#define CSDriver()          (gWinFspIf->pDriver)
+#define StatsIncr(fname)    if (gWinFspIf) InterlockedIncrement(& (gWinFspIf->stats.fname))
+
 #endif
 
 static const FSP_FILE_SYSTEM_INTERFACE* getPtfsInterface();
 
 /*static*/ NTSTATUS GetFileInfoInternal(HANDLE Handle, FSP_FSCTL_FILE_INFO *FileInfo)
 {
+    StatsIncr(GetFileInfoInternal);
+
     BY_HANDLE_FILE_INFORMATION ByHandleFileInfo = { 0 };
 
     if (!GetFileInformationByHandle(Handle, &ByHandleFileInfo))
@@ -89,6 +97,8 @@ static const FSP_FILE_SYSTEM_INTERFACE* getPtfsInterface();
 static NTSTATUS GetVolumeInfo(FSP_FILE_SYSTEM *FileSystem,
     FSP_FSCTL_VOLUME_INFO *VolumeInfo)
 {
+    StatsIncr(GetVolumeInfo);
+
     PTFS* Ptfs = (PTFS*)FileSystem->UserContext;
     WCHAR Root[MAX_PATH] = { 0 };
     ULARGE_INTEGER TotalSize = { 0 }, FreeSize = { 0 };
@@ -103,7 +113,7 @@ static NTSTATUS GetVolumeInfo(FSP_FILE_SYSTEM *FileSystem,
     VolumeInfo->FreeSize = FreeSize.QuadPart;
 
 #if !WINFSP_PASSTHROUGH
-    getStorageService()->DoGetVolumeInfo(Ptfs->Path, VolumeInfo);
+    CSDriver()->DoGetVolumeInfo(Ptfs->Path, VolumeInfo);
 #endif
 
     return STATUS_SUCCESS;
@@ -113,6 +123,8 @@ static NTSTATUS SetVolumeLabel_(FSP_FILE_SYSTEM *FileSystem,
     PWSTR VolumeLabel,
     FSP_FSCTL_VOLUME_INFO *VolumeInfo)
 {
+    StatsIncr(SetVolumeLabel_);
+
     /* we do not support changing the volume label */
     return STATUS_INVALID_DEVICE_REQUEST;
 }
@@ -121,8 +133,10 @@ static NTSTATUS GetSecurityByName(FSP_FILE_SYSTEM *FileSystem,
     PWSTR FileName, PUINT32 PFileAttributes,
     PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T *PSecurityDescriptorSize)
 {
+    StatsIncr(GetSecurityByName);
+
 #if !WINFSP_PASSTHROUGH
-    return getStorageService()->DoGetSecurityByName(FileName, PFileAttributes, SecurityDescriptor, PSecurityDescriptorSize);
+    return CSDriver()->DoGetSecurityByName(FileName, PFileAttributes, SecurityDescriptor, PSecurityDescriptorSize);
 
 #else
     PTFS* Ptfs = (PTFS*)FileSystem->UserContext;
@@ -185,8 +199,10 @@ static NTSTATUS Create(FSP_FILE_SYSTEM *FileSystem,
     UINT32 FileAttributes, PSECURITY_DESCRIPTOR SecurityDescriptor, UINT64 AllocationSize,
     PVOID *PFileContext, FSP_FSCTL_FILE_INFO *FileInfo)
 {
+    StatsIncr(Create);
+
 #if !WINFSP_PASSTHROUGH
-    return getStorageService()->DoCreate();
+    return CSDriver()->DoCreate();
 
 #else
     PTFS* Ptfs = (PTFS*)FileSystem->UserContext;
@@ -247,8 +263,10 @@ static NTSTATUS Open(FSP_FILE_SYSTEM *FileSystem,
     PWSTR FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
     PVOID *PFileContext, FSP_FSCTL_FILE_INFO *FileInfo)
 {
+    StatsIncr(Open);
+
 #if !WINFSP_PASSTHROUGH
-    return getStorageService()->DoOpen(FileName, CreateOptions, GrantedAccess, PFileContext, FileInfo);
+    return CSDriver()->DoOpen(FileName, CreateOptions, GrantedAccess, PFileContext, FileInfo);
 
 #else
     PTFS *Ptfs = (PTFS *)FileSystem->UserContext;
@@ -287,8 +305,10 @@ static NTSTATUS Overwrite(FSP_FILE_SYSTEM *FileSystem,
     PVOID FileContext, UINT32 FileAttributes, BOOLEAN ReplaceFileAttributes, UINT64 AllocationSize,
     FSP_FSCTL_FILE_INFO *FileInfo)
 {
+    StatsIncr(Overwrite);
+
 #if !WINFSP_PASSTHROUGH
-    return getStorageService()->DoOverwrite();
+    return CSDriver()->DoOverwrite();
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -332,8 +352,10 @@ static NTSTATUS Overwrite(FSP_FILE_SYSTEM *FileSystem,
 static VOID Cleanup(FSP_FILE_SYSTEM *FileSystem,
     PVOID FileContext, PWSTR FileName, ULONG Flags)
 {
+    StatsIncr(Cleanup);
+
 #if !WINFSP_PASSTHROUGH
-    getStorageService()->DoCleanup();
+    CSDriver()->DoCleanup((PTFS_FILE_CONTEXT*)FileContext, FileName, Flags);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -351,10 +373,12 @@ static VOID Cleanup(FSP_FILE_SYSTEM *FileSystem,
 static VOID Close(FSP_FILE_SYSTEM *FileSystem,
     PVOID FileContext0)
 {
+    StatsIncr(Close);
+
     PTFS_FILE_CONTEXT *FileContext = (PTFS_FILE_CONTEXT*)FileContext0;
 
 #if !WINFSP_PASSTHROUGH
-    getStorageService()->DoClose(FileContext);
+    CSDriver()->DoClose(FileContext);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -370,8 +394,10 @@ static NTSTATUS Read(FSP_FILE_SYSTEM *FileSystem,
     PVOID FileContext, PVOID Buffer, UINT64 Offset, ULONG Length,
     PULONG PBytesTransferred)
 {
+    StatsIncr(Read);
+
 #if !WINFSP_PASSTHROUGH
-    return getStorageService()->DoRead((PTFS_FILE_CONTEXT*)FileContext, Buffer, Offset, Length, PBytesTransferred);
+    return CSDriver()->DoRead((PTFS_FILE_CONTEXT*)FileContext, Buffer, Offset, Length, PBytesTransferred);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -381,7 +407,11 @@ static NTSTATUS Read(FSP_FILE_SYSTEM *FileSystem,
     Overlapped.OffsetHigh = (DWORD)(Offset >> 32);
 
     if (!ReadFile(Handle, Buffer, Length, PBytesTransferred, &Overlapped))
-        return FspNtStatusFromWin32(GetLastError());
+    {
+        //return FspNtStatusFromWin32(GetLastError());
+        DWORD lerr = GetLastError();
+        return FspNtStatusFromWin32(lerr);
+    }
 
     return STATUS_SUCCESS;
 #endif
@@ -392,8 +422,10 @@ static NTSTATUS Write(FSP_FILE_SYSTEM *FileSystem,
     BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
     PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO *FileInfo)
 {
+    StatsIncr(Write);
+
 #if !WINFSP_PASSTHROUGH
-    return getStorageService()->DoWrite();
+    return CSDriver()->DoWrite();
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -425,8 +457,10 @@ static NTSTATUS Flush(FSP_FILE_SYSTEM *FileSystem,
     PVOID FileContext,
     FSP_FSCTL_FILE_INFO *FileInfo)
 {
+    StatsIncr(Flush);
+
 #if !WINFSP_PASSTHROUGH
-    return getStorageService()->DoFlush();
+    return CSDriver()->DoFlush();
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -446,8 +480,10 @@ static NTSTATUS GetFileInfo(FSP_FILE_SYSTEM *FileSystem,
     PVOID FileContext0,
     FSP_FSCTL_FILE_INFO *FileInfo)
 {
+    StatsIncr(GetFileInfo);
+
 #if !WINFSP_PASSTHROUGH
-    return getStorageService()->DoGetFileInfo((PTFS_FILE_CONTEXT*)FileContext0, FileInfo);
+    return CSDriver()->DoGetFileInfo((PTFS_FILE_CONTEXT*)FileContext0, FileInfo);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext0);
@@ -461,8 +497,10 @@ static NTSTATUS SetBasicInfo(FSP_FILE_SYSTEM *FileSystem,
     UINT64 CreationTime, UINT64 LastAccessTime, UINT64 LastWriteTime, UINT64 ChangeTime,
     FSP_FSCTL_FILE_INFO *FileInfo)
 {
+    StatsIncr(SetBasicInfo);
+
 #if !WINFSP_PASSTHROUGH
-    return getStorageService()->DoSetBasicInfo();
+    return CSDriver()->DoSetBasicInfo();
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -492,8 +530,10 @@ static NTSTATUS SetFileSize(FSP_FILE_SYSTEM *FileSystem,
     PVOID FileContext, UINT64 NewSize, BOOLEAN SetAllocationSize,
     FSP_FSCTL_FILE_INFO *FileInfo)
 {
+    StatsIncr(SetFileSize);
+
 #if !WINFSP_PASSTHROUGH
-    return getStorageService()->DoSetFileSize();
+    return CSDriver()->DoSetFileSize();
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -536,8 +576,10 @@ static NTSTATUS Rename(FSP_FILE_SYSTEM *FileSystem,
     PVOID FileContext,
     PWSTR FileName, PWSTR NewFileName, BOOLEAN ReplaceIfExists)
 {
+    StatsIncr(Rename);
+
 #if !WINFSP_PASSTHROUGH
-    return getStorageService()->DoRename();
+    return CSDriver()->DoRename();
 
 #else
     PTFS* Ptfs = (PTFS*)FileSystem->UserContext;
@@ -560,8 +602,10 @@ static NTSTATUS GetSecurity(FSP_FILE_SYSTEM *FileSystem,
     PVOID FileContext,
     PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T *PSecurityDescriptorSize)
 {
+    StatsIncr(GetSecurity);
+
 #if !WINFSP_PASSTHROUGH
-    return getStorageService()->DoGetSecurity((PTFS_FILE_CONTEXT*)FileContext, SecurityDescriptor, PSecurityDescriptorSize);
+    return CSDriver()->DoGetSecurity((PTFS_FILE_CONTEXT*)FileContext, SecurityDescriptor, PSecurityDescriptorSize);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -585,8 +629,10 @@ static NTSTATUS SetSecurity(FSP_FILE_SYSTEM *FileSystem,
     PVOID FileContext,
     SECURITY_INFORMATION SecurityInformation, PSECURITY_DESCRIPTOR ModificationDescriptor)
 {
+    StatsIncr(SetSecurity);
+
 #if !WINFSP_PASSTHROUGH
-    return getStorageService()->DoSetSecurity();
+    return CSDriver()->DoSetSecurity();
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -602,11 +648,13 @@ static NTSTATUS ReadDirectory(FSP_FILE_SYSTEM *FileSystem,
     PVOID FileContext0, PWSTR Pattern, PWSTR Marker,
     PVOID Buffer, ULONG BufferLength, PULONG PBytesTransferred)
 {
+    StatsIncr(ReadDirectory);
+
     //PTFS *Ptfs = (PTFS *)FileSystem->UserContext;
     PTFS_FILE_CONTEXT *FileContext = (PTFS_FILE_CONTEXT*)FileContext0;
 
 #if !WINFSP_PASSTHROUGH
-    return getStorageService()->DoReadDirectory(FileContext, Pattern, Marker, Buffer, BufferLength, PBytesTransferred);
+    return CSDriver()->DoReadDirectory(FileContext, Pattern, Marker, Buffer, BufferLength, PBytesTransferred);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -693,10 +741,12 @@ static NTSTATUS ReadDirectory(FSP_FILE_SYSTEM *FileSystem,
 }
 
 static NTSTATUS SetDelete(FSP_FILE_SYSTEM *FileSystem,
-    PVOID FileContext, PWSTR FileName, BOOLEAN DeleteFile)
+    PVOID FileContext, PWSTR FileName, BOOLEAN deleteFile)
 {
+    StatsIncr(SetDelete);
+
 #if !WINFSP_PASSTHROUGH
-    return getStorageService()->DoSetDelete();
+    return CSDriver()->DoSetDelete((PTFS_FILE_CONTEXT*)FileContext, FileName, deleteFile);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -740,6 +790,9 @@ static FSP_FILE_SYSTEM_INTERFACE PtfsInterface =
 static VOID PtfsDelete(PTFS *Ptfs);
 
 static NTSTATUS PtfsCreate(PWSTR Path, PWSTR VolumePrefix, PWSTR MountPoint, UINT32 DebugFlags,
+#if !WINFSP_PASSTHROUGH
+    FSP_FSCTL_VOLUME_PARAMS* VolumeParams,
+#endif
     PTFS **PPtfs)
 {
     WCHAR FullPath[MAX_PATH] = { 0 };
@@ -747,7 +800,9 @@ static NTSTATUS PtfsCreate(PWSTR Path, PWSTR VolumePrefix, PWSTR MountPoint, UIN
     HANDLE Handle = INVALID_HANDLE_VALUE;
     FILETIME CreationTime = { 0 };
     DWORD LastError = ERROR_SUCCESS;
+#if WINFSP_PASSTHROUGH
     FSP_FSCTL_VOLUME_PARAMS VolumeParams = { 0 };
+#endif
     PTFS *Ptfs = 0;
     NTSTATUS Result = STATUS_UNSUCCESSFUL;
 
@@ -796,8 +851,10 @@ static NTSTATUS PtfsCreate(PWSTR Path, PWSTR VolumePrefix, PWSTR MountPoint, UIN
         Result = STATUS_INSUFFICIENT_RESOURCES;
         goto exit;
     }
+
     memcpy(Ptfs->Path, FullPath, Length);
 
+#if WINFSP_PASSTHROUGH
     memset(&VolumeParams, 0, sizeof VolumeParams);
     VolumeParams.SectorSize = ALLOCATION_UNIT;
     VolumeParams.SectorsPerAllocationUnit = 1;
@@ -812,29 +869,6 @@ static NTSTATUS PtfsCreate(PWSTR Path, PWSTR VolumePrefix, PWSTR MountPoint, UIN
     VolumeParams.PassQueryDirectoryPattern = 1;
     VolumeParams.FlushAndPurgeOnCleanup = 1;
     VolumeParams.UmFileContextIsUserContext2 = 1;
-
-#if !WINFSP_PASSTHROUGH
-    {
-        VolumeParams.CaseSensitiveSearch = 1;
-        VolumeParams.PersistentAcls = 0;
-        VolumeParams.ReadOnlyVolume = 1;
-
-        const UINT32 Timeout = 3000;
-
-        VolumeParams.FileInfoTimeout = Timeout;
-        VolumeParams.VolumeInfoTimeout = Timeout;
-        VolumeParams.DirInfoTimeout = Timeout;
-        //VolumeParams.SecurityTimeout = Timeout;
-        //VolumeParams.StreamInfoTimeout = Timeout;
-        //VolumeParams.EaTimeout =  Timeout;
-
-        VolumeParams.VolumeInfoTimeoutValid = 1;
-        VolumeParams.DirInfoTimeoutValid = 1;
-        //VolumeParams.SecurityTimeoutValid = 1;
-        //VolumeParams.StreamInfoTimeoutValid = 1;
-        //VolumeParams.EaTimeoutValid = 1;
-    }
-#endif
 
     if (0 != VolumePrefix)
         wcscpy_s(VolumeParams.Prefix, sizeof VolumeParams.Prefix / sizeof(WCHAR), VolumePrefix);
@@ -851,6 +885,33 @@ static NTSTATUS PtfsCreate(PWSTR Path, PWSTR VolumePrefix, PWSTR MountPoint, UIN
             getPtfsInterface(),
             &Ptfs->FileSystem);
     }
+
+#else
+    VolumeParams->VolumeCreationTime = ((PLARGE_INTEGER)&CreationTime)->QuadPart;
+
+    if (0 != VolumePrefix)
+    {
+        wcscpy_s(VolumeParams->Prefix, _countof(VolumeParams->Prefix), VolumePrefix);
+        //wcscpy_s(VolumeParams->Prefix, sizeof VolumeParams->Prefix / sizeof(WCHAR), VolumePrefix);
+    }
+
+    wcscpy_s(VolumeParams->FileSystemName, _countof(VolumeParams->FileSystemName), PROGNAME);
+    //wcscpy_s(VolumeParams->FileSystemName, sizeof VolumeParams->FileSystemName / sizeof(WCHAR), PROGNAME);
+
+    {
+        WCHAR STRING_NET[] = L"" FSP_FSCTL_NET_DEVICE_NAME;
+        WCHAR STRING_DSK[] = L"" FSP_FSCTL_DISK_DEVICE_NAME;
+
+        Result = FspFileSystemCreate(
+            VolumeParams->Prefix[0] ? STRING_NET : STRING_DSK,
+            VolumeParams,
+            //&PtfsInterface,
+            getPtfsInterface(),
+            &Ptfs->FileSystem);
+    }
+
+#endif
+
     if (!NT_SUCCESS(Result))
         goto exit;
     Ptfs->FileSystem->UserContext = Ptfs;
@@ -937,6 +998,22 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
     WCHAR PassThroughBuf[MAX_PATH] = { 0 };
     PTFS *Ptfs = 0;
     NTSTATUS Result = STATUS_UNSUCCESSFUL;
+#if !WINFSP_PASSTHROUGH
+    FSP_FSCTL_VOLUME_PARAMS VolumeParams = { 0 };
+
+    VolumeParams.SectorSize = ALLOCATION_UNIT;
+    VolumeParams.SectorsPerAllocationUnit = 1;
+    VolumeParams.VolumeSerialNumber = 0;
+    VolumeParams.FileInfoTimeout = 1000;
+    VolumeParams.CaseSensitiveSearch = 0;
+    VolumeParams.CasePreservedNames = 1;
+    VolumeParams.UnicodeOnDisk = 1;
+    VolumeParams.PersistentAcls = 1;
+    VolumeParams.PostCleanupWhenModifiedOnly = 1;
+    VolumeParams.PassQueryDirectoryPattern = 1;
+    VolumeParams.FlushAndPurgeOnCleanup = 1;
+    VolumeParams.UmFileContextIsUserContext2 = 1;
+#endif
 
     for (argp = argv + 1, arge = argv + argc; arge > argp; argp++)
     {
@@ -1026,7 +1103,21 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
         FspDebugLogSetHandle(DebugLogHandle);
     }
 
-    Result = PtfsCreate(PassThrough, VolumePrefix, MountPoint, DebugFlags, &Ptfs);
+#if !WINFSP_PASSTHROUGH
+    if (!CSDriver()->PreCreateFilesystem(PassThrough, &VolumeParams))
+    {
+        fail(L"fault: PreCreateFilesystem");
+
+        Result = STATUS_APP_INIT_FAILURE;
+        goto exit;
+    }
+#endif
+
+    Result = PtfsCreate(PassThrough, VolumePrefix, MountPoint, DebugFlags,
+#if !WINFSP_PASSTHROUGH
+        &VolumeParams,
+#endif
+        &Ptfs);
     if (!NT_SUCCESS(Result))
     {
         fail(L"cannot create file system");
@@ -1034,9 +1125,9 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
     }
 
 #if !WINFSP_PASSTHROUGH
-    if (!getStorageService()->OnSvcStart(PassThrough))
+    if (!CSDriver()->OnSvcStart(PassThrough, Ptfs->FileSystem))
     {
-        fail(L"storage service initialize fault");
+        fail(L"fault: OnSvcStart");
 
         Result = STATUS_APP_INIT_FAILURE;
         goto exit;
@@ -1093,7 +1184,7 @@ static NTSTATUS SvcStop(FSP_SERVICE *Service)
     PTFS *Ptfs = (PTFS*)Service->UserContext;
 
 #if !WINFSP_PASSTHROUGH
-    getStorageService()->OnSvcStop();
+    CSDriver()->OnSvcStop();
 #endif
 
     FspFileSystemStopDispatcher(Ptfs->FileSystem);
@@ -1136,20 +1227,11 @@ static const FSP_FILE_SYSTEM_INTERFACE* getPtfsInterface()
     return &gPtfsInterface_;
 }
 
-#if !WINFSP_PASSTHROUGH
-static WinCseLib::IStorageService* gSS_;
-static WinCseLib::IStorageService* getStorageService()
-{
-    _ASSERT(gSS_);
-    return gSS_;
-}
-#endif
-
 //int wmain(int argc, wchar_t **argv)
-int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WinCseLib::IStorageService* ss)
+int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINFSP_IF* argWinFspIf)
 {
 #if !WINFSP_PASSTHROUGH
-    gSS_ = ss;
+    gWinFspIf = argWinFspIf;
 #endif
 
     PROGNAME = progname;

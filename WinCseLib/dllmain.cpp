@@ -4,6 +4,8 @@
 #pragma comment(lib, "winfsp-x64.lib")
 #pragma comment(lib, "bcrypt.lib")
 
+#pragma warning(disable: 4100)
+
 BOOL APIENTRY DllMain( HMODULE hModule,
                        DWORD  ul_reason_for_call,
                        LPVOID lpReserved

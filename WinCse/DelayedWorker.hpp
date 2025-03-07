@@ -1,6 +1,5 @@
 #pragma once
 
-#include <queue>
 #include <thread>
 
 class DelayedWorker : public WinCseLib::IWorker
@@ -8,24 +7,23 @@ class DelayedWorker : public WinCseLib::IWorker
 private:
 	const std::wstring mTempDir;
 	const std::wstring mIniSection;
-	std::vector<std::thread> mThreads;
-	std::deque<std::shared_ptr<WinCseLib::ITask>> mTaskQueue;
+	std::list<std::thread> mThreads;
 	int mTaskSkipCount;
 
-	HANDLE mEvent = nullptr;
+	HANDLE mEvent = NULL;
 
 protected:
 	void listenEvent(const int i);
-	std::shared_ptr<WinCseLib::ITask> dequeueTask();
+	std::unique_ptr<WinCseLib::ITask> dequeueTask();
 
 public:
 	DelayedWorker(const std::wstring& argTempDir, const std::wstring& argIniSection);
 	~DelayedWorker();
 
-	bool OnSvcStart(const wchar_t* WorkDir) override;
+	bool OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
 	void OnSvcStop() override;
 
-	bool addTask(WinCseLib::ITask* task, WinCseLib::CanIgnore ignState, WinCseLib::Priority priority) override;
+	bool addTask(CALLER_ARG WinCseLib::ITask* argTask, WinCseLib::Priority priority, WinCseLib::CanIgnore ignState) override;
 };
 
 // EOF

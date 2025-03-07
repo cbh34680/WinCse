@@ -1,5 +1,11 @@
 #pragma once
 
+#ifndef _RELEASE
+#ifndef _DEBUG
+#define _RELEASE	(1)
+#endif
+#endif
+
 #ifdef WINCSELIB_EXPORTS
 #define WINCSELIB_API __declspec(dllexport)
 #else
@@ -13,33 +19,33 @@
 #include "internal_define_alloc.h"
 #include "WinFsp_c.h"
 
-#ifndef _RELEASE
-#ifndef _DEBUG
-#define _RELEASE	(1)
-#endif
-#endif
+#include <string>
+#include <list>
+#include <vector>
+#include <memory>
+#include <chrono>
 
-#define CALLER_ARG0			const wchar_t* caller_
+typedef std::shared_ptr<FSP_FSCTL_DIR_INFO> DirInfoType;
+typedef std::list<DirInfoType> DirInfoListType;
+
+#define CALLER_ARG0			const std::wstring& caller_
 #define CALLER_ARG			CALLER_ARG0,
 
 // インターフェース定義
-#include "IService.hpp"
-#include "IStorageService.hpp"
-#include "ICloudStorage.hpp"
+#include "ICSService.hpp"
+#include "ICSDriver.hpp"
+#include "ICSDevice.hpp"
 #include "ILogger.hpp"
 #include "IWorker.hpp"
 
 // 以降はアプリケーション関連
-#include <string>
-#include <atomic>
-#include <chrono>
-#include <typeinfo>
 
 namespace WinCseLib {
 
 //
 // グローバル関数
 //
+WINCSELIB_API bool PathToFileInfo(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo);
 WINCSELIB_API bool TouchIfNotExists(const std::wstring& arg);
 WINCSELIB_API bool MkdirIfNotExists(const std::wstring& dir);
 
@@ -56,14 +62,23 @@ WINCSELIB_API std::wstring DecodeLocalNameToFileNameW(const std::wstring& str);
 WINCSELIB_API bool HandleToPath(HANDLE Handle, std::wstring& wstr);
 WINCSELIB_API bool PathToSDStr(const std::wstring& path, std::wstring& sdstr);;
 
-WINCSELIB_API uint64_t UtcMillisToWinFileTimeIn100ns(uint64_t utcMilliseconds);
-WINCSELIB_API uint64_t WinFileTimeIn100ns(const FILETIME& ft);
+WINCSELIB_API uint64_t UtcMillisToWinFileTime100ns(uint64_t utcMilliseconds);
+WINCSELIB_API uint64_t WinFileTime100nsToUtcMillis(uint64_t fileTime100ns);
+
+WINCSELIB_API uint64_t WinFileTimeToWinFileTime100ns(const FILETIME& ft);
+WINCSELIB_API void WinFileTime100nsToWinFile(uint64_t ft100ns, FILETIME* ft);
+
 WINCSELIB_API void UtcMillisToWinFileTime(uint64_t utcMilliseconds, FILETIME* ft);
 WINCSELIB_API uint64_t WinFileTimeToUtcMillis(const FILETIME &ft);
-WINCSELIB_API bool HandleToWinFileTimes(const std::wstring& path, FILETIME* pFtCreate, FILETIME* pFtAccess, FILETIME* pFtWrite);
+WINCSELIB_API bool PathToWinFileTimes(const std::wstring& path, FILETIME* pFtCreate, FILETIME* pFtAccess, FILETIME* pFtWrite);
 WINCSELIB_API uint64_t GetCurrentUtcMillis();
 
+WINCSELIB_API long long int TimePointToUtcMillis(const std::chrono::system_clock::time_point& tp);
 WINCSELIB_API long long int TimePointToUtcSecs(const std::chrono::system_clock::time_point& tp);
+WINCSELIB_API std::wstring TimePointToLocalTimeStringW(const std::chrono::system_clock::time_point& tp);
+
+WINCSELIB_API std::wstring UtcMilliToLocalTimeStringW(uint64_t milliseconds);
+WINCSELIB_API std::wstring WinFileTime100nsToLocalTimeStringW(uint64_t fileTime100ns);
 
 WINCSELIB_API uint64_t STCTimeToUTCMilliSecW(const std::wstring& path);
 WINCSELIB_API uint64_t STCTimeToWinFileTimeW(const std::wstring& path);
@@ -80,6 +95,7 @@ WINCSELIB_API std::wstring WildcardToRegexW(const std::wstring& wildcard);
 WINCSELIB_API std::string WildcardToRegexA(const std::string& wildcard);
 
 WINCSELIB_API std::vector<std::wstring> SplitW(const std::wstring& input, const wchar_t sep, const bool ignoreEmpty);
+WINCSELIB_API std::wstring JoinW(const std::vector<std::wstring>& tokens, const wchar_t sep, const bool ignoreEmpty);
 
 WINCSELIB_API bool GetIniStringW(const std::wstring& confPath, const wchar_t* argSection, const wchar_t* keyName, std::wstring* pValue);
 WINCSELIB_API bool GetIniStringA(const std::string& confPath, const char* argSection, const char* keyName, std::string* pValue);
@@ -100,9 +116,9 @@ WINCSELIB_API void DeleteLogger();
 //
 class WINCSELIB_API LogBlock
 {
-	const wchar_t* file;
-	const int line;
-	const wchar_t* func;
+	const wchar_t* mFile;
+	const int mLine;
+	const wchar_t* mFunc;
 
 public:
 	LogBlock(const wchar_t* argFile, const int argLine, const wchar_t* argFunc);
@@ -115,7 +131,39 @@ public:
 
 } // namespace WinCseLib
 
-int WINCSELIB_API WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WinCseLib::IStorageService* cs);
+typedef struct
+{
+    long GetFileInfoInternal;
+    long GetVolumeInfo;
+    long SetVolumeLabel_;
+    long GetSecurityByName;
+    long Create;
+    long Open;
+    long Overwrite;
+    long Cleanup;
+    long Close;
+    long Read;
+    long Write;
+    long Flush;
+    long GetFileInfo;
+    long SetBasicInfo;
+    long SetFileSize;
+    long Rename;
+    long GetSecurity;
+    long SetSecurity;
+    long ReadDirectory;
+    long SetDelete;
+}
+WINFSP_STATS;
+
+typedef struct
+{
+	WinCseLib::ICSDriver* pDriver;
+	WINFSP_STATS stats;
+}
+WINFSP_IF;
+
+int WINCSELIB_API WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINFSP_IF* appif);
 
 // -----------------------------
 //
@@ -126,10 +174,11 @@ int WINCSELIB_API WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WinCseLi
         WinCseLib::AbnormalEnd(__FILE__, __LINE__, __FUNCTION__, -1); \
     }
 
-#define INIT_CALLER0    __FUNCTIONW__
-#define INIT_CALLER		INIT_CALLER0,
+#define START_CALLER0   std::wstring(__FUNCTIONW__)
+#define START_CALLER	START_CALLER0,
 
-#define CALL_CHAIN()	(std::wstring(caller_) + L"->" + __FUNCTIONW__).c_str()
+#define CALL_FROM()		(caller_)
+#define CALL_CHAIN()	(CALL_FROM() + L"->" + __FUNCTIONW__)
 #define CONT_CALLER0	CALL_CHAIN()
 #define CONT_CALLER		CONT_CALLER0,
 
@@ -145,6 +194,5 @@ int WINCSELIB_API WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WinCseLi
 
 #define traceW(format, ...) \
 	WinCseLib::GetLogger()->traceW_impl(LOG_DEPTH(), __FILEW__, __LINE__, __FUNCTIONW__, format, __VA_ARGS__)
-
 
 // EOF

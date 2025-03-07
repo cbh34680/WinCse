@@ -1,5 +1,4 @@
 #include "WinCseLib.h"
-#include <string>
 #include <sstream>
 #include <fstream>
 #include <filesystem>
@@ -7,6 +6,39 @@
 
 
 namespace WinCseLib {
+
+bool PathToFileInfo(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo)
+{
+	//FILETIME ftCreate, ftAccess, ftWrite;
+	//LARGE_INTEGER fileSize;
+	BOOL ret = FALSE;
+	HANDLE hFile = INVALID_HANDLE_VALUE;
+	NTSTATUS result = STATUS_UNSUCCESSFUL;
+
+	hFile = ::CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
+		OPEN_EXISTING, 0, NULL);
+
+	if(hFile == INVALID_HANDLE_VALUE)
+	{
+		goto exit;
+	}
+
+	result = GetFileInfoInternal(hFile, pFileInfo);
+	if (!NT_SUCCESS(result))
+	{
+		goto exit;
+	}
+
+	ret = true;
+
+exit:
+	if (hFile != INVALID_HANDLE_VALUE)
+	{
+		::CloseHandle(hFile);
+	}
+
+	return ret;
+}
 
 bool TouchIfNotExists(const std::wstring& arg)
 {

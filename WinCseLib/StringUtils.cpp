@@ -1,6 +1,4 @@
 #include "WinCseLib.h"
-#include <Windows.h>
-#include <vector>
 #include <sstream>
 #include <iomanip>
 #include <cwctype>
@@ -56,9 +54,8 @@ std::wstring MB2WC(const std::string& str)
 // 文字列のハッシュ値を算出
 size_t HashString(const std::wstring& arg)
 {
-	static std::hash<std::wstring> hashStr;
-
-	return hashStr(arg);
+	std::hash<std::wstring> f;
+	return f(arg);
 }
 
 std::string Base64EncodeA(const std::string& data)
@@ -90,6 +87,7 @@ std::string Base64DecodeA(const std::string& encodedData)
 std::string URLEncodeA(const std::string& str)
 {
 	std::ostringstream encoded;
+
 	for (char ch : str)
 	{
 		if (isalnum(static_cast<unsigned char>(ch)) || ch == '-' || ch == '_' || ch == '.' || ch == '~')
@@ -101,6 +99,7 @@ std::string URLEncodeA(const std::string& str)
 			encoded << '%' << std::uppercase << std::hex << std::setw(2) << std::setfill('0') << (int)(unsigned char)ch;
 		}
 	}
+
 	return encoded.str();
 }
 
@@ -144,13 +143,16 @@ std::wstring TrimW(const std::wstring& str)
 	std::wstring trimmedStr = str;
 
 	// 先頭の空白をトリム
-	trimmedStr.erase(trimmedStr.begin(), std::find_if(trimmedStr.begin(), trimmedStr.end(), [](wchar_t ch) {
+	trimmedStr.erase(trimmedStr.begin(), std::find_if(trimmedStr.begin(), trimmedStr.end(), [](wchar_t ch)
+	{
 		return !std::isspace(ch);
 	}));
 
 	// 末尾の空白をトリム
-	trimmedStr.erase(std::find_if(trimmedStr.rbegin(), trimmedStr.rend(), [](wchar_t ch) {
+	trimmedStr.erase(std::find_if(trimmedStr.rbegin(), trimmedStr.rend(), [](wchar_t ch)
+	{
 		return !std::isspace(ch);
+
 	}).base(), trimmedStr.end());
 
 	return trimmedStr;
@@ -224,6 +226,36 @@ std::vector<std::wstring> SplitW(const std::wstring& input, const wchar_t sep, c
     }
 
 	return strs;
+}
+
+std::wstring JoinW(const std::vector<std::wstring>& tokens, const wchar_t sep, const bool ignoreEmpty)
+{
+	std::wostringstream ss;
+
+	bool first = true;
+	for (const auto& token: tokens)
+	{
+		if (ignoreEmpty)
+		{
+			if (token.empty())
+			{
+				continue;
+			}
+		}
+
+		if (first)
+		{
+			first = false;
+		}
+		else
+		{
+			ss << sep;
+		}
+
+		ss << token;
+	}
+
+	return ss.str();
 }
 
 } // WInCseLib

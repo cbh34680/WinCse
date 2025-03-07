@@ -123,6 +123,12 @@
       <AdditionalLibraryDirectories>$(MSBuildProgramFiles32)\WinFsp\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <DelayLoadDLLs>winfsp-$(PlatformTarget).dll</DelayLoadDLLs>
     </Link>
+    <PostBuildEvent>
+      <Command>$(SolutionDir)\util\build-after.bat $(Configuration)</Command>
+    </PostBuildEvent>
+    <PreBuildEvent>
+      <Command>$(SolutionDir)util\build-before.bat</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -147,6 +153,12 @@
       <AdditionalLibraryDirectories>$(MSBuildProgramFiles32)\WinFsp\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <DelayLoadDLLs>winfsp-$(PlatformTarget).dll</DelayLoadDLLs>
     </Link>
+    <PostBuildEvent>
+      <Command>$(SolutionDir)\util\build-after.bat $(Configuration)</Command>
+    </PostBuildEvent>
+    <PreBuildEvent>
+      <Command>$(SolutionDir)util\build-before.bat</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Crypt.cpp" />
@@ -159,12 +171,12 @@
     <ClCompile Include="WinFsp_c.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="ICloudStorage.hpp" />
+    <ClInclude Include="ICSDevice.hpp" />
     <ClInclude Include="ILogger.hpp" />
     <ClInclude Include="internal_define_alloc.h" />
     <ClInclude Include="internal_undef_alloc.h" />
-    <ClInclude Include="IService.hpp" />
-    <ClInclude Include="IStorageService.hpp" />
+    <ClInclude Include="ICSService.hpp" />
+    <ClInclude Include="ICSDriver.hpp" />
     <ClInclude Include="IWorker.hpp" />
     <ClInclude Include="Logger.hpp" />
     <ClInclude Include="WinCseLib.h" />

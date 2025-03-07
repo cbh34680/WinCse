@@ -4,7 +4,7 @@
 #define _CRTDBG_MAP_ALLOC
 #endif
 
-#include <stdlib.h>
+#include <cstdlib>
 #include <crtdbg.h>
 
 #ifdef _DEBUG

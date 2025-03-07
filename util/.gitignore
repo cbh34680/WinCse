@@ -1,3 +1,4 @@
-/stash/
-my-debug-test.bat
-z-stash.bat
+/stash*
+/my-debug-test.bat
+/z-stash.bat
+/handle.exe

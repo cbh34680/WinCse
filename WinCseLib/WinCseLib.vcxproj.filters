@@ -53,16 +53,16 @@
     <ClInclude Include="WinFsp_c.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="ICloudStorage.hpp">
+    <ClInclude Include="ICSDevice.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="ILogger.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="IService.hpp">
+    <ClInclude Include="ICSService.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="IStorageService.hpp">
+    <ClInclude Include="ICSDriver.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="IWorker.hpp">

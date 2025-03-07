@@ -1,43 +1,53 @@
 #pragma once
-
-#include <string>
+#pragma warning(push)
+#pragma warning(disable: 4100)
 
 namespace WinCseLib {
 
-enum CanIgnore
+enum class CanIgnore
 {
-	YES,
-	NO
+	None,
+	Yes,
+	No,
 };
 
-enum Priority
+enum class Priority
 {
-	LOW,
-	HIGH
+	Low,
+	High,
 };
 
 
 struct IWorker;
 
-struct WINCSELIB_API ITask
+// Ç±ÇÍÇæÇ∆ C4251 ÇÃåxçêÇ™èoÇÈÇÃÇ≈ÅAÉÅÉìÉoÇ…íºê⁄èCè¸Ç∑ÇÈ
+//struct WINCSELIB_API ITask
+
+struct ITask
 {
-	bool mPriority = Priority::LOW;
-	int _mWorkerId_4debug = -1;
+	Priority mPriority = Priority::Low;
+	int mWorkerId_4debug = -1;
+	std::wstring mCaller_4debug;
 
-	virtual ~ITask() = default;
+	WINCSELIB_API virtual ~ITask() = default;
 
-	virtual std::wstring synonymString();
+	WINCSELIB_API virtual std::wstring synonymString() { return std::wstring(L""); }
 
-	virtual void run(CALLER_ARG IWorker* worker, const int indent) = 0;
+	WINCSELIB_API virtual void run(CALLER_ARG0) = 0;
 };
 
-struct WINCSELIB_API IWorker : public IService
+struct WINCSELIB_API IWorker : public ICSService
 {
 	virtual ~IWorker() = default;
 
-	virtual bool addTask(ITask* pTask, CanIgnore ignState, Priority priority) = 0;
+	virtual bool addTask(CALLER_ARG ITask* pTask, Priority priority, CanIgnore ignState)
+	{
+		delete pTask;
+		return false;
+	}
 };
 
 } // namespace WinCseLib
 
+#pragma warning(pop)
 // EOF

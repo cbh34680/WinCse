@@ -1,8 +1,10 @@
-#include "WinCseLib.h"
 #include "AwsS3.hpp"
-#include <cinttypes>
+#include "BucketCache.hpp"
+
 
 using namespace WinCseLib;
+
+extern BucketCache gBucketCache;
 
 
 std::wstring AwsS3::unsafeGetBucketRegion(CALLER_ARG const std::wstring& bucketName)
@@ -13,7 +15,7 @@ std::wstring AwsS3::unsafeGetBucketRegion(CALLER_ARG const std::wstring& bucketN
 
     traceW(L"bucketName: %s", bucketName.c_str());
 
-    if (mBucketCache.findRegion(CONT_CALLER bucketName, &bucketRegion))
+    if (gBucketCache.findRegion(CONT_CALLER bucketName, &bucketRegion))
     {
         traceW(L"hit in cache, region is %s", bucketRegion.c_str());
     }
@@ -26,7 +28,7 @@ std::wstring AwsS3::unsafeGetBucketRegion(CALLER_ARG const std::wstring& bucketN
         namespace mapper = Aws::S3::Model::BucketLocationConstraintMapper;
 
         Aws::S3::Model::GetBucketLocationRequest request;
-        request.SetBucket(WC2MB(bucketName).c_str());
+        request.SetBucket(WC2MB(bucketName));
 
         const auto outcome = mClient.ptr->GetBucketLocation(request);
         if (outcomeIsSuccess(outcome))
@@ -46,19 +48,113 @@ std::wstring AwsS3::unsafeGetBucketRegion(CALLER_ARG const std::wstring& bucketN
             traceW(L"error, fall back region is %s", bucketRegion.c_str());
         }
 
-        mBucketCache.updateRegion(CONT_CALLER bucketName, bucketRegion);
+        gBucketCache.updateRegion(CONT_CALLER bucketName, bucketRegion);
     }
 
     return bucketRegion;
 }
 
-static std::mutex gGuard;
+// -----------------------------------------------------------------------------------
+//
+// 外部から呼び出されるインターフェース
+//
 
-#define THREAD_SAFE() \
-    std::lock_guard<std::mutex> lock_(gGuard)
+//
+// ここから下のメソッドは THREAD_SAFE マクロによる修飾が必要
+//
+static std::mutex gGuard;
+BucketCache gBucketCache;
+#define THREAD_SAFE() std::lock_guard<std::mutex> lock_(gGuard)
+
+
+void AwsS3::reloadBukcetsIfNeed(CALLER_ARG0)
+{
+    THREAD_SAFE();
+    NEW_LOG_BLOCK();
+
+    namespace chrono = std::chrono;
+    const auto now { chrono::system_clock::now() };
+
+    const auto lastSetTime = gBucketCache.getLastSetTime(CONT_CALLER0);
+
+    if ((now - chrono::minutes(60)) > lastSetTime)
+    {
+        // バケット・キャッシュを作成してから 60 分以上経過
+        traceW(L"need re-load");
+
+        // バケットのキャッシュを削除して、再度一覧を取得する
+        gBucketCache.clear(CONT_CALLER0);
+
+        // バケット一覧の取得 --> キャッシュの生成
+        listBuckets(CONT_CALLER nullptr, {});
+    }
+    else
+    {
+        traceW(L"is valid");
+    }
+}
+
+void AwsS3::reportBucketCache(CALLER_ARG FILE* fp)
+{
+    THREAD_SAFE();
+
+    gBucketCache.report(CONT_CALLER fp);
+}
+
+struct NotifRemoveBucketTask : public ITask
+{
+    FSP_FILE_SYSTEM* mFileSystem;
+    const std::wstring mFileName;
+
+    NotifRemoveBucketTask(FSP_FILE_SYSTEM* argFileSystem, const std::wstring& argFileName)
+        : mFileSystem(argFileSystem), mFileName(argFileName) { }
+
+    std::wstring synonymString()
+    {
+        return std::wstring(L"NotifyRemoveBucketTask; ") + mFileName;
+    }
+
+    void run(CALLER_ARG0) override
+    {
+        NEW_LOG_BLOCK();
+
+        traceW(L"exec FspFileSystemNotify**");
+
+        NTSTATUS result = FspFileSystemNotifyBegin(mFileSystem, 1000UL);
+        if (NT_SUCCESS(result))
+        {
+            union
+            {
+                FSP_FSCTL_NOTIFY_INFO V;
+                UINT8 B[1024];
+            } Buffer{};
+            ULONG Length = 0;
+            union
+            {
+                FSP_FSCTL_NOTIFY_INFO V;
+                UINT8 B[sizeof(FSP_FSCTL_NOTIFY_INFO) + MAX_PATH * sizeof(WCHAR)];
+            } NotifyInfo{};
+
+            NotifyInfo.V.Size = (UINT16)(sizeof(FSP_FSCTL_NOTIFY_INFO) + mFileName.length() * sizeof(WCHAR));
+            NotifyInfo.V.Filter = FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_LAST_WRITE, FILE_ACTION_MODIFIED;
+            NotifyInfo.V.Action = FILE_ACTION_REMOVED;
+            memcpy(NotifyInfo.V.FileNameBuf, mFileName.c_str(), NotifyInfo.V.Size - sizeof(FSP_FSCTL_NOTIFY_INFO));
+
+            FspFileSystemAddNotifyInfo(&NotifyInfo.V, &Buffer, sizeof Buffer, &Length);
+
+            result = FspFileSystemNotify(mFileSystem, &Buffer.V, Length);
+            //APP_ASSERT(STATUS_SUCCESS == result);
+
+            result = FspFileSystemNotifyEnd(mFileSystem);
+            //APP_ASSERT(STATUS_SUCCESS == result);
+        }
+    }
+};
 
 bool AwsS3::headBucket(CALLER_ARG const std::wstring& bucketName)
 {
+    StatsIncr(headBucket);
+
     THREAD_SAFE();
     NEW_LOG_BLOCK();
     APP_ASSERT(!bucketName.empty());
@@ -75,7 +171,7 @@ bool AwsS3::headBucket(CALLER_ARG const std::wstring& bucketName)
     }
 
     // キャッシュから探す
-    const auto bucket{ mBucketCache.find(CONT_CALLER bucketName) };
+    const auto bucket{ gBucketCache.find(CONT_CALLER bucketName) };
     if (bucket)
     {
         traceW(L"hit in buckets cache");
@@ -85,7 +181,7 @@ bool AwsS3::headBucket(CALLER_ARG const std::wstring& bucketName)
         traceW(L"warn: no match");
 
         Aws::S3::Model::HeadBucketRequest request;
-        request.SetBucket(WC2MB(bucketName).c_str());
+        request.SetBucket(WC2MB(bucketName));
 
         const auto outcome = mClient.ptr->HeadBucket(request);
         if (!outcomeIsSuccess(outcome))
@@ -101,6 +197,10 @@ bool AwsS3::headBucket(CALLER_ARG const std::wstring& bucketName)
         // バケットのリージョンが異なるので拒否
 
         traceW(L"%s: no match bucket-region", bucketRegion.c_str());
+
+        // 非表示になるバケットについて WinFsp に通知
+        mDelayedWorker->addTask(START_CALLER new NotifRemoveBucketTask{ mFileSystem, std::wstring(L"\\") + bucketName }, Priority::Low, CanIgnore::Yes);
+
         return false;
     }
 
@@ -110,15 +210,17 @@ bool AwsS3::headBucket(CALLER_ARG const std::wstring& bucketName)
 }
 
 bool AwsS3::listBuckets(CALLER_ARG
-    std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>>* pDirInfoList,
+    DirInfoListType* pDirInfoList,
     const std::vector<std::wstring>& options)
 {
+    StatsIncr(listBuckets);
+
     THREAD_SAFE();
     NEW_LOG_BLOCK();
 
-    std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>> dirInfoList;
+    DirInfoListType dirInfoList;
 
-    if (mBucketCache.empty(CONT_CALLER0))
+    if (gBucketCache.empty(CONT_CALLER0))
     {
         traceW(L"cache empty");
 
@@ -148,7 +250,7 @@ bool AwsS3::listBuckets(CALLER_ARG
             }
 
             std::wstring bucketRegion;
-            if (mBucketCache.findRegion(CONT_CALLER bucketName, &bucketRegion))
+            if (gBucketCache.findRegion(CONT_CALLER bucketName, &bucketRegion))
             {
                 // 異なるリージョンのバケットは無視
 
@@ -159,16 +261,12 @@ bool AwsS3::listBuckets(CALLER_ARG
                 }
             }
 
-            auto dirInfo = mallocDirInfoW(bucketName, L"");
+            const auto creationMillis{ bucket.GetCreationDate().Millis() };
+            traceW(L"bucketName=%s, CreationDate=%s", bucketName.c_str(), UtcMilliToLocalTimeStringW(creationMillis).c_str());
+
+            const auto FileTime = UtcMillisToWinFileTime100ns(creationMillis);
+            auto dirInfo = mallocDirInfoW_dir(bucketName, L"", FileTime);
             APP_ASSERT(dirInfo);
-
-            const auto FileTime = UtcMillisToWinFileTimeIn100ns(bucket.GetCreationDate().Millis());
-
-            dirInfo->FileInfo.FileAttributes = FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY;
-            dirInfo->FileInfo.CreationTime = FileTime;
-            dirInfo->FileInfo.LastAccessTime = FileTime;
-            dirInfo->FileInfo.LastWriteTime = FileTime;
-            dirInfo->FileInfo.ChangeTime = FileTime;
 
             dirInfoList.push_back(dirInfo);
 
@@ -184,12 +282,12 @@ bool AwsS3::listBuckets(CALLER_ARG
         traceW(L"update cache");
 
         // キャッシュにコピー
-        mBucketCache.save(CONT_CALLER dirInfoList);
+        gBucketCache.save(CONT_CALLER dirInfoList);
     }
     else
     {
         // キャッシュからコピー
-        mBucketCache.load(CONT_CALLER mRegion, dirInfoList);
+        gBucketCache.load(CONT_CALLER mRegion, dirInfoList);
 
         traceW(L"use cache: size=%zu", dirInfoList.size());
     }
@@ -209,7 +307,7 @@ bool AwsS3::listBuckets(CALLER_ARG
         {
             // 抽出条件に一致するものを提供
 
-            std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>> optsDirInfoList;
+            DirInfoListType optsDirInfoList;
 
             for (const auto& dirInfo : dirInfoList)
             {

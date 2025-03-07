@@ -10,6 +10,8 @@
 #include <csignal>
 #include <iostream>
 #include <sstream>
+#include <iomanip>
+
 
 using namespace WinCseLib;
 
@@ -31,17 +33,17 @@ static void app_sighandler(int signum);
 
 
 // DLL 解放のための RAII
-struct DllModule
+struct DllModuleRAII
 {
     HMODULE mModule;
-    ICloudStorage* mStorage;
+    ICSDevice* mCSDevice;
 
-    DllModule() : mModule(NULL), mStorage(nullptr) {}
-    DllModule(HMODULE mod, ICloudStorage* storage) : mModule(mod), mStorage(storage) {}
+    DllModuleRAII() : mModule(NULL), mCSDevice(nullptr) {}
+    DllModuleRAII(HMODULE argModule, ICSDevice* argCSDevice) : mModule(argModule), mCSDevice(argCSDevice) {}
 
-    ~DllModule()
+    ~DllModuleRAII()
     {
-        delete mStorage;
+        delete mCSDevice;
 
         if (mModule)
         {
@@ -52,13 +54,13 @@ struct DllModule
 
 //
 // 引数の名前 (dllType) からファイル名を作り、LoadLibrary を実行し
-// その中にエクスポートされた NewCloudStorage() を実行する。
-// 戻り値は ICloudStorage* になる。
+// その中にエクスポートされた NewCSDevice() を実行する。
+// 戻り値は ICSDevice* になる。
 //
-bool loadCloudStorage(const std::wstring& dllType,
+bool loadCSDevice(const std::wstring& dllType,
     const std::wstring& tmpDir, const wchar_t* iniSection,
 	WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker,
-    DllModule* pDll)
+    DllModuleRAII* pDll)
 {
     NEW_LOG_BLOCK();
 
@@ -66,22 +68,22 @@ bool loadCloudStorage(const std::wstring& dllType,
 
 	const std::wstring dllName{ std::wstring(PROGNAME) + L'-' + dllType + L".dll" };
 
-	typedef WinCseLib::ICloudStorage* (*NewCloudStorage)(
+	typedef WinCseLib::ICSDevice* (*NewCSDevice)(
 		const wchar_t* argTempDir, const wchar_t* argIniSection,
 		WinCseLib::IWorker * delayedWorker, WinCseLib::IWorker * idleWorker);
 
-	NewCloudStorage dllFunc = nullptr;
-    ICloudStorage* pStorage = nullptr;
+	NewCSDevice dllFunc = nullptr;
+    ICSDevice* pCSDevice = nullptr;
 
-	HMODULE hMod = ::LoadLibrary(dllName.c_str());
-	if (hMod == NULL)
+	HMODULE hModule = ::LoadLibrary(dllName.c_str());
+	if (hModule == NULL)
 	{
         std::wcerr << L"fault: LoadLibrary" << dllName << std::endl;
         traceW(L"fault: LoadLibrary %s", dllName.c_str());
         goto exit;
 	}
     
-    dllFunc = (NewCloudStorage)::GetProcAddress(hMod, "NewCloudStorage");
+    dllFunc = (NewCSDevice)::GetProcAddress(hModule, "NewCSDevice");
 	if (!dllFunc)
 	{
         std::wcerr << L"fault: GetProcAddress" << std::endl;
@@ -89,41 +91,147 @@ bool loadCloudStorage(const std::wstring& dllType,
         goto exit;
     }
 
-    pStorage = dllFunc(tmpDir.c_str(), iniSection, delayedWorker, idleWorker);
-	if (!pStorage)
+    pCSDevice = dllFunc(tmpDir.c_str(), iniSection, delayedWorker, idleWorker);
+	if (!pCSDevice)
 	{
-        std::wcerr << L"fault: NewCloudStorage" << std::endl;
-        traceW(L"fault: NewCloudStorage");
+        std::wcerr << L"fault: NewCSDevice" << std::endl;
+        traceW(L"fault: NewCSDevice");
         goto exit;
     }
 
-    pDll->mModule = hMod;
-    pDll->mStorage = pStorage;
+    pDll->mModule = hModule;
+    pDll->mCSDevice = pCSDevice;
 
-    hMod = NULL;
-    pStorage = nullptr;
+    hModule = NULL;
+    pCSDevice = nullptr;
 
     traceW(L"success");
 
     ret = true;
 
 exit:
-    delete pStorage;
+    delete pCSDevice;
 
-    if (hMod)
+    if (hModule)
     {
-        ::FreeLibrary(hMod);
+        ::FreeLibrary(hModule);
     }
 
     return ret;
 }
 
+static void writeStats(
+    const wchar_t* logDir, const WINFSP_STATS* libStats,
+    const WINCSE_DRIVER_STATS* appStats, const WINCSE_DEVICE_STATS* devStats)
+{
+    SYSTEMTIME st;
+    ::GetLocalTime(&st);
+
+    std::wstringstream ss;
+    ss << logDir;
+    ss << L'\\';
+    ss << L"stats";
+    ss << L'-';
+    ss << std::setw(4) << std::setfill(L'0') << st.wYear;
+    ss << std::setw(2) << std::setfill(L'0') << st.wMonth;
+    ss << std::setw(2) << std::setfill(L'0') << st.wDay;
+    ss << L'-';
+    ss << std::setw(2) << std::setfill(L'0') << st.wHour;
+    ss << std::setw(2) << std::setfill(L'0') << st.wMinute;
+    ss << std::setw(2) << std::setfill(L'0') << st.wSecond;
+    ss << L".log";
+
+    const std::wstring path{ ss.str() };
+
+    FILE* fp = nullptr;
+    if (_wfopen_s(&fp, path.c_str(), L"wt") == 0)
+    {
+        if (fp)
+        {
+            fprintf(fp, "Main Thread: %ld\n", ::GetCurrentThreadId());
+            fputs("\n", fp);
+
+            fputs("[WinFsp Stats]\n", fp);
+            fprintf(fp, "\t" "Cleanup: %ld\n", libStats->Cleanup);
+            fprintf(fp, "\t" "Close: %ld\n", libStats->Close);
+            fprintf(fp, "\t" "Create: %ld\n", libStats->Create);
+            fprintf(fp, "\t" "Flush: %ld\n", libStats->Flush);
+            fprintf(fp, "\t" "GetFileInfo: %ld\n", libStats->GetFileInfo);
+            fprintf(fp, "\t" "GetFileInfoInternal: %ld\n", libStats->GetFileInfoInternal);
+            fprintf(fp, "\t" "GetSecurity: %ld\n", libStats->GetSecurity);
+            fprintf(fp, "\t" "GetSecurityByName: %ld\n", libStats->GetSecurityByName);
+            fprintf(fp, "\t" "GetVolumeInfo: %ld\n", libStats->GetVolumeInfo);
+            fprintf(fp, "\t" "Open: %ld\n", libStats->Open);
+            fprintf(fp, "\t" "Overwrite: %ld\n", libStats->Overwrite);
+            fprintf(fp, "\t" "Read: %ld\n", libStats->Read);
+            fprintf(fp, "\t" "ReadDirectory: %ld\n", libStats->ReadDirectory);
+            fprintf(fp, "\t" "Rename: %ld\n", libStats->Rename);
+            fprintf(fp, "\t" "SetBasicInfo: %ld\n", libStats->SetBasicInfo);
+            fprintf(fp, "\t" "SetDelete: %ld\n", libStats->SetDelete);
+            fprintf(fp, "\t" "SetFileSize: %ld\n", libStats->SetFileSize);
+            fprintf(fp, "\t" "SetSecurity: %ld\n", libStats->SetSecurity);
+            fprintf(fp, "\t" "SetVolumeLabel_: %ld\n", libStats->SetVolumeLabel_);
+            fprintf(fp, "\t" "Write: %ld\n", libStats->Write);
+            fputs("\n", fp);
+
+            fputs("[CSDriver Stats]\n", fp);
+            fprintf(fp, "\t" "DoCleanup: %ld\n", appStats->DoCleanup);
+            fprintf(fp, "\t" "DoClose: %ld\n", appStats->DoClose);
+            fprintf(fp, "\t" "DoCreate: %ld\n", appStats->DoCreate);
+            fprintf(fp, "\t" "DoFlush: %ld\n", appStats->DoFlush);
+            fprintf(fp, "\t" "DoGetFileInfo: %ld\n", appStats->DoGetFileInfo);
+            fprintf(fp, "\t" "DoGetSecurity: %ld\n", appStats->DoGetSecurity);
+            fprintf(fp, "\t" "DoGetSecurityByName: %ld\n", appStats->DoGetSecurityByName);
+            fprintf(fp, "\t" "DoGetVolumeInfo: %ld\n", appStats->DoGetVolumeInfo);
+            fprintf(fp, "\t" "DoOpen: %ld\n", appStats->DoOpen);
+            fprintf(fp, "\t" "DoOverwrite: %ld\n", appStats->DoOverwrite);
+            fprintf(fp, "\t" "DoRead: %ld\n", appStats->DoRead);
+            fprintf(fp, "\t" "DoReadDirectory: %ld\n", appStats->DoReadDirectory);
+            fprintf(fp, "\t" "DoRename: %ld\n", appStats->DoRename);
+            fprintf(fp, "\t" "DoSetBasicInfo: %ld\n", appStats->DoSetBasicInfo);
+            fprintf(fp, "\t" "DoSetDelete: %ld\n", appStats->DoSetDelete);
+            fprintf(fp, "\t" "DoSetFileSize: %ld\n", appStats->DoSetFileSize);
+            fprintf(fp, "\t" "DoSetPath: %ld\n", appStats->DoSetPath);
+            fprintf(fp, "\t" "DoSetSecurity: %ld\n", appStats->DoSetSecurity);
+            fprintf(fp, "\t" "DoWrite: %ld\n", appStats->DoWrite);
+            fprintf(fp, "\t" "OnSvcStart: %ld\n", appStats->OnSvcStart);
+            fprintf(fp, "\t" "OnSvcStop: %ld\n", appStats->OnSvcStop);
+            fprintf(fp, "\t" "PreCreateFilesystem: %ld\n", appStats->PreCreateFilesystem);
+
+            fprintf(fp, "\t" "_CallCloseFile: %ld\n", appStats->_CallCloseFile);
+            fputs("\n", fp);
+
+            fputs("[CSDevice Stats]\n", fp);
+            fprintf(fp, "\t" "OnSvcStart: %ld\n", devStats->OnSvcStart);
+            fprintf(fp, "\t" "OnSvcStop: %ld\n", devStats->OnSvcStop);
+            fprintf(fp, "\t" "closeFile: %ld\n", devStats->closeFile);
+            fprintf(fp, "\t" "headBucket: %ld\n", devStats->headBucket);
+            fprintf(fp, "\t" "headObject: %ld\n", devStats->headObject);
+            fprintf(fp, "\t" "listBuckets: %ld\n", devStats->listBuckets);
+            fprintf(fp, "\t" "listObjects: %ld\n", devStats->listObjects);
+            fprintf(fp, "\t" "openFile: %ld\n", devStats->openFile);
+            fprintf(fp, "\t" "readFile: %ld\n", devStats->readFile);
+
+            fprintf(fp, "\t" "_CloseHandle_Event: %ld\n", devStats->_CloseHandle_Event);
+            fprintf(fp, "\t" "_CloseHandle_File: %ld\n", devStats->_CloseHandle_File);
+            fprintf(fp, "\t" "_CreateEvent: %ld\n", devStats->_CreateEvent);
+            fprintf(fp, "\t" "_CreateFile: %ld\n", devStats->_CreateFile);
+            fprintf(fp, "\t" "_ReadError: %ld\n", devStats->_ReadError);
+            fprintf(fp, "\t" "_ReadSuccess: %ld\n", devStats->_ReadSuccess);
+            fprintf(fp, "\t" "_findFileInParentDirectry: %ld\n", devStats->_findFileInParentDirectry);
+            fprintf(fp, "\t" "_unsafeHeadObject_File: %ld\n", devStats->_unsafeHeadObject_File);
+            fprintf(fp, "\t" "_unsafeListObjects_Dir: %ld\n", devStats->_unsafeListObjects_Dir);
+            fprintf(fp, "\t" "_unsafeListObjects_Display: %ld\n", devStats->_unsafeListObjects_Display);
+            fputs("\n", fp);
+
+            fclose(fp);
+        }
+    }
+}
+
 static int app_main(int argc, wchar_t** argv,
     const wchar_t* iniSection, const wchar_t* trcDir, const std::wstring& dllType)
 {
-    // これやらないと日本語が出力できない
-    _wsetlocale(LC_ALL, L"");
-
     std::signal(SIGABRT, app_sighandler);
 
     // スレッドでの捕捉されない例外を拾えるかも
@@ -148,65 +256,86 @@ static int app_main(int argc, wchar_t** argv,
     // [順番]
     // 1) ロガー生成 (CreateLogger)
     // 2) ワーカー生成
-    // 3) DLL ロード & CloudStorage の取得
+    // 3) DLL ロード & CSDevice の取得
     // 4) WinFspMain の実行
     // 5) ワーカー解放 (スタックによる自動)
-    // 6) DLL アンロード (DllModule デストラクタ)
+    // 6) DLL アンロード (DllModuleRAII デストラクタ)
     // 7) ロガー解放 (DeleteLogger)
     //
     if (CreateLogger(tmpDir.c_str(), trcDir, dllType.c_str()))
     {
+        // traceW/A が使えるのはここから
+
         NEW_LOG_BLOCK();
 
-        // メモリ解放の順番が関係するので、下の try ブロックには入れない
-        DllModule dll;
-
-        try
         {
-            wchar_t defaultIniSection[] = L"default";
-            if (!iniSection)
+            // メモリ解放の順番が関係するので、下の try ブロックには入れない
+            DllModuleRAII dll;
+
+            try
             {
-                std::wcout << L"use default ini section" << std::endl;
-                traceW(L"use default ini section");
-                iniSection = defaultIniSection;
+                wchar_t defaultIniSection[] = L"default";
+                if (!iniSection)
+                {
+                    std::wcout << L"use default ini section" << std::endl;
+                    traceW(L"use default ini section");
+                    iniSection = defaultIniSection;
+                }
+
+                std::wcout << L"iniSection: " << iniSection << std::endl;
+                traceW(L"iniSection: %s", iniSection);
+
+                DelayedWorker dworker(tmpDir, iniSection);
+                IdleWorker iworker(tmpDir, iniSection);
+
+                std::wcout << L"load dll type=" << dllType << std::endl;
+                traceW(L"load dll type=%s", dllType.c_str());
+
+                // dll のロード
+                if (loadCSDevice(dllType, tmpDir, iniSection, &dworker, &iworker, &dll))
+                {
+                    WinCse app(tmpDir, iniSection, &dworker, &iworker, dll.mCSDevice);
+
+                    std::wcout << L"call WinFspMain" << std::endl;
+                    traceW(L"call WinFspMain");
+
+                    WINFSP_IF libif{ 0 };
+                    libif.pDriver = &app;
+
+                    ret = WinFspMain(argc, argv, PROGNAME, &libif);
+
+                    const wchar_t* logDir = GetLogger()->getOutputDirectory();
+                    if (logDir)
+                    {
+                        WINCSE_DEVICE_STATS devStats;
+                        dll.mCSDevice->queryStats(&devStats);
+
+                        writeStats(logDir, &libif.stats, &app.mStats, &devStats);
+                    }
+
+                    std::wcout << L"WinFspMain done. return=" << ret << std::endl;
+                    traceW(L"WinFspMain done. return=%s", ret ? L"true" : L"false");
+                }
+                else
+                {
+                    std::wcerr << L"fault: loadCSDevice" << std::endl;
+                    traceW(L"fault: loadCSDevice");
+                }
             }
-
-            std::wcout << L"iniSection: " << iniSection << std::endl;
-            traceW(L"iniSection: %s", iniSection);
-
-            DelayedWorker dworker(tmpDir, iniSection);
-            IdleWorker iworker(tmpDir, iniSection);
-
-            std::wcout << L"load dll type=" << dllType << std::endl;
-            traceW(L"load dll type=%s", dllType.c_str());
-
-            // dll のロード
-            if (loadCloudStorage(dllType, tmpDir, iniSection, &dworker, &iworker, &dll))
+            catch (const std::exception& ex)
             {
-                WinCse app(tmpDir, iniSection, &dworker, &iworker, dll.mStorage);
-
-                std::wcout << L"call WinFspMain" << std::endl;
-                traceW(L"call WinFspMain");
-
-                ret = WinFspMain(argc, argv, PROGNAME, &app);
-
-                std::wcout << L"WinFspMain done. return=" << ret << std::endl;
-                traceW(L"WinFspMain done. return=%s", ret ? L"true" : L"false");
+                std::cerr << "catch exception: what=" << ex.what() << std::endl;
+                traceA("catch exception: what=%s", ex.what());
             }
-            else
+            catch (...)
             {
-                std::wcerr << L"fault: loadCloudStorage" << std::endl;
-                traceW(L"fault: loadCloudStorage");
+                std::cerr << "catch exception: unknown" << std::endl;
+                traceA("catch exception: unknown");
             }
         }
-        catch (const std::runtime_error& err)
-        {
-            std::cerr << "app_main) what: " << err.what() << std::endl;
-        }
-        catch (...)
-        {
-            std::cerr << "app_main) unknown error" << std::endl;
-        }
+
+        std::wcout << L"all done." << std::endl;
+        traceW(L"all done.");
     }
     else
     {
@@ -222,6 +351,15 @@ static int app_main(int argc, wchar_t** argv,
 
 int wmain(int argc, wchar_t** argv)
 {
+    std::locale::global(std::locale("", LC_ALL));
+    std::wcout.imbue(std::locale("", LC_ALL));
+    std::wcerr.imbue(std::locale("", LC_ALL));
+
+    // これやらないと日本語が出力できない
+    _wsetlocale(LC_ALL, L"");
+    setlocale(LC_ALL, "");
+    ::SetConsoleOutputCP(CP_UTF8);
+
 #ifdef _DEBUG
     ::_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
@@ -312,7 +450,7 @@ int wmain(int argc, wchar_t** argv)
 
         rc = app_main(argc, argv, iniSection, traceLogDir, names[1]);
     }
-    catch (const std::runtime_error& err)
+    catch (const std::exception& err)
     {
         std::cerr << "wmain) what: " << err.what() << std::endl;
     }

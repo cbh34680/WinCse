@@ -1,7 +1,8 @@
 #include "WinCseLib.h"
 #include "ObjectCache.hpp"
 #include <filesystem>
-#include <inttypes.h>
+#include <mutex>
+
 
 using namespace WinCseLib;
 
@@ -14,9 +15,9 @@ using namespace WinCseLib;
 // 
 // 目的に応じて limit, delimiter の値は異なるが、主に以下のような感じになる
 // 
-//      limit=-1, delimiter=false ... ファイルの存在確認、属性取得         DoGetSecurityByName, DoOpen -> headObject, listObjects
-//      limit=1,  delimiter=false ... ディレクトリの存在確認、属性取得     DoGetSecurityByName, DoOpen -> headObject, listObjects
-//      limit=0,  delimiter=true  ... ディレクトリ中のオブジェクト一覧     DoReadDirectory             -> listObjects
+//      Purpose::CheckFile ... ファイルの存在確認、属性取得         DoGetSecurityByName, DoOpen -> headObject
+//      Purpose::CheckDir  ... ディレクトリの存在確認、属性取得     DoGetSecurityByName, DoOpen -> listObjects
+//      Purpose::Display   ... ディレクトリ中のオブジェクト一覧     DoReadDirectory             -> listObjects
 // 
 // キャッシュは上記のキーに紐づいたオブジェクトの一覧なので
 // 一件のみ保存しているときも FSP_FSCTL_DIR_INFO のリストとなる。
@@ -31,9 +32,8 @@ int eraseByTime(T& cache, std::chrono::system_clock::time_point threshold)
     {
         // 最終アクセス時間が引数より小さい場合は削除
 
-        if (it->second.lastAccessTime < threshold)
+        if (it->second.mAccessTime < threshold)
         {
-            //traceW(L"delete Positive) key=[%s][%s] limit=%d delimiter=%s", it->first.bucket.c_str(), it->first.key.c_str(), it->first.limit, it->first.delimiter ? L"true" : L"false");
             it = cache.erase(it);
             count++;
         }
@@ -46,80 +46,62 @@ int eraseByTime(T& cache, std::chrono::system_clock::time_point threshold)
     return count;
 }
 
-void ObjectCache::report(CALLER_ARG0)
+#define LN              L"\n"
+#define INDENT1         L"\t"
+#define INDENT2         L"\t\t"
+#define INDENT3         L"\t\t\t"
+#define INDENT4         L"\t\t\t\t"
+#define INDENT5         L"\t\t\t\t\t"
+
+void ObjectCache::report(CALLER_ARG FILE* fp)
 {
-    NEW_LOG_BLOCK();
+    fwprintf(fp, L"GetPositive=%d" LN, mGetPositive);
+    fwprintf(fp, L"SetPositive=%d" LN, mSetPositive);
+    fwprintf(fp, L"UpdPositive=%d" LN, mUpdPositive);
+    fwprintf(fp, L"GetNegative=%d" LN, mGetNegative);
+    fwprintf(fp, L"SetNegative=%d" LN, mSetNegative);
+    fwprintf(fp, L"UpdNegative=%d" LN, mUpdNegative);
 
-    traceW(L"GetPositive=%d", mGetPositive);
-    traceW(L"SetPositive=%d", mSetPositive);
-    traceW(L"UpdPositive=%d", mUpdPositive);
-    traceW(L"GetNegative=%d", mGetNegative);
-    traceW(L"SetNegative=%d", mSetNegative);
-    traceW(L"UpdNegative=%d", mUpdNegative);
+    fwprintf(fp, L"[PositiveCache]" LN);
+    fwprintf(fp, INDENT1 L"Positive.size=%zu" LN, mPositive.size());
 
-    traceW(L"[PositiveCache]");
+    for (const auto& it: mPositive)
     {
-        traceW(L"Positive.size=%zu", mPositive.size());
+        fwprintf(fp, INDENT1 L"bucket=[%s] key=[%s] purpose=%s" LN,
+            it.first.mBucket.c_str(), it.first.mKey.c_str(), PurposeString(it.first.mPurpose));
 
-#pragma warning(suppress: 4456)
-        NEW_LOG_BLOCK();
+        fwprintf(fp, INDENT2 L"refCount=%d" LN, it.second.mRefCount);
+        fwprintf(fp, INDENT2 L"createCallChain=%s" LN, it.second.mCreateCallChain.c_str());
+        fwprintf(fp, INDENT2 L"accessCallChain=%s" LN, it.second.mAccessCallChain.c_str());
+        fwprintf(fp, INDENT2 L"createTime=%s" LN, TimePointToLocalTimeStringW(it.second.mCreateTime).c_str());
+        fwprintf(fp, INDENT2 L"accessTime=%s" LN, TimePointToLocalTimeStringW(it.second.mAccessTime).c_str());
+        fwprintf(fp, INDENT2 L"[dirInfoList]" LN);
 
-        for (const auto& it: mPositive)
+        fwprintf(fp, INDENT3 L"dirInfoList.size=%zu" LN, it.second.mDirInfoList.size());
+
+        for (const auto& dirInfo: it.second.mDirInfoList)
         {
-            traceW(L"bucket=[%s] key=[%s] limit=%d delimiter=%s",
-                it.first.bucket.c_str(), it.first.key.c_str(), it.first.limit, it.first.delimiter ? L"true" : L"false");
+            fwprintf(fp, INDENT4 L"FileNameBuf=[%s]" LN, dirInfo->FileNameBuf);
 
-            {
-#pragma warning(suppress: 4456)
-                NEW_LOG_BLOCK();
-                traceW(L"refCount=%d", it.second.refCount);
-                traceW(L"lastCallChain=%s", it.second.lastCallChain.c_str());
-                traceW(L"lastAccessTime=%lld", TimePointToUtcSecs(it.second.lastAccessTime));
-
-                traceW(L"[dirInfoList]");
-                {
-                    traceW(L"dirInfoList.size=%zu", it.second.dirInfoList.size());
-
-#pragma warning(suppress: 4456)
-                    NEW_LOG_BLOCK();
-
-                    for (const auto& dirInfo: it.second.dirInfoList)
-                    {
-                        traceW(L"FileNameBuf=[%s]", dirInfo->FileNameBuf);
-                        {
-#pragma warning(suppress: 4456)
-                            NEW_LOG_BLOCK();
-
-                            traceW(L"FileSize=%" PRIu64, dirInfo->FileInfo.FileSize);
-                            traceW(L"FileAttributes=%u", dirInfo->FileInfo.FileAttributes);
-                            traceW(L"CreationTime=%" PRIu64, dirInfo->FileInfo.CreationTime);
-                        }
-                    }
-                }
-            }
+            fwprintf(fp, INDENT5 L"FileSize=%llu" LN, dirInfo->FileInfo.FileSize);
+            fwprintf(fp, INDENT5 L"FileAttributes=%u" LN, dirInfo->FileInfo.FileAttributes);
+            fwprintf(fp, INDENT5 L"CreationTime=%s" LN, WinFileTime100nsToLocalTimeStringW(dirInfo->FileInfo.CreationTime).c_str());
         }
     }
 
-    traceW(L"[NegativeCache]");
+    fwprintf(fp, L"[NegativeCache]" LN);
+    fwprintf(fp, INDENT1 L"mNegative.size=%zu" LN, mNegative.size());
+
+    for (const auto& it: mNegative)
     {
-        traceW(L"mNegative.size=%zu", mNegative.size());
+        fwprintf(fp, INDENT1 L"bucket=[%s] key=[%s] purpose=%s" LN,
+            it.first.mBucket.c_str(), it.first.mKey.c_str(), PurposeString(it.first.mPurpose));
 
-#pragma warning(suppress: 4456)
-        NEW_LOG_BLOCK();
-
-        for (const auto& it: mNegative)
-        {
-            traceW(L"bucket=[%s] key=[%s] limit=%d delimiter=%s",
-                it.first.bucket.c_str(), it.first.key.c_str(), it.first.limit, it.first.delimiter ? L"true" : L"false");
-
-            {
-#pragma warning(suppress: 4456)
-                NEW_LOG_BLOCK();
-                traceW(L"refCount=%d", it.second.refCount);
-                traceW(L"lastCallChain=%s", it.second.lastCallChain.c_str());
-                traceW(L"lastAccessTime=%lld", TimePointToUtcSecs(it.second.lastAccessTime));
-            }
-        }
+        fwprintf(fp, INDENT2 L"refCount=%d" LN, it.second.mRefCount);
+        fwprintf(fp, INDENT2 L"createCallChain=%s" LN, it.second.mCreateCallChain.c_str());
+        fwprintf(fp, INDENT2 L"accessCallChain=%s" LN, it.second.mAccessCallChain.c_str());
+        fwprintf(fp, INDENT2 L"createTime=%s" LN, TimePointToLocalTimeStringW(it.second.mCreateTime).c_str());
+        fwprintf(fp, INDENT2 L"accessTime=%s" LN, TimePointToLocalTimeStringW(it.second.mAccessTime).c_str());
     }
 }
 
@@ -127,22 +109,23 @@ int ObjectCache::deleteOldRecords(CALLER_ARG std::chrono::system_clock::time_poi
 {
     NEW_LOG_BLOCK();
 
-    const int delPositive = eraseByTime(mPositive, threshold);
+    const int delPositiveDir = eraseByTime(mPositive, threshold);
     const int delNegative = eraseByTime(mNegative, threshold);
 
-    traceW(L"delete records: Positive=%d Negative=%d", delPositive, delNegative);
+    traceW(L"delete records: PositiveDir=%d Negative=%d", delPositiveDir, delNegative);
 
-    return delPositive + delNegative;
+    return delPositiveDir + delNegative;
 }
 
-bool ObjectCache::getPositive(CALLER_ARG
+// ----------------------- Positive Dir
+
+bool ObjectCache::getPositive(CALLER_ARG const Purpose argPurpose,
     const std::wstring& argBucket, const std::wstring& argKey,
-    const int limit, const bool delimiter,
-    std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>>* pDirInfoList)
+    DirInfoListType* pDirInfoList)
 {
     APP_ASSERT(pDirInfoList);
 
-    const ObjectCacheKey cacheKey{ argBucket, argKey, limit, delimiter };
+    const ObjectCacheKey cacheKey{ argPurpose, argBucket, argKey };
     const auto it{ mPositive.find(cacheKey) };
 
     if (it == mPositive.end())
@@ -150,52 +133,59 @@ bool ObjectCache::getPositive(CALLER_ARG
         return false;
     }
 
-    *pDirInfoList = it->second.dirInfoList;
+    *pDirInfoList = it->second.mDirInfoList;
 
-    it->second.lastAccessTime = std::chrono::system_clock::now();
-    it->second.refCount++;
+    it->second.mAccessCallChain = CALL_CHAIN();
+    it->second.mAccessTime = std::chrono::system_clock::now();
+    it->second.mRefCount++;
     mGetPositive++;
 
     return true;
 }
 
-void ObjectCache::setPositive(CALLER_ARG
+void ObjectCache::setPositive(CALLER_ARG const Purpose argPurpose,
     const std::wstring& argBucket, const std::wstring& argKey,
-    const int limit, const bool delimiter,
-    std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>>& dirInfoList)
+    DirInfoListType& dirInfoList)
 {
     APP_ASSERT(!dirInfoList.empty());
 
-    if (limit == -1)
+    switch (argPurpose)
     {
-        // "\\bucket\\dir\\file.txt"
-
-        APP_ASSERT(!argKey.empty());
-        APP_ASSERT(argKey.back() != L'/');
-        APP_ASSERT(dirInfoList.size() == 1);
-    }
-    else
-    {
-        // limit: 0, 1
-
-        if (argKey.empty())
+        case Purpose::CheckDir:
         {
-            // "\\bucket"
-
-            APP_ASSERT(limit == 0);
-        }
-        else
-        {
-            // "\\bucket\\dir"
-
+            // ディレクトリの存在確認の為にだけ呼ばれるはず
+            APP_ASSERT(!argKey.empty());
             APP_ASSERT(argKey.back() == L'/');
+
+            break;
+        }
+        case Purpose::Display:
+        {
+            // DoReadDirectory() からのみ呼び出されるはず
+            if (!argKey.empty())
+            {
+                APP_ASSERT(argKey.back() == L'/');
+            }
+
+            break;
+        }
+        case Purpose::CheckFile:
+        {
+            // ファイルの存在確認の為にだけ呼ばれるはず
+            APP_ASSERT(!argKey.empty());
+            APP_ASSERT(argKey.back() != L'/');
+
+            break;
+        }
+        default:
+        {
+            APP_ASSERT(0);
         }
     }
-
 
     // キャッシュにコピー
 
-    const ObjectCacheKey cacheKey{ argBucket, argKey, limit, delimiter };
+    const ObjectCacheKey cacheKey{ argPurpose, argBucket, argKey };
     const PosisiveCacheVal cacheVal{ CONT_CALLER dirInfoList };
 
     if (mPositive.find(cacheKey) == mPositive.end())
@@ -207,15 +197,49 @@ void ObjectCache::setPositive(CALLER_ARG
         mUpdPositive++;
     }
 
-    //mPositive[cacheKey] = cacheVal;
     mPositive.emplace(cacheKey, cacheVal);
 }
 
-bool ObjectCache::isInNegative(CALLER_ARG
+// ----------------------- Positive File
+
+bool ObjectCache::getPositive_File(CALLER_ARG
     const std::wstring& argBucket, const std::wstring& argKey,
-    const int limit, const bool delimiter)
+    DirInfoType* pDirInfo)
 {
-    const ObjectCacheKey cacheKey{ argBucket, argKey, limit, delimiter };
+    APP_ASSERT(pDirInfo);
+
+    DirInfoListType dirInfoList;
+
+    if (!getPositive(CONT_CALLER Purpose::CheckFile, argBucket, argKey, &dirInfoList))
+    {
+        return false;
+    }
+
+    APP_ASSERT(dirInfoList.size() == 1);
+    *pDirInfo = (*dirInfoList.begin());
+
+    return true;
+}
+
+void ObjectCache::setPositive_File(CALLER_ARG
+    const std::wstring& argBucket, const std::wstring& argKey,
+    DirInfoType& dirInfo)
+{
+    APP_ASSERT(dirInfo);
+
+    // キャッシュにコピー
+
+    DirInfoListType dirInfoList{ dirInfo };
+
+    setPositive(CONT_CALLER Purpose::CheckFile, argBucket, argKey, dirInfoList);
+}
+
+// ----------------------- Negative Dir
+
+bool ObjectCache::isInNegative(CALLER_ARG const Purpose argPurpose,
+    const std::wstring& argBucket, const std::wstring& argKey)
+{
+    const ObjectCacheKey cacheKey{ argPurpose, argBucket, argKey };
     const auto it{ mNegative.find(cacheKey) };
 
     if (it == mNegative.end())
@@ -223,20 +247,20 @@ bool ObjectCache::isInNegative(CALLER_ARG
         return false;
     }
 
-    it->second.lastAccessTime = std::chrono::system_clock::now();
-    it->second.refCount++;
+    it->second.mAccessCallChain = CALL_CHAIN();
+    it->second.mAccessTime = std::chrono::system_clock::now();
+    it->second.mRefCount++;
     mGetNegative++;
 
     return true;
 }
 
-void ObjectCache::addNegative(CALLER_ARG
-    const std::wstring& argBucket, const std::wstring& argKey,
-    const int limit, const bool delimiter)
+void ObjectCache::addNegative(CALLER_ARG const Purpose argPurpose,
+    const std::wstring& argBucket, const std::wstring& argKey)
 {
     // キャッシュにコピー
 
-    const ObjectCacheKey cacheKey{ argBucket, argKey, limit, delimiter };
+    const ObjectCacheKey cacheKey{ argPurpose, argBucket, argKey };
     const NegativeCacheVal cacheVal{ CONT_CALLER0 };
 
     if (mNegative.find(cacheKey) == mNegative.end())
@@ -250,5 +274,29 @@ void ObjectCache::addNegative(CALLER_ARG
 
     mNegative.emplace(cacheKey, cacheVal);
 }
+
+// ----------------------- Negative File
+
+bool ObjectCache::isInNegative_File(CALLER_ARG
+    const std::wstring& argBucket, const std::wstring& argKey)
+{
+    return isInNegative(CONT_CALLER Purpose::CheckFile, argBucket, argKey);
+}
+
+void ObjectCache::addNegative_File(CALLER_ARG
+    const std::wstring& argBucket, const std::wstring& argKey)
+{
+    addNegative(CONT_CALLER Purpose::CheckFile, argBucket, argKey);
+}
+
+static const wchar_t* PURPOSE_STRINGS[] = { L"*None*", L"CheckDir", L"Display", L"CheckFile", };
+
+const wchar_t* PurposeString(const Purpose p)
+{
+    const int i = static_cast<int>(p);
+    APP_ASSERT(i < _countof(PURPOSE_STRINGS));
+
+    return PURPOSE_STRINGS[i];
+};
 
 // EOF

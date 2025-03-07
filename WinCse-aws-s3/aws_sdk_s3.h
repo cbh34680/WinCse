@@ -2,11 +2,6 @@
 //
 // AWS SDK 関連
 //
-// これらのヘッダにより set<string> や vector<string> の変数が
-// Aws::String のものになってしまう
-// よくわからないが、解決するまでは基本的に wstring を使い
-// sdk の関数とのやり取りに string が必要な場合は c_str() を経由する
-//
 
 #include "internal_undef_alloc.h"
 

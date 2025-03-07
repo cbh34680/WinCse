@@ -63,28 +63,21 @@ $LblTextAlign     = [System.Drawing.ContentAlignment]::MiddleLeft
 #
 $MachineGuid      = Get-ItemPropertyValue -Path "HKLM:\SOFTWARE\Microsoft\Cryptography" -Name "MachineGuid"
 $SecureKeyStr     = $MachineGuid -replace '-',''
-$SecureKey        = [System.Text.Encoding]::UTF8.GetBytes($SecureKeyStr)
+$SecureKeyBytes   = [System.Text.Encoding]::UTF8.GetBytes($SecureKeyStr)
 
-$Aes              = [System.Security.Cryptography.AesManaged]::new()
-$Aes.Key          = $SecureKey[0..31]
-$Aes.IV           = $Aes.Key[0..15]
-$Encryptor        = $Aes.CreateEncryptor()
+$AesKeyId         = [System.Security.Cryptography.AesManaged]::new()
+$AesKeyId.Key     = $SecureKeyBytes[0..31]
+$AesKeyId.GenerateIV()
+$EncryptorKeyId   = $AesKeyId.CreateEncryptor()
+
+$AesSecret        = [System.Security.Cryptography.AesManaged]::new()
+$AesSecret.Key    = $SecureKeyBytes[0..31]
+$AesSecret.GenerateIV()
+$EncryptorSecret  = $AesSecret.CreateEncryptor()
 
 # -----------------
 # Function
 #
-function Test-Encrypt {
-    $input = "Hello, World!`0"
-
-    $PlainTextBytes = [System.Text.Encoding]::UTF8.GetBytes($input)
-    $EncryptedBytes = $Encryptor.TransformFinalBlock($PlainTextBytes, 0, $PlainTextBytes.Length)
-    $EncryptedB64Str = [Convert]::ToBase64String($EncryptedBytes)
-
-    $expectOutput = "lnsb3SErHgurhMvgiYaROQ=="
-
-    return $EncryptedB64Str -eq $expectOutput
-}
-
 function Test-IsAdmin {
     $currentUser = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     return $currentUser.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -118,15 +111,28 @@ function Msg-OK {
     )
 }
 
-function To-EncryptString {
+function KeyId-EncryptString {
     param (
         [Parameter(Mandatory=$true)]
         [string]$Text
     )
 
     $PlainTextBytes = [System.Text.Encoding]::UTF8.GetBytes("${Text}`0")
-    $EncryptedBytes = $Encryptor.TransformFinalBlock($PlainTextBytes, 0, $PlainTextBytes.Length)
-    $EncryptedB64Str = [Convert]::ToBase64String($EncryptedBytes)
+    $EncryptedBytes = $EncryptorKeyId.TransformFinalBlock($PlainTextBytes, 0, $PlainTextBytes.Length)
+    $EncryptedB64Str = [Convert]::ToBase64String($AesKeyId.IV + $EncryptedBytes)
+
+    return $EncryptedB64Str
+}
+
+function Secret-EncryptString {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Text
+    )
+
+    $PlainTextBytes = [System.Text.Encoding]::UTF8.GetBytes("${Text}`0")
+    $EncryptedBytes = $EncryptorSecret.TransformFinalBlock($PlainTextBytes, 0, $PlainTextBytes.Length)
+    $EncryptedB64Str = [Convert]::ToBase64String($AesSecret.IV + $EncryptedBytes)
 
     return $EncryptedB64Str
 }
@@ -134,12 +140,6 @@ function To-EncryptString {
 # -----------------
 # Check
 #
-
-# check Encrypt
-if (-not (Test-Encrypt)) {
-    Msg-Warn -Text "AES Encrypt Test error."
-    Exit 1
-}
 
 # has Admin ?
 if (-not (Test-IsAdmin)) {
@@ -431,11 +431,11 @@ $btn_reg.Add_Click({
 
     if ($chk_encrypt) {
         if ($keyid -ne "") {
-            $keyid = "{AES256}" + (To-EncryptString -Text $keyid)
+            $keyid = "{aes256}" + (KeyId-EncryptString -Text $keyid)
         }
 
         if ($secret -ne "") {
-            $secret = "{AES256}" + (To-EncryptString -Text $secret)
+            $secret = "{aes256}" + (Secret-EncryptString -Text $secret)
         }
     }
 
@@ -575,13 +575,22 @@ region=${region}
 ; You can select the bucket names to display using wildcards as follows.
 #bucket_filters=my-bucket-1,my-bucket-2*
 
+; Assign the read-only attribute to the file.
+#readonly=0
+
 ; Changing the following values will affect the response.
 ;
+; Maximum number of display buckets
+#max_buckets=-1
+
 ; Maximum number of display objects
 #max_objects=1000
 
 ; The maximum file size that can be opened
 #max_filesize_mb=4
+
+; File names matching the following regular expression patterns will be ignored.
+re_ignored_patterns=.*\\(desktop\.ini|autorun\.inf|thumbs\.db|\.DS_Store)$
 
 ; ----------
 ; INFO
@@ -594,6 +603,7 @@ region=${region}
 #    dir:       [${workdir_dir}]
 ${info_log_dir}
 
+# EOF
 "@
 
     Set-Content -Path $conf_path -Value $conf

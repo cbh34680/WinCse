@@ -1,6 +1,7 @@
 #include "WinCseLib.h"
 #include "DelayedWorker.hpp"
 #include <filesystem>
+#include <queue>
 #include <mutex>
 #include <sstream>
 
@@ -12,7 +13,7 @@ using namespace WinCseLib;
 
 #if ENABLE_TASK
 // タスク処理が有効
-const int WORKER_MAX = 2;
+const int WORKER_MAX = 4;
 
 #else
 // タスク処理が無効
@@ -20,27 +21,7 @@ const int WORKER_MAX = 0;
 
 #endif
 
-DelayedWorker::DelayedWorker(const std::wstring& tmpdir, const std::wstring& iniSection)
-	: mTempDir(tmpdir), mIniSection(iniSection), mTaskSkipCount(0)
-{
-	// OnSvcStart の呼び出し順によるイベントオブジェクト未生成を
-	// 回避するため、コンストラクタで生成して OnSvcStart で null チェックする
-
-	mEvent = ::CreateEvent(NULL, FALSE, FALSE, NULL);
-}
-
-DelayedWorker::~DelayedWorker()
-{
-	NEW_LOG_BLOCK();
-
-	if (mEvent)
-	{
-		traceW(L"close event");
-		::CloseHandle(mEvent);
-	}
-}
-
-bool DelayedWorker::OnSvcStart(const wchar_t* argWorkDir)
+bool DelayedWorker::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 {
 	NEW_LOG_BLOCK();
 	APP_ASSERT(argWorkDir);
@@ -66,9 +47,11 @@ struct BreakLoopRequest : public std::exception
 
 struct BreakLoopTask : public ITask
 {
-	void run(CALLER_ARG IWorker* worker, const int indent) override
+	void run(CALLER_ARG0) override
 	{
-		GetLogger()->traceW_impl(indent, __FUNCTIONW__, __LINE__, __FUNCTIONW__, L"throw break");
+		NEW_LOG_BLOCK();
+
+		traceW(L"throw break");
 
 		throw BreakLoopRequest("from " __FUNCTION__);
 	}
@@ -78,20 +61,27 @@ void DelayedWorker::OnSvcStop()
 {
 	NEW_LOG_BLOCK();
 
-	traceW(L"wait for thread end ...");
+	// デストラクタからも呼ばれるので、再入可能としておくこと
 
-	for (int i=0; i<mThreads.size(); i++)
+	if (!mThreads.empty())
 	{
-		// 最優先の停止命令
-		addTask(new BreakLoopTask, CanIgnore::NO, Priority::HIGH);
-	}
+		traceW(L"wait for thread end ...");
 
-	for (auto& thr: mThreads)
-	{
-		thr.join();
-	}
+		for (int i=0; i<mThreads.size(); i++)
+		{
+			// 最優先の停止命令
+			addTask(START_CALLER new BreakLoopTask, Priority::High, CanIgnore::No);
+		}
 
-	traceW(L"done.");
+		for (auto& thr: mThreads)
+		{
+			thr.join();
+		}
+
+		mThreads.clear();
+
+		traceW(L"done.");
+	}
 }
 
 void DelayedWorker::listenEvent(const int i)
@@ -140,8 +130,8 @@ void DelayedWorker::listenEvent(const int i)
 				}
 
 				traceW(L"(%d): run oneshot task ...", i);
-				task->_mWorkerId_4debug = i;
-				task->run(INIT_CALLER this, LOG_DEPTH());
+				task->mWorkerId_4debug = i;
+				task->run(task->mCaller_4debug + L"->" + __FUNCTIONW__);
 				traceW(L"(%d): run oneshot task done", i);
 
 				// 処理するごとに他のスレッドに回す
@@ -150,30 +140,70 @@ void DelayedWorker::listenEvent(const int i)
 		}
 		catch (const BreakLoopRequest&)
 		{
-			traceW(L"(%d): catch loop-break request, go exit thread", i);
+			traceA("(%d): catch loop-break request, go exit thread", i);
 			break;
 		}
-		catch (const std::runtime_error& err)
+		catch (const std::exception& err)
 		{
-			traceW(L"(%d): what: %s", i, err.what());
+			traceA("(%d): what: %s", i, err.what());
 			break;
 		}
 		catch (...)
 		{
-			traceW(L"(%d): unknown error, continue", i);
+			traceA("(%d): unknown error, continue", i);
 		}
 	}
 
 	traceW(L"(%d): exit event loop", i);
 }
 
-static std::mutex gGuard;
+//
+// メンバに配置するとこのファイル以外からもアクセスできてしまう
+// ことの回避処置。
+// 
+// static に置くとメモリリークとして認識されたり、いろいろ面倒なので
+// コンストラクタとデストラクタで管理する
+//
+static struct LocalData
+{
+	std::mutex mGuard;
+	std::deque<std::unique_ptr<WinCseLib::ITask>> mTaskQueue;
+}
+*Local;
 
-#define THREAD_SAFE() \
-    std::lock_guard<std::mutex> lock_(gGuard)
+DelayedWorker::DelayedWorker(const std::wstring& tmpdir, const std::wstring& iniSection)
+	: mTempDir(tmpdir), mIniSection(iniSection), mTaskSkipCount(0)
+{
+	Local = new LocalData;
+	APP_ASSERT(Local);
+
+	// OnSvcStart の呼び出し順によるイベントオブジェクト未生成を
+	// 回避するため、コンストラクタで生成して OnSvcStart で null チェックする
+
+	mEvent = ::CreateEvent(NULL, FALSE, FALSE, NULL);
+	APP_ASSERT(mEvent);
+}
+
+DelayedWorker::~DelayedWorker()
+{
+	NEW_LOG_BLOCK();
+
+	this->OnSvcStop();
+
+	traceW(L"close event");
+	::CloseHandle(mEvent);
+
+	delete Local;
+}
 
 
-bool DelayedWorker::addTask(ITask* argTask, CanIgnore ignState, Priority priority)
+//
+// ここから下のメソッドは THREAD_SAFE マクロによる修飾が必要
+//
+#define THREAD_SAFE() std::lock_guard<std::mutex> lock_(Local->mGuard)
+
+
+bool DelayedWorker::addTask(CALLER_ARG WinCseLib::ITask* argTask, WinCseLib::Priority priority, WinCseLib::CanIgnore ignState)
 {
 	THREAD_SAFE();
 	NEW_LOG_BLOCK();
@@ -183,37 +213,43 @@ bool DelayedWorker::addTask(ITask* argTask, CanIgnore ignState, Priority priorit
 
 #if ENABLE_TASK
 	argTask->mPriority = priority;
+	argTask->mCaller_4debug = CALL_CHAIN();
 
-	if (priority == Priority::HIGH)
+	if (priority == Priority::High)
 	{
 		// 優先する場合は先頭に追加
 
-		mTaskQueue.emplace_front(argTask);
+		Local->mTaskQueue.emplace_front(argTask);
 
 		added = true;
 	}
 	else
 	{
 		// 通常は後方に追加
-		const auto argTaskName{ argTask->synonymString() };
-
-		if (ignState == CanIgnore::YES)
+		
+		if (ignState == CanIgnore::Yes)
 		{
+			const auto argTaskName{ argTask->synonymString() };
+
+			// キャンセル可能の時には synonym は設定されるべき
+			APP_ASSERT(!argTaskName.empty());
+
 			// 無視可能
-			const auto it = std::find_if(mTaskQueue.begin(), mTaskQueue.end(), [&argTaskName](const auto& task)
+			const auto it = std::find_if(Local->mTaskQueue.begin(), Local->mTaskQueue.end(), [&argTaskName](const auto& task)
 			{
 				// キューから同じシノニムを探す
 				return task->synonymString() == argTaskName;
 			});
 
-			if (it == mTaskQueue.end())
+			if (it == Local->mTaskQueue.end())
 			{
 				// 同等のものが存在しない
 				added = true;
 			}
 			else
 			{
-				// skip ??
+				traceW(L"[%s]: task ignored", argTaskName.c_str());
+
 				mTaskSkipCount++;
 			}
 		}
@@ -226,22 +262,20 @@ bool DelayedWorker::addTask(ITask* argTask, CanIgnore ignState, Priority priorit
 		if (added)
 		{
 			// 後方に追加
-			mTaskQueue.emplace_back(argTask);
 
-			traceW(L"[%s]: task added", argTaskName.c_str());
-		}
-		else
-		{
-			delete argTask;
-
-			traceW(L"[%s]: task ignored", argTaskName.c_str());
+			Local->mTaskQueue.emplace_back(argTask);
 		}
 	}
 
 	if (added)
 	{
 		// WaitForSingleObject() に通知
-		::SetEvent(mEvent);
+		const auto b = ::SetEvent(mEvent);
+		APP_ASSERT(b);
+	}
+	else
+	{
+		delete argTask;
 	}
 
 #else
@@ -253,16 +287,16 @@ bool DelayedWorker::addTask(ITask* argTask, CanIgnore ignState, Priority priorit
 	return added;
 }
 
-std::shared_ptr<ITask> DelayedWorker::dequeueTask()
+std::unique_ptr<ITask> DelayedWorker::dequeueTask()
 {
 	THREAD_SAFE();
 	//NEW_LOG_BLOCK();
 
 #if ENABLE_TASK
-	if (!mTaskQueue.empty())
+	if (!Local->mTaskQueue.empty())
 	{
-		auto ret{ mTaskQueue.front() };
-		mTaskQueue.pop_front();
+		auto ret{ std::move(Local->mTaskQueue.front()) };
+		Local->mTaskQueue.pop_front();
 
 		return ret;
 	}

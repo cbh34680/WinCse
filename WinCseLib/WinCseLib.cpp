@@ -1,6 +1,7 @@
 #include "WinCseLib.h"
 #include <sstream>
 #include <fstream>
+#include <filesystem>
 #include <dbghelp.h>
 
 #pragma comment(lib, "Crypt32.lib")             // CryptBinaryToStringA
@@ -9,66 +10,62 @@
 
 namespace WinCseLib {
 
-std::wstring WinCseLib::ITask::synonymString()
-{
-	static std::atomic<int> aint(0);
-
-	std::wstringstream ss;
-
-	ss << MB2WC(typeid(*this).name());
-	ss << L"; ";
-	ss << aint++;
-
-	return ss.str();
-}
-
 void AbnormalEnd(const char* file, const int line, const char* func, const int signum)
 {
-	wchar_t tempPath[MAX_PATH];
-	::GetTempPathW(MAX_PATH, tempPath);
+	wchar_t szTempPath[MAX_PATH];
+	::GetTempPathW(MAX_PATH, szTempPath);
+	std::wstring tempPath{ szTempPath };
 
 	const DWORD pid = ::GetCurrentProcessId();
 	const DWORD tid = ::GetCurrentThreadId();
 
-	std::wstring fpath;
+	std::wstringstream ssPath;
+	ssPath << tempPath;
 
+	if (std::filesystem::is_directory(tempPath + L"WinCse"))
 	{
-		std::wstringstream ss;
-		ss << tempPath;
-		ss << L"WinCse-abend-";
-		ss << pid;
-		ss << L'-';
-		ss << tid;
-		ss << L".log";
-
-		fpath = ss.str();
+		ssPath << L"WinCse\\";
+	}
+	else
+	{
+		ssPath << L"WinCse-";
 	}
 
-	std::ofstream ofs{ fpath, std::ios_base::app };
+	ssPath << L"abend-";
+	ssPath << pid;
+	ssPath << L'-';
+	ssPath << tid;
+	ssPath << L".log";
 
+	std::ofstream ofs{ ssPath.str(), std::ios_base::app };
+
+	//
+	std::stringstream ssCause;
+	ssCause << std::endl;
+	ssCause << "cause; ";
+	ssCause << file;
+	ssCause << "(";
+	ssCause << line;
+	ssCause << "); signum(";
+	ssCause << signum;
+	ssCause << "); ";
+	ssCause << func;
+	ssCause << std::endl;
+	ssCause << "GetLastError()=";
+	ssCause << ::GetLastError();
+	ssCause << std::endl;
+	ssCause << std::endl;
+
+	const std::string causeStr{ ssCause.str() };
+
+	::OutputDebugStringA(causeStr.c_str());
+
+	if (ofs)
 	{
-		std::stringstream ss;
-
-		ss << std::endl;
-		ss << file;
-		ss << "(";
-		ss << line;
-		ss << "); signum(";
-		ss << signum;
-		ss << "); ";
-		ss << func;
-		ss << std::endl;
-
-		const std::string ss_str{ ss.str() };
-
-		::OutputDebugStringA(ss_str.c_str());
-
-		if (ofs)
-		{
-			ofs << ss_str;
-		}
+		ofs << causeStr;
 	}
 
+	//
 	const int maxFrames = 62;
 	void* stack[maxFrames];
 	HANDLE process = ::GetCurrentProcess();
@@ -158,18 +155,18 @@ static thread_local int mDepth = 0;
 
 
 LogBlock::LogBlock(const wchar_t* argFile, const int argLine, const wchar_t* argFunc)
-	: file(argFile), line(argLine), func(argFunc)
+	: mFile(argFile), mLine(argLine), mFunc(argFunc)
 {
 	mCounter++;
 
-	GetLogger()->traceW_impl(mDepth, file, line, func, L"{enter}");
+	GetLogger()->traceW_impl(mDepth, mFile, mLine, mFunc, L"{enter}");
 	mDepth++;
 }
 
 LogBlock::~LogBlock()
 {
 	mDepth--;
-	GetLogger()->traceW_impl(mDepth, file, -1, func, L"{leave}");
+	GetLogger()->traceW_impl(mDepth, mFile, -1, mFunc, L"{leave}");
 }
 
 int LogBlock::depth()

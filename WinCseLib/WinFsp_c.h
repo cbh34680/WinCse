@@ -33,13 +33,9 @@ typedef struct
     PVOID DirBuffer;
 
     // í«â¡èÓïÒ
-    struct
-    {
-        PWSTR FileName;
-        FSP_FSCTL_FILE_INFO FileInfo;
-        PVOID CSData;
-    }
-    Open;
+    PWSTR FileName;
+    FSP_FSCTL_FILE_INFO FileInfo;
+    PVOID UParam;
 }
 PTFS_FILE_CONTEXT;
 

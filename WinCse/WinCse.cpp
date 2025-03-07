@@ -9,19 +9,19 @@ using namespace WinCseLib;
 
 
 WinCse::WinCse(const std::wstring& argTempDir, const std::wstring& argIniSection,
-	IWorker* delayedWorker, IWorker* idleWorker, ICloudStorage* cloudStorage) :
+	IWorker* argDelayedWorker, IWorker* argIdleWorker, ICSDevice* argCSDevice) :
 	mTempDir(argTempDir), mIniSection(argIniSection),
-	mDelayedWorker(delayedWorker), mIdleWorker(idleWorker), mStorage(cloudStorage),
+	mDelayedWorker(argDelayedWorker), mIdleWorker(argIdleWorker), mCSDevice(argCSDevice),
 	mMaxFileSize(-1),
-	mIgnoreFileNamePattern{ LR"(.*\\(desktop\.ini|autorun\.inf|thumbs\.db)$)", std::regex_constants::icase }
+	mIgnoredFileNamePatterns{ LR"(.*\\(desktop\.ini|autorun\.inf|thumbs\.db|\.DS_Store)$)", std::regex_constants::icase }
 {
 	NEW_LOG_BLOCK();
 
 	APP_ASSERT(std::filesystem::exists(argTempDir));
 	APP_ASSERT(std::filesystem::is_directory(argTempDir));
-	APP_ASSERT(delayedWorker);
-	APP_ASSERT(idleWorker);
-	APP_ASSERT(cloudStorage);
+	APP_ASSERT(argDelayedWorker);
+	APP_ASSERT(argIdleWorker);
+	APP_ASSERT(argCSDevice);
 }
 
 WinCse::~WinCse()
@@ -45,227 +45,152 @@ WinCse::~WinCse()
 	traceW(L"all done.");
 }
 
-bool WinCse::isIgnoreFileName(const wchar_t* arg)
+NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
+	PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo)
 {
-	// desktop.ini などリクエストが増え過ぎるものは無視する
+	StatsIncr(DoOpen);
 
-	return std::regex_match(std::wstring(arg), mIgnoreFileNamePattern);
-}
-
-//
-// passthrough.c から拝借
-//
-NTSTATUS WinCse::HandleToInfo(HANDLE handle, PUINT32 PFileAttributes,
-	PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize)
-{
-	NEW_LOG_BLOCK();
-
-	FILE_ATTRIBUTE_TAG_INFO AttributeTagInfo = {};
-	DWORD SecurityDescriptorSizeNeeded = 0;
-
-	if (0 != PFileAttributes)
-	{
-		if (!::GetFileInformationByHandleEx(handle,
-			FileAttributeTagInfo, &AttributeTagInfo, sizeof AttributeTagInfo))
-		{
-			return FspNtStatusFromWin32(::GetLastError());
-		}
-
-		traceW(L"FileAttributes: %u", AttributeTagInfo.FileAttributes);
-		traceW(L"\tdetect: %s", AttributeTagInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY ? L"dir" : L"file");
-
-		*PFileAttributes = AttributeTagInfo.FileAttributes;
-	}
-
-	if (0 != PSecurityDescriptorSize)
-	{
-		if (!::GetKernelObjectSecurity(handle,
-			OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
-			SecurityDescriptor, (DWORD)*PSecurityDescriptorSize, &SecurityDescriptorSizeNeeded))
-		{
-			*PSecurityDescriptorSize = SecurityDescriptorSizeNeeded;
-			return FspNtStatusFromWin32(::GetLastError());
-		}
-
-		traceW(L"SecurityDescriptorSizeNeeded: %u", SecurityDescriptorSizeNeeded);
-
-		*PSecurityDescriptorSize = SecurityDescriptorSizeNeeded;
-	}
-
-	return STATUS_SUCCESS;
-}
-
-NTSTATUS WinCse::FileNameToFileInfo(const wchar_t* FileName, FSP_FSCTL_FILE_INFO* pFileInfo)
-{
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileName);
-	APP_ASSERT(pFileInfo);
+	APP_ASSERT(FileName[0] == L'\\');
+	APP_ASSERT(!isFileNameIgnored(FileName));
+	APP_ASSERT(PFileContext);
+	APP_ASSERT(FileInfo);
 
+	traceW(L"FileName: \"%s\"", FileName);
+	traceW(L"CreateOptions=%u, GrantedAccess=%u, PFileContext=%p, FileInfo=%p", CreateOptions, GrantedAccess, PFileContext, FileInfo);
+
+	PTFS_FILE_CONTEXT* FileContext = nullptr;
 	FSP_FSCTL_FILE_INFO fileInfo = {};
+	NTSTATUS Result = STATUS_UNSUCCESSFUL;
 
-	bool isDir = false;
-	bool isFile = false;
+	Result = FileNameToFileInfo(START_CALLER FileName, &fileInfo);
+	if (!NT_SUCCESS(Result))
+	{
+		traceW(L"fault: FileNameToFileInfo");
+		goto exit;
+	}
+
+	// 念のため検査
+	//APP_ASSERT(fileInfo.FileAttributes);
+	APP_ASSERT(fileInfo.CreationTime);
+
+	// WinFsp に保存されるファイル・コンテキストを生成
+	// このメモリは WinFsp の Close() で削除されるため解放不要
+
+	FileContext = (PTFS_FILE_CONTEXT*)calloc(1, sizeof *FileContext);
+	if (!FileContext)
+	{
+		traceW(L"fault: allocate FileContext");
+		Result = STATUS_INSUFFICIENT_RESOURCES;
+		goto exit;
+	}
+
+	FileContext->FileName = _wcsdup(FileName);
+	if (!FileContext->FileName)
+	{
+		traceW(L"fault: allocate FileContext->OpenFileName");
+		Result = STATUS_INSUFFICIENT_RESOURCES;
+		goto exit;
+	}
 
 	if (wcscmp(FileName, L"\\") == 0)
 	{
-		// "\" へのアクセスは参照用ディレクトリの情報を提供
-		isDir = true;
-		traceW(L"detect directory/1");
+		traceW(L"root access");
 
-		GetFileInfoInternal(this->mDirRefHandle, &fileInfo);
+		APP_ASSERT(fileInfo.FileSize == 0);
 	}
 	else
 	{
-		// ここに来るのは "\\bucket" 又は "\\bucket\\key" のみ
-
-		// DoGetSecurityByName() と同様の検査をして、その結果を PFileContext
-		// と FileInfo に反映させる
-
 		const BucketKey bk{ FileName };
-		if (!bk.OK)
-		{
-			traceW(L"illegal FileName: %s", FileName);
 
+		if (!bk.OK())
+		{
+			traceW(L"illegal FileName: \"%s\"", FileName);
 			return STATUS_INVALID_PARAMETER;
 		}
 
-		if (bk.HasKey)
+		if (fileInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 		{
-			// "\bucket\key" のパターン
+			// ディレクトリへのアクセス
 
-			// "key/" で一件のみ取得して、存在したらディレクトリが存在すると
-			// 判定して、その情報をディレクトリ属性として採用
-
-			std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>> dirInfoList;
-
-			//
-			// SetDelimiter("/") を設定すると CommonPrefix で取得してしまい
-			// CreationTime などが 0 になってしまうため false
-			//
-			if (mStorage->listObjects(INIT_CALLER bk.bucket, bk.key + L'/', &dirInfoList, 1, false))
-			{
-				APP_ASSERT(!dirInfoList.empty());
-				APP_ASSERT(dirInfoList.size() == 1);
-
-				// ディレクトリを採用
-				isDir= true;
-				traceW(L"detect directory/2");
-
-				// ディレクトリの場合は FSP_FSCTL_FILE_INFO に適当な値を埋める
-				// ... 取得した要素の情報([0]) がファイルの場合もあるので、編集が必要
-
-				const auto& dirInfo(dirInfoList[0]);
-				const auto FileTime = dirInfo->FileInfo.ChangeTime;
-
-				fileInfo.FileAttributes = FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY;
-				fileInfo.CreationTime = FileTime;
-				fileInfo.LastAccessTime = FileTime;
-				fileInfo.LastWriteTime = FileTime;
-				fileInfo.ChangeTime = FileTime;
-				fileInfo.IndexNumber = HashString(bk.bucket + L'/' + bk.key);
-			}
-
-			if (!isDir)
-			{
-				// ファイル名の完全一致で検索
-
-				if (mStorage->headObject(INIT_CALLER bk.bucket, bk.key, &fileInfo))
-				{
-					// ファイルを採用
-					isFile = true;
-					traceW(L"detect file");
-				}
-			}
+			APP_ASSERT(fileInfo.FileSize == 0);
 		}
 		else
 		{
-			// "\bucket" のパターン
+			// ファイルへのアクセス
 
-			// HeadBucket ではメタ情報が取得できないので ListBuckets から名前が一致するものを取得
+			APP_ASSERT(bk.hasKey());
 
-			std::vector<std::shared_ptr<FSP_FSCTL_DIR_INFO>> dirInfoList;
+			// マルチパート処理次第で最大ファイル・サイズの制限をなくす
 
-			// 名前を指定してリストを取得
+			traceW(L"FileSize: %llu", fileInfo.FileSize);
 
-			const std::vector<std::wstring>& options = { bk.bucket };
-
-			if (mStorage->listBuckets(INIT_CALLER &dirInfoList, options))
+			if (mMaxFileSize > 0)
 			{
-				APP_ASSERT(!dirInfoList.empty());
+				if (fileInfo.FileSize > 1024ULL * 1024 * mMaxFileSize)
+				{
+					Result = STATUS_DEVICE_NOT_READY;
+					traceW(L"%llu: When a file size exceeds the maximum size that can be opened.", fileInfo.FileSize);
+					goto exit;
+				}
+			}
 
-				// ディレクトリを採用
-				isDir = true;
-				traceW(L"detect directory/3");
+			// クラウド・ストレージのコンテキストを UParam に保存させる
 
-				fileInfo = dirInfoList[0]->FileInfo;
+			if (!mCSDevice->openFile(START_CALLER
+				bk.bucket(), bk.key(), CreateOptions, GrantedAccess, fileInfo, &FileContext->UParam))
+			{
+				traceW(L"fault: openFile");
+				Result = STATUS_DEVICE_NOT_READY;
+				goto exit;
 			}
 		}
 	}
 
-	if (!isDir && !isFile)
+	FileContext->FileInfo = fileInfo;
+
+	// SUCSESS RETURN
+
+	*PFileContext = FileContext;
+	FileContext = nullptr;
+
+	*FileInfo = fileInfo;
+
+exit:
+	if (FileContext)
 	{
-		traceW(L"not found");
-
-		return STATUS_OBJECT_NAME_NOT_FOUND;
+		free(FileContext->FileName);
 	}
+	free(FileContext);
 
-	*pFileInfo = fileInfo;
+	traceW(L"return %ld", Result);
 
-	return STATUS_SUCCESS;
+	return Result;
 }
 
-//
-// BucketKey
-//
-
-// 文字列をバケット名とキーに分割
-BucketKey::BucketKey(const wchar_t* arg)
+NTSTATUS WinCse::DoClose(PTFS_FILE_CONTEXT* FileContext)
 {
-	std::wstring str{ arg };
+	StatsIncr(DoClose);
 
-	std::vector<std::wstring> tokens;
-	std::wistringstream stream(str);
-	std::wstring token;
+	NEW_LOG_BLOCK();
+	APP_ASSERT(FileContext);
 
-	while (std::getline(stream, token, L'\\'))
+	traceW(L"Open.FileName: \"%s\"", FileContext->FileName);
+
+	if (FileContext->UParam)
 	{
-		tokens.push_back(token);
+		// クラウド・ストレージに UParam を解放させる
+
+		StatsIncr(_CallCloseFile);
+		mCSDevice->closeFile(START_CALLER FileContext->UParam);
 	}
 
-	switch (tokens.size())
-	{
-		case 0:
-		case 1:
-		{
-			return;
-		}
-		case 2:
-		{
-			bucket = std::move(tokens[1]);
-			break;
-		}
-		default:
-		{
-			bucket = std::move(tokens[1]);
+	free(FileContext->FileName);
 
-			std::wostringstream ss;
-			for (int i = 2; i < tokens.size(); ++i)
-			{
-				if (i != 2)
-				{
-					ss << L'/';
-				}
-				ss << std::move(tokens[i]);
-			}
+	// FileContext は呼び出し元で free している
 
-			key = ss.str();
-			HasKey = true;
-
-			break;
-		}
-	}
-
-	OK = true;
+	return STATUS_SUCCESS;
 }
 
 // EOF

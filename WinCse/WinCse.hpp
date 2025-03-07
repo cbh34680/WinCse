@@ -1,34 +1,40 @@
 #pragma once
 
-#include <string>
 #include <regex>
 
 // 文字列をバケット名とキーに分割
-struct BucketKey
+class BucketKey
 {
-	std::wstring bucket;
-	std::wstring key;
+private:
+	std::wstring mBucket;
+	std::wstring mKey;
 
-	bool HasKey = false;
-	bool OK = false;
+	bool mHasKey = false;
+	bool mOK = false;
+
+public:
+	const std::wstring& bucket() const { return mBucket; }
+	const std::wstring& key() const { return mKey; }
+	bool hasKey() const { return mHasKey; }
+	bool OK() const { return mOK; }
 
 	BucketKey(const wchar_t* wstr);
 };
 
-class WinCse : public WinCseLib::IStorageService
+class WinCse : public WinCseLib::ICSDriver
 {
 private:
 	WinCseLib::IWorker* mDelayedWorker;
 	WinCseLib::IWorker* mIdleWorker;
 
-	WinCseLib::ICloudStorage* mStorage;
+	WinCseLib::ICSDevice* mCSDevice;
 
 	const std::wstring mTempDir;
 	const std::wstring mIniSection;
 	int mMaxFileSize;
 
 	// 無視するファイル名の正規表現
-	const std::wregex mIgnoreFileNamePattern;
+	std::wregex mIgnoredFileNamePatterns;
 
 	// 作業用ディレクトリ (プログラム引数 "-u" から算出される)
 	std::wstring mWorkDir;
@@ -37,21 +43,22 @@ private:
 	HANDLE mFileRefHandle = INVALID_HANDLE_VALUE;
 	HANDLE mDirRefHandle = INVALID_HANDLE_VALUE;
 
-	NTSTATUS FileNameToFileInfo(const wchar_t* FileName, FSP_FSCTL_FILE_INFO* pFileInfo);
-	NTSTATUS HandleToInfo(HANDLE handle, PUINT32 PFileAttributes, PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize);
+	NTSTATUS FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCTL_FILE_INFO* pFileInfo);
+	NTSTATUS HandleToInfo(CALLER_ARG HANDLE handle, PUINT32 PFileAttributes, PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize);
 
 protected:
-	bool isIgnoreFileName(const wchar_t* FileName);
+	bool isFileNameIgnored(const wchar_t* FileName);
 
 public:
 	WinCse(const std::wstring& argTempDir, const std::wstring& argIniSection,
-		WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker,
-		WinCseLib::ICloudStorage* cloudStorage);
+		WinCseLib::IWorker* argDelayedWorker, WinCseLib::IWorker* argIdleWorker,
+		WinCseLib::ICSDevice* argCSDevice);
 
 	~WinCse();
 
 	// WinFsp から呼び出される関数
-	bool OnSvcStart(const wchar_t* argWorkDir) override;
+	bool PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
+	bool OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
 	void OnSvcStop() override;
 
 	NTSTATUS DoGetSecurityByName(const wchar_t* FileName, PUINT32 PFileAttributes,
@@ -62,8 +69,8 @@ public:
 
 	NTSTATUS DoClose(PTFS_FILE_CONTEXT* FileContext) override;
 
-	NTSTATUS DoCanDelete() override;
-	NTSTATUS DoCleanup() override;
+	NTSTATUS DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags) override;
+
 	NTSTATUS DoCreate() override;
 	NTSTATUS DoFlush() override;
 
@@ -86,7 +93,13 @@ public:
 	NTSTATUS DoSetPath() override;
 	NTSTATUS DoSetSecurity() override;
 	NTSTATUS DoWrite() override;
-	NTSTATUS DoSetDelete() override;
+
+	NTSTATUS DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOOLEAN deleteFile) override;
+
+public:
+	WINCSE_DRIVER_STATS mStats = {};
 };
+
+#define StatsIncr(name)			::InterlockedIncrement(& (this->mStats.name))
 
 // EOF
