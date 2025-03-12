@@ -61,7 +61,12 @@ typedef struct
 
 #else
 WINFSP_IF* gWinFspIf;
-#define CSDriver()          (gWinFspIf->pDriver)
+
+WinCseLib::ICSDriver* CSDriver()
+{
+    return gWinFspIf->pDriver;
+}
+
 #define StatsIncr(fname)    if (gWinFspIf) InterlockedIncrement(& (gWinFspIf->stats.fname))
 
 #endif
@@ -384,10 +389,10 @@ static VOID Close(FSP_FILE_SYSTEM *FileSystem,
     HANDLE Handle = HandleFromContext(FileContext);
 
     CloseHandle(Handle);
-#endif
 
     FspFileSystemDeleteDirectoryBuffer(&FileContext->DirBuffer);
     free(FileContext);
+#endif
 }
 
 static NTSTATUS Read(FSP_FILE_SYSTEM *FileSystem,
@@ -741,13 +746,19 @@ static NTSTATUS ReadDirectory(FSP_FILE_SYSTEM *FileSystem,
 }
 
 static NTSTATUS SetDelete(FSP_FILE_SYSTEM *FileSystem,
-    PVOID FileContext, PWSTR FileName, BOOLEAN deleteFile)
+    PVOID FileContext, PWSTR FileName, BOOLEAN DeleteFile)
 {
     StatsIncr(SetDelete);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoSetDelete((PTFS_FILE_CONTEXT*)FileContext, FileName, deleteFile);
+    return CSDriver()->DoSetDelete((PTFS_FILE_CONTEXT*)FileContext, FileName, DeleteFile);
 
+    /*
+    https://stackoverflow.com/questions/36217150/deleting-a-file-based-on-disk-id
+
+    SetFileInformationByHandle を FILE_DISPOSITION_INFO と共に使用すると、
+    開いているハンドルを持つファイルを、すべてのハンドルが閉じられたときに削除されるように設定できます。
+    */
 #else
     HANDLE Handle = HandleFromContext(FileContext);
     FILE_DISPOSITION_INFO DispositionInfo = { 0 };
@@ -1183,11 +1194,12 @@ static NTSTATUS SvcStop(FSP_SERVICE *Service)
 {
     PTFS *Ptfs = (PTFS*)Service->UserContext;
 
+    FspFileSystemStopDispatcher(Ptfs->FileSystem);
+
 #if !WINFSP_PASSTHROUGH
     CSDriver()->OnSvcStop();
 #endif
 
-    FspFileSystemStopDispatcher(Ptfs->FileSystem);
     PtfsDelete(Ptfs);
 
     return STATUS_SUCCESS;

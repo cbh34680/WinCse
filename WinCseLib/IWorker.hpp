@@ -4,7 +4,7 @@
 
 namespace WinCseLib {
 
-enum class CanIgnore
+enum class CanIgnoreDuplicates
 {
 	None,
 	Yes,
@@ -13,8 +13,9 @@ enum class CanIgnore
 
 enum class Priority
 {
-	Low,
 	High,
+	Middle,
+	Low,
 };
 
 
@@ -23,24 +24,27 @@ struct IWorker;
 // Ç±ÇÍÇæÇ∆ C4251 ÇÃåxçêÇ™èoÇÈÇÃÇ≈ÅAÉÅÉìÉoÇ…íºê⁄èCè¸Ç∑ÇÈ
 //struct WINCSELIB_API ITask
 
-struct ITask
+struct WINCSELIB_API ITask
 {
 	Priority mPriority = Priority::Low;
-	int mWorkerId_4debug = -1;
-	std::wstring mCaller_4debug;
+	uint64_t mAddTime = 0ULL;
+	wchar_t* mCaller = nullptr;
 
-	WINCSELIB_API virtual ~ITask() = default;
+	virtual ~ITask()
+	{
+		delete mCaller;
+	}
 
-	WINCSELIB_API virtual std::wstring synonymString() { return std::wstring(L""); }
+	virtual std::wstring synonymString() { return std::wstring{}; }
 
-	WINCSELIB_API virtual void run(CALLER_ARG0) = 0;
+	virtual void run(CALLER_ARG0) = 0;
 };
 
 struct WINCSELIB_API IWorker : public ICSService
 {
 	virtual ~IWorker() = default;
 
-	virtual bool addTask(CALLER_ARG ITask* pTask, Priority priority, CanIgnore ignState)
+	virtual bool addTask(CALLER_ARG ITask* pTask, Priority priority, CanIgnoreDuplicates ignState)
 	{
 		delete pTask;
 		return false;

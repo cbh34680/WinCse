@@ -67,6 +67,8 @@ public:
 class AwsS3 : public WinCseLib::ICSDevice
 {
 private:
+	WINCSE_DEVICE_STATS mStats = {};
+
 	WinCseLib::IWorker* mDelayedWorker;
 	WinCseLib::IWorker* mIdleWorker;
 
@@ -104,62 +106,51 @@ private:
 
 	void reportObjectCache(CALLER_ARG FILE* fp);
 
-	std::wstring unsafeGetBucketRegion(CALLER_ARG const std::wstring& bucketName);
+	std::wstring unlockGetBucketRegion(CALLER_ARG const std::wstring& bucketName);
 
-	DirInfoType apicallHeadObject(CALLER_ARG
-		const std::wstring& argBucket, const std::wstring& argKey);
+	DirInfoType apicallHeadObject(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
 
 	bool apicallListObjectsV2(CALLER_ARG const Purpose purpose,
-		const std::wstring& argBucket, const std::wstring& argKey,
-		DirInfoListType* pDirInfoList);
+		const WinCseLib::ObjectKey& argObjKey, DirInfoListType* pDirInfoList);
 
-	bool unsafeHeadObject(CALLER_ARG
-		const std::wstring& argBucket, const std::wstring& argKey,
-		bool alsoSearchCache, FSP_FSCTL_FILE_INFO* pFileInfo);
+	int unlockDeleteCacheByObjKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
 
-	bool unsafeHeadObject_File(CALLER_ARG
-		const std::wstring& argBucket, const std::wstring& argKey,
+	bool unlockHeadObject(CALLER_ARG const WinCseLib::ObjectKey& argObjKey, FSP_FSCTL_FILE_INFO* pFileInfo);
+
+	bool unlockHeadObject_File(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		FSP_FSCTL_FILE_INFO* pFileInfo);
 
-	bool unsafeListObjects(CALLER_ARG const Purpose purpose,
-		const std::wstring& argBucket, const std::wstring& argKey,
-		DirInfoListType* pDirInfoList);
+	bool unlockListObjects(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		const Purpose purpose, DirInfoListType* pDirInfoList /* nullable */);
 
-	DirInfoType unsafeListObjects_Dir(CALLER_ARG
-		const std::wstring& argBucket, const std::wstring& argKey);
+	DirInfoType unlockListObjects_Dir(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
 
-	DirInfoType findFileInParentDirectry(CALLER_ARG
-		const std::wstring& argBucket, const std::wstring& argKey);
+	DirInfoType unlockFindInParentOfDisplay(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
 
-	bool unsafeListObjects_Display(CALLER_ARG
-		const std::wstring& argBucket, const std::wstring& argKey,
-		DirInfoListType* pDirInfoList);
+	bool unlockListObjects_Display(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		DirInfoListType* pDirInfoList /* nullable */);
 
-	bool shouldDownload(CALLER_ARG
-		const std::wstring& argBucket, const std::wstring& argKey,
-		const std::wstring& localPath, FSP_FSCTL_FILE_INFO* pFileInfo,
-		bool* pNeedGet);
+	bool shouldDownload(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		const FSP_FSCTL_FILE_INFO& fileInfo, const std::wstring& localPath, bool* pNeedDownload);
 
-	bool readFile_Simple(CALLER_ARG PVOID UParam,
+	NTSTATUS readObject_Simple(CALLER_ARG WinCseLib::IOpenContext* argOpenContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred);
-	bool readFile_Multipart(CALLER_ARG PVOID UParam,
+	NTSTATUS readObject_Multipart(CALLER_ARG WinCseLib::IOpenContext* argOpenContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred);
+	bool doMultipartDownload(CALLER_ARG WinCseLib::IOpenContext* argOpenContext, const std::wstring& localPath);
 
 	void notifListener();
 
-	// shouldDownload() で使用
-	bool headObject_File_SkipCacheSearch(CALLER_ARG
-		const std::wstring& argBucket, const std::wstring& argKey,
-		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */);
+	// cleanup() で利用
+	int deleteCacheByObjKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
 
 public:
 	// Worker から呼び出されるため override ではないが public のメソッド
 
 	void OnIdleTime(CALLER_ARG0);
 
-	int64_t prepareLocalCacheFile(CALLER_ARG
-		const std::wstring& argBucket, const std::wstring& argKey, const FileOutputMeta& argMeta);
-
+	int64_t prepareLocalCacheFile(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		const FileOutputMeta& argMeta);
 
 protected:
 	bool isInBucketFiltersW(const std::wstring& arg);
@@ -170,9 +161,6 @@ public:
 		WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker);
 
 	~AwsS3();
-
-	// ReadFileContext から直接参照するので public
-	WINCSE_DEVICE_STATS mStats = { };
 
 	void queryStats(WINCSE_DEVICE_STATS* pStats) override
 	{
@@ -185,26 +173,26 @@ public:
 
 	bool headBucket(CALLER_ARG const std::wstring& argBucket) override;
 
-	bool listBuckets(CALLER_ARG
-		DirInfoListType* pDirInfoList,
+	bool listBuckets(CALLER_ARG DirInfoListType* pDirInfoList /* nullable */,
 		const std::vector<std::wstring>& options) override;
 
-	bool headObject(CALLER_ARG const std::wstring& argBucket, const std::wstring& argKey,
-		FSP_FSCTL_FILE_INFO* pFileInfo) override;
+	bool headObject(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) override;
 
-	bool listObjects(CALLER_ARG const std::wstring& argBucket, const std::wstring& argKey,
-		DirInfoListType* pDirInfoList) override;
+	bool listObjects(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		DirInfoListType* pDirInfoList /* nullable */) override;
 
-	bool openFile(CALLER_ARG
-		const std::wstring& argBucket, const std::wstring& argKey,
-		const UINT32 CreateOptions, const UINT32 GrantedAccess,
-		const FSP_FSCTL_FILE_INFO& fileInfo, 
-		PVOID* pUParam) override;
+	WinCseLib::IOpenContext* open(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		const FSP_FSCTL_FILE_INFO& FileInfo, const UINT32 CreateOptions, const UINT32 GrantedAccess) override;
 
-	void closeFile(CALLER_ARG PVOID UParam) override;
+	void close(CALLER_ARG WinCseLib::IOpenContext* argOpenContext) override;
 
-	bool readFile(CALLER_ARG PVOID UParam,
+	NTSTATUS readObject(CALLER_ARG WinCseLib::IOpenContext* argOpenContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred) override;
+
+	NTSTATUS remove(CALLER_ARG WinCseLib::IOpenContext* argOpenContext, BOOLEAN argDeleteFile) override;
+
+	void cleanup(CALLER_ARG WinCseLib::IOpenContext* argOpenContext, ULONG argFlags) override;
 
 private:
 	template<typename T>
@@ -231,14 +219,62 @@ private:
 	}
 
 	// ディレクトリに特化
-	DirInfoType mallocDirInfoW_dir(
-		const std::wstring& argKey, const std::wstring& argBucket, const UINT64 argFileTime);
+	DirInfoType makeDirInfo_dir(const WinCseLib::ObjectKey& argObjKey, const UINT64 argFileTime);
 };
 
-// ファイル名から FSP_FSCTL_DIR_INFO のヒープ領域を生成し、いくつかのメンバを設定して返却
-DirInfoType mallocDirInfoW(const std::wstring& argKey, const std::wstring& argBucket);
-DirInfoType mallocDirInfoA(const std::string& argKey, const std::string& argBucket);
+//
+// open() が呼ばれたときに UParam として PTFS_FILE_CONTEXT に保存する内部情報
+// close() で削除される
+//
+struct OpenContext : public WinCseLib::IOpenContext
+{
+	WINCSE_DEVICE_STATS& mStats;
+	const std::wstring mCacheDataDir;
+	WinCseLib::ObjectKey mObjKey;
+	FSP_FSCTL_FILE_INFO mFileInfo;
+	const UINT32 mCreateOptions;
+	const UINT32 mGrantedAccess;
+	HANDLE mLocalFile = INVALID_HANDLE_VALUE;
 
+	OpenContext(
+		WINCSE_DEVICE_STATS& argStats,
+		const std::wstring& argCacheDataDir,
+		const WinCseLib::ObjectKey& argObjKey,
+		const FSP_FSCTL_FILE_INFO& argFileInfo,
+		const UINT32 argCreateOptions,
+		const UINT32 argGrantedAccess)
+		:
+		mStats(argStats),
+		mCacheDataDir(argCacheDataDir),
+		mFileInfo(argFileInfo),
+		mCreateOptions(argCreateOptions),
+		mGrantedAccess(argGrantedAccess)
+	{
+		if (FA_IS_DIR(mFileInfo.FileAttributes))
+		{
+			mObjKey = argObjKey.toDir();
+		}
+		else
+		{
+			mObjKey = argObjKey;
+		}
+	}
+
+	bool isDir() const { return FA_IS_DIR(mFileInfo.FileAttributes); }
+	bool isFile() const { return !isDir(); }
+	std::wstring getRemotePath() const { return mObjKey.str(); }
+
+	std::wstring getLocalPath() const;
+
+	bool openLocalFile(const DWORD argDesiredAccess, const DWORD argCreationDisposition);
+	bool setLocalFileTime(UINT64 argCreationTime);
+	void closeLocalFile();
+
+	~OpenContext()
+	{
+		closeLocalFile();
+	}
+};
 
 #ifdef WINCSEAWSS3_EXPORTS
 #define AWSS3_API __declspec(dllexport)
@@ -248,9 +284,9 @@ DirInfoType mallocDirInfoA(const std::string& argKey, const std::string& argBuck
 
 extern "C"
 {
-AWSS3_API WinCseLib::ICSDevice* NewCSDevice(
-	const wchar_t* argTempDir, const wchar_t* argIniSection,
-	WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker);
+	AWSS3_API WinCseLib::ICSDevice* NewCSDevice(
+		const wchar_t* argTempDir, const wchar_t* argIniSection,
+		WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker);
 }
 
 #define StatsIncr(name)					::InterlockedIncrement(& (this->mStats.name))
@@ -260,46 +296,5 @@ AWSS3_API WinCseLib::ICSDevice* NewCSDevice(
 	else   ::InterlockedIncrement(& (this->mStats.ename))
 
 #define AWS_DEFAULT_REGION			Aws::Region::US_EAST_1
-
-
-//
-// openFIle() が呼ばれたときに UParam として PTFS_FILE_CONTEXT に保存する内部情報
-// closeFile() で削除される
-//
-
-struct OpenFileContext
-{
-	WINCSE_DEVICE_STATS& mStats;
-	const std::wstring mBucket;
-	const std::wstring mKey;
-	const UINT32 mCreateOptions;
-	const UINT32 mGrantedAccess;
-	FSP_FSCTL_FILE_INFO mFileInfo;
-
-	std::wstring mGuardString;
-
-	HANDLE mFile = INVALID_HANDLE_VALUE;
-	UINT64 mLastOffset = 0ULL;
-
-	OpenFileContext(
-		WINCSE_DEVICE_STATS& argStats,
-		const std::wstring& argBucket, const std::wstring& argKey,
-		const UINT32 argCreateOptions, const UINT32 argGrantedAccess,
-		const FSP_FSCTL_FILE_INFO& argFileInfo)
-		:
-		mStats(argStats),
-		mBucket(argBucket), mKey(argKey), mCreateOptions(argCreateOptions),
-		mGrantedAccess(argGrantedAccess), mFileInfo(argFileInfo)
-	{
-		mGuardString = mBucket + L'/' + mKey;
-	}
-
-	std::wstring getGuardString() const
-	{
-		return mGuardString;
-	}
-
-	~OpenFileContext();
-};
 
 // EOF

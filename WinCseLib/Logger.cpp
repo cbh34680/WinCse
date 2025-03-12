@@ -210,7 +210,7 @@ void Logger::traceW_write(const SYSTEMTIME* st, const wchar_t* buf) const
 		{
 			std::wstringstream ss;
 
-#ifdef _DEBUGS
+#ifdef _DEBUG
 			ss << mTraceLogDir << L"\\trace-";
 			ss << tid % 1000 << L'-';
 
@@ -219,10 +219,6 @@ void Logger::traceW_write(const SYSTEMTIME* st, const wchar_t* buf) const
 			ss << std::setw(4) << std::setfill(L'0') << st->wYear;
 			ss << std::setw(2) << std::setfill(L'0') << st->wMonth;
 			ss << std::setw(2) << std::setfill(L'0') << st->wDay;
-			ss << L'-';
-			ss << std::setw(2) << std::setfill(L'0') << st->wHour;
-			ss << std::setw(2) << std::setfill(L'0') << st->wMinute;
-			ss << std::setw(2) << std::setfill(L'0') << st->wSecond;
 			ss << L'-';
 #endif
 

@@ -44,16 +44,6 @@ std::chrono::system_clock::time_point BucketCache::getLastSetTime(CALLER_ARG0) c
     return mLastSetTime;
 }
 
-void BucketCache::clear(CALLER_ARG0)
-{
-    mList.clear();
-}
-
-bool BucketCache::empty(CALLER_ARG0)
-{
-    return mList.empty();
-}
-
 void BucketCache::save(CALLER_ARG
     const DirInfoListType& dirInfoList)
 {

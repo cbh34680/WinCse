@@ -45,14 +45,14 @@ int app_main(int argc, wchar_t** argv)
 
                 DirInfoListType objs;
 
-                if (!cs->listObjects(START_CALLER bucketName, L"", &objs))
+                if (!cs->listObjects(START_CALLER ObjectKey{ bucketName, L"" }, &objs))
                 {
                     continue;
                 }
 
                 for (const auto& obj: objs)
                 {
-                    if (obj->FileInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+                    if (FA_IS_DIR(obj->FileInfo.FileAttributes))
                     {
                         continue;
                     }
@@ -65,16 +65,18 @@ int app_main(int argc, wchar_t** argv)
 
                     FSP_FSCTL_FILE_INFO fileInfo{};
 
-                    if (!cs->headObject(START_CALLER bucketName, obj->FileNameBuf, &fileInfo))
+                    if (!cs->headObject(START_CALLER ObjectKey{ bucketName, obj->FileNameBuf }, &fileInfo))
                     {
                         continue;
                     }
 
-                    PVOID UParam = nullptr;
                     UINT32 CreateOptions = FILE_FLAG_POSIX_SEMANTICS | FILE_ATTRIBUTE_NORMAL;
                     UINT32 GrantedAccess = GENERIC_READ;
 
-                    if (!cs->openFile(START_CALLER bucketName, obj->FileNameBuf, CreateOptions, GrantedAccess, fileInfo, &UParam))
+                    ObjectKey objKey{ bucketName, obj->FileNameBuf };
+
+                    IOpenContext* ctx = cs->open(START_CALLER objKey, fileInfo, CreateOptions, GrantedAccess);
+                    if (!ctx)
                     {
                         continue;
                     }
@@ -92,7 +94,7 @@ int app_main(int argc, wchar_t** argv)
                         total += numread;
 
                         numread = 0;
-                        next = cs->readFile(START_CALLER UParam, buffer, offset, sizeof(buffer), &numread);
+                        next = cs->readObject(START_CALLER ctx, buffer, offset, sizeof(buffer), &numread);
 
                         // !!
                         break;
@@ -105,7 +107,7 @@ int app_main(int argc, wchar_t** argv)
 
                     std::cout << "total: " << total << std::endl;
 
-                    cs->closeFile(START_CALLER UParam);
+                    cs->close(START_CALLER ctx);
                 }
             }
         }

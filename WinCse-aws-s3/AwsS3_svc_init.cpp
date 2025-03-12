@@ -206,7 +206,7 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
 
         VolumeParams->CaseSensitiveSearch = 1;
 
-        const UINT32 Timeout = 1000U;
+        const UINT32 Timeout = 2000U;
 
         VolumeParams->FileInfoTimeout = Timeout;
 

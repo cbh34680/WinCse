@@ -27,7 +27,9 @@ typedef struct
 	long DoWrite;
 	long DoSetDelete;
 
-	long _CallCloseFile;
+	long _CallOpen;
+	long _CallClose;
+	long _ForceClose;
 }
 WINCSE_DRIVER_STATS;
 
@@ -63,7 +65,7 @@ struct WINCSELIB_API ICSDriver : public ICSService
 		PVOID Buffer, ULONG BufferLength, PULONG PBytesTransferred) { return STATUS_INVALID_DEVICE_REQUEST; }
 
 	// WRITE
-	virtual NTSTATUS DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags) { return STATUS_INVALID_DEVICE_REQUEST; }
+	virtual VOID DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags) { }
 
 	virtual NTSTATUS DoCreate() { return STATUS_INVALID_DEVICE_REQUEST; }
 	virtual NTSTATUS DoFlush() { return STATUS_INVALID_DEVICE_REQUEST; }

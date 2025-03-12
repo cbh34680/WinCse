@@ -4,19 +4,16 @@
 using namespace WinCseLib;
 
 
-DirInfoType AwsS3::apicallHeadObject(CALLER_ARG
-    const std::wstring& argBucket, const std::wstring& argKey)
+DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
 {
     NEW_LOG_BLOCK();
-    APP_ASSERT(!argBucket.empty());
-    APP_ASSERT(!argKey.empty());
-    APP_ASSERT(argKey.back() != L'/');
+    APP_ASSERT(argObjKey.meansFile());
 
-    traceW(L"bucket=%s, key=%s", argBucket.c_str(), argKey.c_str());
+    traceW(L"argObjKey=%s", argObjKey.c_str());
 
     Aws::S3::Model::HeadObjectRequest request;
-    request.SetBucket(WC2MB(argBucket));
-    request.SetKey(WC2MB(argKey));
+    request.SetBucket(argObjKey.bucketA());
+    request.SetKey(argObjKey.keyA());
 
     const auto outcome = mClient.ptr->HeadObject(request);
     if (!outcomeIsSuccess(outcome))
@@ -29,7 +26,7 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG
 
     const auto& result = outcome.GetResult();
 
-    auto dirInfo = mallocDirInfoW(argKey, argBucket);
+    auto dirInfo = makeDirInfo(argObjKey);
     APP_ASSERT(dirInfo);
 
     const auto FileSize = result.GetContentLength();
@@ -37,7 +34,7 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG
 
     UINT32 FileAttributes = mDefaultFileAttributes;
 
-    if (argKey != L"." && argKey != L".." && argKey[0] == L'.')
+    if (argObjKey.key() != L"." && argObjKey.key() != L".." && argObjKey.key()[0] == L'.')
     {
         // ".", ".." 以外で先頭が "." で始まっているものは隠しファイルの扱い
 
@@ -52,7 +49,9 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG
     dirInfo->FileInfo.LastAccessTime = lastModified;
     dirInfo->FileInfo.LastWriteTime = lastModified;
     dirInfo->FileInfo.ChangeTime = lastModified;
-    dirInfo->FileInfo.IndexNumber = HashString(argBucket + L'/' + argKey);
+
+    //dirInfo->FileInfo.IndexNumber = HashString(argObjKey.bucket() + L'/' + argObjKey.key());
+    dirInfo->FileInfo.IndexNumber = HashString(argObjKey.str());
 
     return dirInfo;
 }
@@ -62,23 +61,23 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG
 // 引数の条件に合致するオブジェクトが見つからないときは false を返却
 //
 bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
-    const std::wstring& argBucket, const std::wstring& argKey,
-    DirInfoListType* pDirInfoList)
+    const ObjectKey& argObjKey, DirInfoListType* pDirInfoList)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(pDirInfoList);
+    APP_ASSERT(argObjKey.valid());
 
     bool delimiter = false;
     int limit = 0;
 
     switch (argPurpose)
     {
-        case Purpose::CheckDir:
+        case Purpose::CheckDirExists:
         {
             // ディレクトリの存在確認の為にだけ呼ばれるはず
 
-            APP_ASSERT(!argKey.empty());
-            APP_ASSERT(argKey.back() == L'/');
+            APP_ASSERT(argObjKey.hasKey());
+            APP_ASSERT(argObjKey.key().back() == L'/');
 
             limit = 1;
 
@@ -88,9 +87,9 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
         {
             // DoReadDirectory() からのみ呼び出されるはず
 
-            if (!argKey.empty())
+            if (argObjKey.hasKey())
             {
-                APP_ASSERT(argKey.back() == L'/');
+                APP_ASSERT(argObjKey.key().back() == L'/');
             }
 
             delimiter = true;
@@ -103,13 +102,13 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
         }
     }
 
-    traceW(L"purpose=%s, bucket=%s, key=%s, delimiter=%s, limit=%d",
-        PurposeString(argPurpose), argBucket.c_str(), argKey.c_str(), delimiter ? L"true" : L"false", limit);
+    traceW(L"purpose=%s, argObjKey=%s, delimiter=%s, limit=%d",
+        PurposeString(argPurpose), argObjKey.c_str(), delimiter ? L"true" : L"false", limit);
 
     DirInfoListType dirInfoList;
 
     Aws::S3::Model::ListObjectsV2Request request;
-    request.SetBucket(WC2MB(argBucket));
+    request.SetBucket(argObjKey.bucketA());
 
     if (delimiter)
     {
@@ -121,10 +120,10 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
         request.SetMaxKeys(limit);
     }
 
-    const auto argKeyLen = argKey.length();
-    if (argKeyLen > 0)
+    const auto argKeyLen = argObjKey.key().length();
+    if (argObjKey.hasKey())
     {
-        request.SetPrefix(WC2MB(argKey));
+        request.SetPrefix(argObjKey.keyA());
     }
 
     UINT64 commonPrefixTime = UINT64_MAX;
@@ -201,7 +200,7 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
 
             already.insert(key);
 
-            dirInfoList.push_back(mallocDirInfoW_dir(key, argBucket, commonPrefixTime));
+            dirInfoList.push_back(makeDirInfo_dir(ObjectKey{ argObjKey.bucket(), key }, commonPrefixTime));
 
             if (limit > 0)
             {
@@ -257,7 +256,7 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
 
             already.insert(key);
 
-            auto dirInfo = mallocDirInfoW(key, argBucket);
+            auto dirInfo = makeDirInfo(ObjectKey{ argObjKey.bucket(), key });
             APP_ASSERT(dirInfo);
 
             UINT32 FileAttributes = mDefaultFileAttributes;
@@ -288,7 +287,7 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
             dirInfo->FileInfo.LastWriteTime = lastModified;
             dirInfo->FileInfo.ChangeTime = lastModified;
 
-            dirInfoList.push_back(dirInfo);
+            dirInfoList.emplace_back(dirInfo);
 
             if (limit > 0)
             {
@@ -323,7 +322,10 @@ exit:
         // 表示用のリストであり、空ではないので cmd と同じ動きをさせるため
         // ".", ".." が存在しない場合に追加する
         //
-        if (!argKey.empty())
+
+        // "C:\WORK" のようにドライブ直下のディレクトリでは ".." が表示されない動作に合わせる
+
+        if (argObjKey.hasKey())
         {
             const auto itParent = std::find_if(dirInfoList.begin(), dirInfoList.end(), [](const auto& dirInfo)
             {
@@ -332,7 +334,7 @@ exit:
 
             if (itParent == dirInfoList.end())
             {
-                dirInfoList.insert(dirInfoList.begin(), mallocDirInfoW_dir(L"..", argBucket, commonPrefixTime));
+                dirInfoList.insert(dirInfoList.begin(), makeDirInfo_dir(ObjectKey{ argObjKey.bucket(), L".." }, commonPrefixTime));
             }
             else
             {
@@ -349,7 +351,7 @@ exit:
 
         if (itCurr == dirInfoList.end())
         {
-            dirInfoList.insert(dirInfoList.begin(), mallocDirInfoW_dir(L".", argBucket, commonPrefixTime));
+            dirInfoList.insert(dirInfoList.begin(), makeDirInfo_dir(ObjectKey{ argObjKey.bucket(), L"." }, commonPrefixTime));
         }
         else
         {
@@ -369,6 +371,7 @@ exit:
     return !dirInfoList.empty();
 }
 
+/*
 #define IS_FA_DIR(ptr)        (ptr->FileInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 
 bool compareDirInfo(const DirInfoType& a, const DirInfoType& b)
@@ -383,5 +386,6 @@ bool compareDirInfo(const DirInfoType& a, const DirInfoType& b)
     }
     return wcscmp(a->FileNameBuf, b->FileNameBuf) < 0;
 }
+*/
 
 // EOF

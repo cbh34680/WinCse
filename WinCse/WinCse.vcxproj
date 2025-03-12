@@ -152,6 +152,7 @@
     <ClCompile Include="IdleWorker.cpp" />
     <ClCompile Include="WinCse.cpp" />
     <ClCompile Include="WinCse_if_w.cpp" />
+    <ClCompile Include="WinCse_open.cpp" />
     <ClCompile Include="WinCse_svc.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="WinCse_if_r.cpp" />

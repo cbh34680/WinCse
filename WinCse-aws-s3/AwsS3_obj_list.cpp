@@ -4,74 +4,70 @@
 
 using namespace WinCseLib;
 
-
 // -----------------------------------------------------------------------------------
 //
 // キャッシュを含めた検索をするブロック
 //
 extern ObjectCache gObjectCache;
 
-bool AwsS3::unsafeHeadObject(CALLER_ARG
-    const std::wstring& argBucket, const std::wstring& argKey,
-    bool alsoSearchCache, FSP_FSCTL_FILE_INFO* pFileInfo)
+int AwsS3::unlockDeleteCacheByObjKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey)
 {
     NEW_LOG_BLOCK();
-    APP_ASSERT(!argBucket.empty());
-    APP_ASSERT(!argKey.empty());
-    APP_ASSERT(argKey.back() != L'/');
 
-    traceW(L"bucket: %s, key: %s", argBucket.c_str(), argKey.c_str());
+    return gObjectCache.deleteByObjKey(CONT_CALLER argObjKey);
+}
+
+bool AwsS3::unlockHeadObject(CALLER_ARG const ObjectKey& argObjKey, FSP_FSCTL_FILE_INFO* pFileInfo)
+{
+    NEW_LOG_BLOCK();
+    APP_ASSERT(argObjKey.meansFile());
+
+    traceW(L"argObjKey=%s", argObjKey.c_str());
 
     DirInfoType dirInfo;
 
-    if (alsoSearchCache)
+    // ポジティブ・キャッシュを調べる
+
+    if (gObjectCache.getPositive_File(CONT_CALLER argObjKey, &dirInfo))
     {
-        // ポジティブ・キャッシュを調べる
+        APP_ASSERT(dirInfo);
 
-        if (gObjectCache.getPositive_File(CONT_CALLER argBucket, argKey, &dirInfo))
-        {
-            APP_ASSERT(dirInfo);
-
-            traceW(L"found in positive-cache");
-        }
+        traceW(L"found in positive-cache");
     }
 
     if (!dirInfo)
     {
-        if (alsoSearchCache)
+        traceW(L"not found in positive-cache");
+
+        // ネガティブ・キャッシュを調べる
+
+        if (gObjectCache.isInNegative_File(CONT_CALLER argObjKey))
         {
-            traceW(L"not found in positive-cache");
+            // ネガティブ・キャッシュにある == データは存在しない
 
-            // ネガティブ・キャッシュを調べる
+            traceW(L"found in negative cache");
 
-            if (gObjectCache.isInNegative_File(CONT_CALLER argBucket, argKey))
-            {
-                // ネガティブ・キャッシュにある == データは存在しない
-
-                traceW(L"found in negative cache");
-
-                return false;
-            }
+            return false;
         }
 
         // HeadObject API の実行
         traceW(L"do HeadObject");
 
-        dirInfo = this->apicallHeadObject(CONT_CALLER argBucket, argKey);
+        dirInfo = this->apicallHeadObject(CONT_CALLER argObjKey);
         if (!dirInfo)
         {
             // ネガティブ・キャッシュに登録
 
             traceW(L"add negative");
 
-            gObjectCache.addNegative_File(CONT_CALLER argBucket, argKey);
+            gObjectCache.addNegative_File(CONT_CALLER argObjKey);
 
             return false;
         }
 
         // キャッシュにコピー
 
-        gObjectCache.setPositive_File(CONT_CALLER argBucket, argKey, dirInfo);
+        gObjectCache.setPositive_File(CONT_CALLER argObjKey, dirInfo);
     }
 
     if (pFileInfo)
@@ -82,26 +78,18 @@ bool AwsS3::unsafeHeadObject(CALLER_ARG
     return true;
 }
 
-bool AwsS3::unsafeListObjects(CALLER_ARG const Purpose argPurpose,
-    const std::wstring& argBucket, const std::wstring& argKey,
-    DirInfoListType* pDirInfoList)
+bool AwsS3::unlockListObjects(CALLER_ARG const ObjectKey& argObjKey,
+    const Purpose argPurpose, DirInfoListType* pDirInfoList /* nullable */)
 {
     NEW_LOG_BLOCK();
-    APP_ASSERT(!argBucket.empty());
-    APP_ASSERT(argBucket.back() != L'/');
+    APP_ASSERT(argObjKey.meansDir());
 
-    if (!argKey.empty())
-    {
-        APP_ASSERT(argKey.back() == L'/');
-    }
-
-    traceW(L"purpose=%s, bucket=%s, key=%s",
-        PurposeString(argPurpose), argBucket.c_str(), argKey.c_str());
+    traceW(L"purpose=%s, argObjKey=%s", PurposeString(argPurpose), argObjKey.c_str());
 
     // ポジティブ・キャッシュを調べる
 
     DirInfoListType dirInfoList;
-    const bool inCache = gObjectCache.getPositive(CONT_CALLER argPurpose, argBucket, argKey, &dirInfoList);
+    const bool inCache = gObjectCache.getPositive(CONT_CALLER argObjKey, argPurpose, &dirInfoList);
 
     if (inCache)
     {
@@ -113,7 +101,7 @@ bool AwsS3::unsafeListObjects(CALLER_ARG const Purpose argPurpose,
     {
         traceW(L"not found in positive-cache");
 
-        if (gObjectCache.isInNegative(CONT_CALLER argPurpose, argBucket, argKey))
+        if (gObjectCache.isInNegative(CONT_CALLER argObjKey, argPurpose))
         {
             // ネガティブ・キャッシュ中に見つかった
 
@@ -125,7 +113,7 @@ bool AwsS3::unsafeListObjects(CALLER_ARG const Purpose argPurpose,
         // ListObjectV2() の実行
         traceW(L"call doListObjectV2");
 
-        if (!this->apicallListObjectsV2(CONT_CALLER argPurpose, argBucket, argKey, &dirInfoList))
+        if (!this->apicallListObjectsV2(CONT_CALLER argPurpose, argObjKey, &dirInfoList))
         {
             // 実行時エラー、またはオブジェクトが見つからない
 
@@ -134,14 +122,14 @@ bool AwsS3::unsafeListObjects(CALLER_ARG const Purpose argPurpose,
             // ネガティブ・キャッシュに登録
 
             traceW(L"add negative");
-            gObjectCache.addNegative(CONT_CALLER argPurpose, argBucket, argKey);
+            gObjectCache.addNegative(CONT_CALLER argObjKey, argPurpose);
 
             return false;
         }
 
         // ポジティブ・キャッシュにコピー
 
-        gObjectCache.setPositive(CONT_CALLER argPurpose, argBucket, argKey, dirInfoList);
+        gObjectCache.setPositive(CONT_CALLER argObjKey, argPurpose, dirInfoList);
     }
 
     if (pDirInfoList)
@@ -157,73 +145,35 @@ bool AwsS3::unsafeListObjects(CALLER_ARG const Purpose argPurpose,
 // 外部IF から呼び出されるブロック
 //
 
-bool AwsS3::unsafeListObjects_Display(CALLER_ARG const std::wstring& argBucket, const std::wstring& argKey,
-    DirInfoListType* pDirInfoList)
+bool AwsS3::unlockListObjects_Display(CALLER_ARG
+    const WinCseLib::ObjectKey& argObjKey, DirInfoListType* pDirInfoList /* nullable */)
 {
-    StatsIncr(_unsafeListObjects_Display);
+    StatsIncr(_unlockListObjects_Display);
 
-    return this->unsafeListObjects(CONT_CALLER Purpose::Display, argBucket, argKey, pDirInfoList);
+    return this->unlockListObjects(CONT_CALLER argObjKey, Purpose::Display, pDirInfoList);
 }
 
 //
 // 表示用のキャッシュ (Purpose::Display) の中から、引数に合致する
 // ファイルの情報を取得する
 //
-DirInfoType AwsS3::findFileInParentDirectry(CALLER_ARG
-    const std::wstring& argBucket, const std::wstring& argKey)
+DirInfoType AwsS3::unlockFindInParentOfDisplay(CALLER_ARG const ObjectKey& argObjKey)
 {
-    StatsIncr(_findFileInParentDirectry);
+    StatsIncr(_unlockFindInParentOfDisplay);
 
     NEW_LOG_BLOCK();
-    APP_ASSERT(!argBucket.empty());
-    APP_ASSERT(!argKey.empty());
+    APP_ASSERT(argObjKey.valid());
+    APP_ASSERT(argObjKey.hasKey());
 
-    traceW(L"bucket=[%s] key=[%s]", argBucket.c_str(), argKey.c_str());
+    traceW(L"argObjKey=%s", argObjKey.c_str());
 
-    // キーから親ディレクトリを取得
+    std::wstring parentDir;
+    std::wstring filename;
 
-    auto tokens{ SplitW(argKey, L'/', false) };
-    APP_ASSERT(!tokens.empty());
-
-    // ""                      ABORT
-    // "dir"                   OK
-    // "dir/"                  OK
-    // "dir/key.txt"           OK
-    // "dir/key.txt/"          OK
-    // "dir/subdir/key.txt"    OK
-    // "dir/subdir/key.txt/"   OK
-
-    auto filename{ tokens.back() };
-    APP_ASSERT(!filename.empty());
-    tokens.pop_back();
-
-    // 検索対象の親ディレクトリ
-
-    auto parentDir{ JoinW(tokens, L'/', false) };
-    if (parentDir.empty())
+    if (!SplitPath(argObjKey.key(), &parentDir, &filename))
     {
-        // バケットのルート・ディレクトリから検索
-
-        // "" --> ""
-    }
-    else
-    {
-        // サブディレクトリから検索
-
-        // "dir"        --> "dir/"
-        // "dir/subdir" --> "dir/subdir/"
-
-        parentDir += L'/';
-    }
-
-    // 検索対象のファイル名 (ディレクトリ名)
-
-    if (argKey.back() == L'/')
-    {
-        // SplitW() で "/" が除かれてしまうので、argKey に "dir/" や "dir/file.txt/"
-        // が指定されているときは filename に "/" を付与
-
-        filename += L'/';
+        traceW(L"fault: SplitPath");
+        return nullptr;
     }
 
     traceW(L"parentDir=[%s] filename=[%s]", parentDir.c_str(), filename.c_str());
@@ -231,14 +181,16 @@ DirInfoType AwsS3::findFileInParentDirectry(CALLER_ARG
     // Purpose::Display として保存されたキャッシュを取得
 
     DirInfoListType dirInfoList;
-    const bool inCache = gObjectCache.getPositive(CONT_CALLER Purpose::Display, argBucket, parentDir, &dirInfoList);
+
+    const bool inCache = gObjectCache.getPositive(CONT_CALLER
+        ObjectKey{ argObjKey.bucket(), parentDir }, Purpose::Display, &dirInfoList);
 
     if (!inCache)
     {
         // 子孫のオブジェクトを探すときには、親ディレクトリはキャッシュに存在するはず
         // なので、基本的には通過しないはず
 
-        traceW(L"not found in positive-cache, check it", argBucket.c_str(), parentDir.c_str());
+        traceW(L"not found in positive-cache, check it");
         return nullptr;
     }
 
@@ -251,7 +203,7 @@ DirInfoType AwsS3::findFileInParentDirectry(CALLER_ARG
             return false;
         }
 
-        if (dirInfo->FileInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+        if (FA_IS_DIR(dirInfo->FileInfo.FileAttributes))
         {
             // FSP_FSCTL_DIR_INFO の FileNameBuf にはディレクトリであっても
             // "/" で終端していないので、比較のために "/" を付与する
@@ -268,40 +220,40 @@ DirInfoType AwsS3::findFileInParentDirectry(CALLER_ARG
         // ファイル名に対して "dir/file.txt/" のような検索を始める
         // ここを通過するのは、その場合のみだと思う
 
-        traceW(L"not found in parent-dir", argBucket.c_str(), filename.c_str());
+        traceW(L"not found in parent-dir");
         return nullptr;
     }
 
     return *it;
 }
 
-bool AwsS3::unsafeHeadObject_File(CALLER_ARG
-    const std::wstring& argBucket, const std::wstring& argKey, FSP_FSCTL_FILE_INFO* pFileInfo)
+bool AwsS3::unlockHeadObject_File(CALLER_ARG
+    const ObjectKey& argObjKey, FSP_FSCTL_FILE_INFO* pFileInfo)
 {
-    StatsIncr(_unsafeHeadObject_File);
+    StatsIncr(_unlockHeadObject_File);
 
     NEW_LOG_BLOCK();
 
-    traceW(L"bucket=%s key=%s", argBucket.c_str(), argKey.c_str());
+    traceW(L"argObjKey=%s", argObjKey.c_str());
 
     // 直接的なキャッシュを優先して調べる
     // --> 更新されたときを考慮
 
-    if (this->unsafeHeadObject(CONT_CALLER argBucket, argKey, true, pFileInfo))
+    if (this->unlockHeadObject(CONT_CALLER argObjKey, pFileInfo))
     {
-        traceW(L"unsafeHeadObject: found");
+        traceW(L"unlockHeadObject: found");
 
         return true;
     }
 
-    traceW(L"unsafeHeadObject: not found");
+    traceW(L"unlockHeadObject: not found");
 
     // 親ディレクトリから調べる
 
-    const auto dirInfo{ findFileInParentDirectry(CONT_CALLER argBucket, argKey) };
+    const auto dirInfo{ unlockFindInParentOfDisplay(CONT_CALLER argObjKey) };
     if (dirInfo)
     {
-        traceW(L"findFileInParentDirectry: found");
+        traceW(L"unlockFindInParentOfDisplay: found");
 
         if (pFileInfo)
         {
@@ -311,42 +263,41 @@ bool AwsS3::unsafeHeadObject_File(CALLER_ARG
         return true;
     }
 
-    traceW(L"findFileInParentDirectry: not found");
+    traceW(L"unlockFindInParentOfDisplay: not found");
 
     return false;
 }
 
-DirInfoType AwsS3::unsafeListObjects_Dir(CALLER_ARG
-    const std::wstring& argBucket, const std::wstring& argKey)
+DirInfoType AwsS3::unlockListObjects_Dir(CALLER_ARG const ObjectKey& argObjKey)
 {
-    StatsIncr(_unsafeListObjects_Dir);
+    StatsIncr(_unlockListObjects_Dir);
 
     NEW_LOG_BLOCK();
 
-    traceW(L"bucket=%s key=%s", argBucket.c_str(), argKey.c_str());
+    traceW(L"argObjKey=%s", argObjKey.c_str());
 
     // 直接的なキャッシュを優先して調べる
     // --> 更新されたときを考慮
 
     DirInfoListType dirInfoList;
 
-    if (this->unsafeListObjects(CONT_CALLER Purpose::CheckDir, argBucket, argKey, &dirInfoList))
+    if (this->unlockListObjects(CONT_CALLER argObjKey, Purpose::CheckDirExists, &dirInfoList))
     {
         APP_ASSERT(dirInfoList.size() == 1);
 
-        traceW(L"unsafeListObjects: found");
+        traceW(L"unlockListObjects: found");
 
         // ディレクトリの場合は FSP_FSCTL_FILE_INFO に適当な値を埋める
         // ... 取得した要素の情報([0]) がファイルの場合もあるので、編集が必要
 
-        return mallocDirInfoW_dir(argKey, argBucket, (*dirInfoList.begin())->FileInfo.ChangeTime);
+        return makeDirInfo_dir(argObjKey, (*dirInfoList.begin())->FileInfo.LastWriteTime);
     }
 
-    traceW(L"unsafeListObjects: not found");
+    traceW(L"unlockListObjects: not found");
 
     // 親ディレクトリから調べる
 
-    return findFileInParentDirectry(CONT_CALLER argBucket, argKey);
+    return this->unlockFindInParentOfDisplay(CONT_CALLER argObjKey);
 }
 
 // -----------------------------------------------------------------------------------
@@ -362,28 +313,24 @@ static std::mutex gGuard;
 ObjectCache gObjectCache;
 
 
-bool AwsS3::headObject(CALLER_ARG
-    const std::wstring& argBucket, const std::wstring& argKey,
-    FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
+bool AwsS3::headObject(CALLER_ARG const ObjectKey& argObjKey, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
 {
     StatsIncr(headObject);
-
     THREAD_SAFE();
-
     NEW_LOG_BLOCK();
-    APP_ASSERT(!argBucket.empty());
+    APP_ASSERT(argObjKey.valid());
 
     bool ret = false;
 
-    traceW(L"bucket: %s, key: %s", argBucket.c_str(), argKey.c_str());
+    traceW(L"ObjectKey=%s", argObjKey.c_str());
 
     // キーの最後の文字に "/" があるかどうかでファイル/ディレクトリを判断
     //
-    if (argKey.empty() || (!argKey.empty() && argKey.back() == L'/'))
+    if (argObjKey.meansDir())
     {
         // ディレクトリの存在確認
 
-        const auto dirInfo{ this->unsafeListObjects_Dir(CONT_CALLER argBucket, argKey) };
+        const auto dirInfo{ this->unlockListObjects_Dir(CONT_CALLER argObjKey) };
         if (dirInfo)
         {
             if (pFileInfo)
@@ -395,20 +342,20 @@ bool AwsS3::headObject(CALLER_ARG
         }
         else
         {
-            traceW(L"fault: unsafeListObjects");
+            traceW(L"fault: unlockListObjects");
         }
     }
     else
     {
         // ファイルの存在確認
 
-        if (this->unsafeHeadObject_File(CONT_CALLER argBucket, argKey, pFileInfo))
+        if (this->unlockHeadObject_File(CONT_CALLER argObjKey, pFileInfo))
         {
             ret = true;
         }
         else
         {
-            traceW(L"fault: unsafeHeadObject");
+            traceW(L"fault: unlockHeadObject");
             return false;
         }
     }
@@ -416,26 +363,24 @@ bool AwsS3::headObject(CALLER_ARG
     return ret;
 }
 
-bool AwsS3::headObject_File_SkipCacheSearch(CALLER_ARG
-    const std::wstring& argBucket, const std::wstring& argKey,
-    FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
-{
-    // shouldDownload() 内で使用しており、対象はファイルのみ
-    // キャッシュは探さず api を実行する
-
-    THREAD_SAFE();
-
-    return this->unsafeHeadObject(CONT_CALLER argBucket, argKey, false, pFileInfo);
-}
-
-bool AwsS3::listObjects(CALLER_ARG const std::wstring& argBucket, const std::wstring& argKey,
-    DirInfoListType* pDirInfoList)
+bool AwsS3::listObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* pDirInfoList /* nullable */)
 {
     StatsIncr(listObjects);
 
     THREAD_SAFE();
 
-    return this->unsafeListObjects_Display(CONT_CALLER argBucket, argKey, pDirInfoList);
+    return this->unlockListObjects_Display(CONT_CALLER argObjKey, pDirInfoList);
+}
+
+//
+// 以降は override ではないもの
+//
+
+int AwsS3::deleteCacheByObjKey(CALLER_ARG const ObjectKey& argObjKey)
+{
+    THREAD_SAFE();
+
+    return this->unlockDeleteCacheByObjKey(CONT_CALLER argObjKey);
 }
 
 // レポートの生成

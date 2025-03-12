@@ -590,7 +590,7 @@ region=${region}
 #max_filesize_mb=4
 
 ; File names matching the following regular expression patterns will be ignored.
-re_ignored_patterns=.*\\(desktop\.ini|autorun\.inf|thumbs\.db|\.DS_Store)$
+#re_ignored_patterns=\\(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif)|\.DS_Store)$
 
 ; ----------
 ; INFO

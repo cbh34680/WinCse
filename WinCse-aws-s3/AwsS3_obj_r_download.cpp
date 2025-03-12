@@ -140,11 +140,11 @@ exit:
 //      それ以外    CreateFile 後に SetFilePointerEx が実行される
 //
 int64_t AwsS3::prepareLocalCacheFile(CALLER_ARG
-    const std::wstring& argBucket, const std::wstring& argKey, const FileOutputMeta& argMeta)
+    const ObjectKey& argObjKey, const FileOutputMeta& argMeta)
 {
     NEW_LOG_BLOCK();
 
-    traceW(L"bucket=%s key=%s %s", argBucket.c_str(), argKey.c_str(), argMeta.str().c_str());
+    traceW(L"argObjKey=%s meta=%s", argObjKey.c_str(), argMeta.str().c_str());
 
     std::stringstream ss;
 
@@ -166,8 +166,8 @@ int64_t AwsS3::prepareLocalCacheFile(CALLER_ARG
     const chrono::steady_clock::time_point start{ chrono::steady_clock::now() };
 
     Aws::S3::Model::GetObjectRequest request;
-    request.SetBucket(WC2MB(argBucket));
-    request.SetKey(WC2MB(argKey));
+    request.SetBucket(argObjKey.bucketA());
+    request.SetKey(argObjKey.keyA());
 
     if (!range.empty())
     {
@@ -196,42 +196,24 @@ int64_t AwsS3::prepareLocalCacheFile(CALLER_ARG
     const chrono::steady_clock::time_point end{ chrono::steady_clock::now() };
     const auto duration{ std::chrono::duration_cast<std::chrono::milliseconds>(end - start) };
 
-    traceW(L"DOWNLOADTIME bucket=%s key=%s size=%lld duration=%lld",
-        argBucket.c_str(), argKey.c_str(), bytesWritten, duration.count());
+    traceW(L"DOWNLOADTIME argObjKey=%s size=%lld duration=%lld",
+        argObjKey.c_str(), bytesWritten, duration.count());
 
     return bytesWritten;
 }
 
-bool AwsS3::shouldDownload(CALLER_ARG
-    const std::wstring& argBucket, const std::wstring& argKey, const std::wstring& localPath,
-    FSP_FSCTL_FILE_INFO* pFileInfo, bool* pNeedGet)
+bool AwsS3::shouldDownload(CALLER_ARG const ObjectKey& argObjKey,
+    const FSP_FSCTL_FILE_INFO& remote, const std::wstring& localPath, bool* pNeedDownload)
 {
     NEW_LOG_BLOCK();
-    APP_ASSERT(pFileInfo);
-    APP_ASSERT(pNeedGet);
+    APP_ASSERT(pNeedDownload);
 
-    traceW(L"bucket=%s key=%s localPath=%s", argBucket.c_str(), argKey.c_str(), localPath.c_str());
+    traceW(L"argObjKey=%s localPath=%s", argObjKey.c_str(), localPath.c_str());
 
     bool ret = false;
-    bool needGet = false;
+    bool needDownload = false;
 
-    // ctx->fileInfo の内容は古い可能性が高いので、改めて HeadObject を実行する
-
-    FSP_FSCTL_FILE_INFO remote{};
     FSP_FSCTL_FILE_INFO local{};
-
-    if (!this->headObject_File_SkipCacheSearch(CONT_CALLER argBucket, argKey, &remote))
-    {
-        // 失敗する可能性は少ないが、ローカルには存在するので再取得不要
-
-        traceW(L"fault: headObject_File_SkipCacheSearch");
-        goto exit;
-    }
-
-    // せっかく取得したので、念のため最新の情報を保存しておく
-    // (あまり意味は無いと思う)
-
-    *pFileInfo = remote;
 
     if (std::filesystem::exists(localPath))
     {
@@ -247,8 +229,6 @@ bool AwsS3::shouldDownload(CALLER_ARG
 
         if (!PathToFileInfo(localPath, &local))
         {
-            // 失敗する可能性は少ないが、属性情報が取得できないので再取得
-
             traceW(L"fault: PathToFileInfo");
             goto exit;
         }
@@ -275,7 +255,7 @@ bool AwsS3::shouldDownload(CALLER_ARG
             // リモート・ファイルが更新されているので再取得
 
             traceW(L"remote file changed");
-            needGet = true;
+            needDownload = true;
         }
 
         //
@@ -284,7 +264,7 @@ bool AwsS3::shouldDownload(CALLER_ARG
         if (remote.FileSize != local.FileSize)
         {
             traceW(L"filesize unmatch remote=%llu local=%llu", remote.FileSize, local.FileSize);
-            needGet = true;
+            needDownload = true;
         }
     }
     else
@@ -292,11 +272,11 @@ bool AwsS3::shouldDownload(CALLER_ARG
         // キャッシュ・ファイルが存在しない
 
         traceW(L"no cache file");
-        needGet = true;
+        needDownload = true;
     }
 
     ret = true;
-    *pNeedGet = needGet;
+    *pNeedDownload = needDownload;
 
 exit:
     return ret;

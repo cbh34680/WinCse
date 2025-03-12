@@ -1,5 +1,5 @@
 #include "AwsS3.hpp"
-
+#include <iomanip>
 
 using namespace WinCseLib;
 
@@ -60,11 +60,11 @@ bool AwsS3::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 
     // バケット一覧の先読み
     // 無視できて優先度は低い
-    mDelayedWorker->addTask(START_CALLER new ListBucketsTask{ this }, Priority::Low, CanIgnore::Yes);
+    mDelayedWorker->addTask(START_CALLER new ListBucketsTask{ this }, Priority::Low, CanIgnoreDuplicates::Yes);
 
     // アイドル時のメモリ解放(等)のタスクを登録
     // 優先度は低い
-    mIdleWorker->addTask(START_CALLER new IdleTask{ this }, Priority::Low, CanIgnore::None);
+    mIdleWorker->addTask(START_CALLER new IdleTask{ this }, Priority::Low, CanIgnoreDuplicates::None);
 
     // 外部からの通知待ちイベントの生成
     SECURITY_ATTRIBUTES sa{ 0 };
@@ -104,6 +104,8 @@ bool AwsS3::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 
     gNotifWorker = new std::thread(&AwsS3::notifListener, this);
     APP_ASSERT(gNotifWorker);
+
+    ::SetThreadDescription(gNotifWorker->native_handle(), L"WinCse::notifListener");
 
     ret = true;
 
@@ -179,7 +181,25 @@ void AwsS3::notifListener()
         //
         // 各種情報のログ
         //
-        const std::wstring path{ mCacheReportDir + L"\\report.txt" };
+        SYSTEMTIME st;
+        ::GetLocalTime(&st);
+
+        std::wstringstream ss;
+        ss << mCacheReportDir;
+        ss << L'\\';
+        ss << L"report";
+        ss << L'-';
+        ss << std::setw(4) << std::setfill(L'0') << st.wYear;
+        ss << std::setw(2) << std::setfill(L'0') << st.wMonth;
+        ss << std::setw(2) << std::setfill(L'0') << st.wDay;
+        ss << L'-';
+        ss << std::setw(2) << std::setfill(L'0') << st.wHour;
+        ss << std::setw(2) << std::setfill(L'0') << st.wMinute;
+        ss << std::setw(2) << std::setfill(L'0') << st.wSecond;
+        ss << L".log";
+
+        const auto path{ ss.str() };
+
         FILE* fp = nullptr;
         if (_wfopen_s(&fp, path.c_str(), L"wt") == 0)
         {

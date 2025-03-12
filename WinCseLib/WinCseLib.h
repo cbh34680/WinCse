@@ -94,8 +94,8 @@ WINCSELIB_API std::string TrimA(const std::string& str);
 WINCSELIB_API std::wstring WildcardToRegexW(const std::wstring& wildcard);
 WINCSELIB_API std::string WildcardToRegexA(const std::string& wildcard);
 
-WINCSELIB_API std::vector<std::wstring> SplitW(const std::wstring& input, const wchar_t sep, const bool ignoreEmpty);
-WINCSELIB_API std::wstring JoinW(const std::vector<std::wstring>& tokens, const wchar_t sep, const bool ignoreEmpty);
+WINCSELIB_API std::vector<std::wstring> SplitString(const std::wstring& input, const wchar_t sep, const bool ignoreEmpty);
+WINCSELIB_API std::wstring JoinStrings(const std::vector<std::wstring>& tokens, const wchar_t sep, const bool ignoreEmpty);
 
 WINCSELIB_API bool GetIniStringW(const std::wstring& confPath, const wchar_t* argSection, const wchar_t* keyName, std::wstring* pValue);
 WINCSELIB_API bool GetIniStringA(const std::string& confPath, const char* argSection, const char* keyName, std::string* pValue);
@@ -110,6 +110,12 @@ WINCSELIB_API void AbnormalEnd(const char* file, const int line, const char* fun
 WINCSELIB_API bool CreateLogger(const wchar_t* argTempDir, const wchar_t* argTrcDir, const wchar_t* argDllType);
 WINCSELIB_API ILogger* GetLogger();
 WINCSELIB_API void DeleteLogger();
+
+// ファイル名から FSP_FSCTL_DIR_INFO のヒープ領域を生成し、いくつかのメンバを設定して返却
+WINCSELIB_API DirInfoType makeDirInfo(const WinCseLib::ObjectKey& argObjKey);
+
+WINCSELIB_API bool SplitPath(const std::wstring& argKey,
+    std::wstring* pParentDir /* nullable */, std::wstring* pFilename /* nullable */);
 
 //
 // ログ・ブロックの情報
@@ -163,7 +169,7 @@ typedef struct
 }
 WINFSP_IF;
 
-int WINCSELIB_API WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINFSP_IF* appif);
+WINCSELIB_API int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINFSP_IF* appif);
 
 // -----------------------------
 //
@@ -194,5 +200,7 @@ int WINCSELIB_API WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINFSP_I
 
 #define traceW(format, ...) \
 	WinCseLib::GetLogger()->traceW_impl(LOG_DEPTH(), __FILEW__, __LINE__, __FUNCTIONW__, format, __VA_ARGS__)
+
+#define FA_IS_DIR(fa)   ((fa) & FILE_ATTRIBUTE_DIRECTORY)
 
 // EOF

@@ -23,9 +23,15 @@ public:
 
 	void updateRegion(CALLER_ARG const std::wstring& bucketName, const std::wstring& bucketRegion);
 
-	void clear(CALLER_ARG0);
+	void clear(CALLER_ARG0)
+	{
+		mList.clear();
+	}
 
-	bool empty(CALLER_ARG0);
+	bool empty(CALLER_ARG0)
+	{
+		return mList.empty();
+	}
 
 	void save(CALLER_ARG
 		const DirInfoListType& dirInfoList);

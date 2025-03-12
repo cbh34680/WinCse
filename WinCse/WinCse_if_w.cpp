@@ -3,17 +3,37 @@
 
 using namespace WinCseLib;
 
-#undef traceA
 
-
-
-NTSTATUS WinCse::DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags)
+VOID WinCse::DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags)
 {
 	StatsIncr(DoCleanup);
 
 	NEW_LOG_BLOCK();
+	APP_ASSERT(FileContext);
+	APP_ASSERT(FileName);
 
-	return STATUS_INVALID_DEVICE_REQUEST;
+	traceW(L"FileName: \"%s\"", FileName);
+	traceW(L"(FileContext)FileName: \"%s\"", FileContext->FileName);
+	traceW(L"FileAttributes: %u", FileContext->FileInfo.FileAttributes);
+	traceW(L"Flags=%lu", Flags);
+
+	mCSDevice->cleanup(START_CALLER (IOpenContext*)FileContext->UParam, Flags);
+}
+
+NTSTATUS WinCse::DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOOLEAN argDeleteFile)
+{
+	StatsIncr(DoSetDelete);
+
+	NEW_LOG_BLOCK();
+	APP_ASSERT(FileContext);
+	APP_ASSERT(FileName);
+
+	traceW(L"FileName: \"%s\"", FileName);
+	traceW(L"(FileContext)FileName: \"%s\"", FileContext->FileName);
+	traceW(L"FileAttributes: %u", FileContext->FileInfo.FileAttributes);
+	traceW(L"deleteFile=%s", argDeleteFile ? L"true" : L"false");
+
+	return mCSDevice->remove(START_CALLER (IOpenContext*)FileContext->UParam, argDeleteFile);
 }
 
 NTSTATUS WinCse::DoCreate()
@@ -91,15 +111,6 @@ NTSTATUS WinCse::DoSetSecurity()
 NTSTATUS WinCse::DoWrite()
 {
 	StatsIncr(DoWrite);
-
-	NEW_LOG_BLOCK();
-
-	return STATUS_INVALID_DEVICE_REQUEST;
-}
-
-NTSTATUS WinCse::DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOOLEAN deleteFile)
-{
-	StatsIncr(DoSetDelete);
 
 	NEW_LOG_BLOCK();
 

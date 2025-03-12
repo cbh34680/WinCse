@@ -13,7 +13,7 @@ bool PathToFileInfo(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo)
 	//LARGE_INTEGER fileSize;
 	BOOL ret = FALSE;
 	HANDLE hFile = INVALID_HANDLE_VALUE;
-	NTSTATUS result = STATUS_UNSUCCESSFUL;
+	NTSTATUS ntstatus = STATUS_UNSUCCESSFUL;
 
 	hFile = ::CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
 		OPEN_EXISTING, 0, NULL);
@@ -23,8 +23,8 @@ bool PathToFileInfo(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo)
 		goto exit;
 	}
 
-	result = GetFileInfoInternal(hFile, pFileInfo);
-	if (!NT_SUCCESS(result))
+	ntstatus = GetFileInfoInternal(hFile, pFileInfo);
+	if (!NT_SUCCESS(ntstatus))
 	{
 		goto exit;
 	}

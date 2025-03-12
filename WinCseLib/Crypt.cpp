@@ -16,21 +16,21 @@ bool DecryptAES(const std::vector<BYTE>& key, const std::vector<BYTE>& iv,
     DWORD cbKeyObject = 0, cbData = 0;
     std::vector<BYTE> keyObject, decrypted(encrypted.size());
 
-    NTSTATUS result = STATUS_UNSUCCESSFUL;
+    NTSTATUS ntstatus = STATUS_UNSUCCESSFUL;
 
     // AES アルゴリズムを開く
-    result = ::BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_AES_ALGORITHM, nullptr, 0);
+    ntstatus = ::BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_AES_ALGORITHM, nullptr, 0);
 
-    if (!NT_SUCCESS(result))
+    if (!NT_SUCCESS(ntstatus))
     {
         goto exit;
     }
 
     // キーオブジェクトのサイズを取得
-    result = ::BCryptGetProperty(hAlg, BCRYPT_OBJECT_LENGTH, (PUCHAR)&cbKeyObject,
+    ntstatus = ::BCryptGetProperty(hAlg, BCRYPT_OBJECT_LENGTH, (PUCHAR)&cbKeyObject,
         sizeof(DWORD), &cbData, 0);
 
-    if (!NT_SUCCESS(result))
+    if (!NT_SUCCESS(ntstatus))
     {
         goto exit;
     }
@@ -38,19 +38,19 @@ bool DecryptAES(const std::vector<BYTE>& key, const std::vector<BYTE>& iv,
     keyObject.resize(cbKeyObject);
 
     // キーを作成
-    result = ::BCryptGenerateSymmetricKey(hAlg, &hKey, keyObject.data(), cbKeyObject,
+    ntstatus = ::BCryptGenerateSymmetricKey(hAlg, &hKey, keyObject.data(), cbKeyObject,
         (PUCHAR)key.data(), (ULONG)key.size(), 0);
 
-    if (!NT_SUCCESS(result))
+    if (!NT_SUCCESS(ntstatus))
     {
         goto exit;
     }
 
     // 復号処理
-    result = ::BCryptDecrypt(hKey, (PUCHAR)encrypted.data(), (ULONG)encrypted.size(),
+    ntstatus = ::BCryptDecrypt(hKey, (PUCHAR)encrypted.data(), (ULONG)encrypted.size(),
         NULL, (PUCHAR)iv.data(), (ULONG)iv.size(), decrypted.data(), (ULONG)decrypted.size(), &cbData, 0);
 
-    if (!NT_SUCCESS(result))
+    if (!NT_SUCCESS(ntstatus))
     {
         goto exit;
     }

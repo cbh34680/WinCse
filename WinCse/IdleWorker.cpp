@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <mutex>
 #include <numeric>
+#include <sstream>
 
 using namespace WinCseLib;
 
@@ -14,6 +15,26 @@ static const int WORKER_MAX = 1;
 #else
 static const int WORKER_MAX = 0;
 #endif
+
+IdleWorker::IdleWorker(const std::wstring& argTempDir, const std::wstring& argIniSection)
+	: mTempDir(argTempDir), mIniSection(argIniSection)
+{
+	// OnSvcStart の呼び出し順によるイベントオブジェクト未生成を
+	// 回避するため、コンストラクタで生成して OnSvcStart で null チェックする
+
+	mEvent = ::CreateEvent(NULL, FALSE, FALSE, NULL);
+	APP_ASSERT(mEvent);
+}
+
+IdleWorker::~IdleWorker()
+{
+	NEW_LOG_BLOCK();
+
+	this->OnSvcStop();
+
+	traceW(L"close event");
+	::CloseHandle(mEvent);
+}
 
 bool IdleWorker::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 {
@@ -35,28 +56,19 @@ bool IdleWorker::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSyst
 
 	for (int i=0; i<WORKER_MAX; i++)
 	{
-		mThreads.emplace_back(&IdleWorker::listenEvent, this, i);
+		auto& thr = mThreads.emplace_back(&IdleWorker::listenEvent, this, i);
+
+		std::wstringstream ss;
+		ss << L"WinCse::DelayedWorker ";
+		ss << i;
+
+		auto h = thr.native_handle();
+		::SetThreadDescription(h, ss.str().c_str());
+		//::SetThreadPriority(h, THREAD_PRIORITY_LOWEST);
 	}
 
 	return true;
 }
-
-struct BreakLoopRequest : public std::exception
-{
-	BreakLoopRequest(char const* const msg) : std::exception(msg) { }
-};
-
-struct BreakLoopTask : public ITask
-{
-	void run(CALLER_ARG0) override
-	{
-		NEW_LOG_BLOCK();
-
-		traceW(L"throw break");
-
-		throw BreakLoopRequest("from " __FUNCTION__);
-	}
-};
 
 void IdleWorker::OnSvcStop()
 {
@@ -68,10 +80,12 @@ void IdleWorker::OnSvcStop()
 	{
 		traceW(L"wait for thread end ...");
 
+		mEndWorkerFlag = true;
+
 		for (int i=0; i<mThreads.size(); i++)
 		{
-			// 最優先の停止命令
-			addTask(START_CALLER new BreakLoopTask, Priority::High, CanIgnore::None);
+			const auto b = ::SetEvent(mEvent);
+			APP_ASSERT(b);
 		}
 
 		for (auto& thr: mThreads)
@@ -83,6 +97,8 @@ void IdleWorker::OnSvcStop()
 
 		traceW(L"done.");
 	}
+
+	mTasks.clear();
 }
 
 void IdleWorker::listenEvent(const int i)
@@ -117,6 +133,12 @@ void IdleWorker::listenEvent(const int i)
 
 			traceW(L"(%d): wait for signal ...", i);
 			const auto reason = ::WaitForSingleObject(mEvent, 1000 * 10);
+
+			if (mEndWorkerFlag)
+			{
+				traceW(L"(%d): receive end worker request", i);
+				break;
+			}
 
 			switch (reason)
 			{
@@ -172,7 +194,6 @@ void IdleWorker::listenEvent(const int i)
 
 					break;
 				}
-
 				case WAIT_OBJECT_0:
 				{
 					traceW(L"(%d): wait for signal: catch signal", i);
@@ -183,7 +204,6 @@ void IdleWorker::listenEvent(const int i)
 
 					break;
 				}
-
 				default:
 				{
 					const auto lerr = ::GetLastError();
@@ -226,8 +246,7 @@ void IdleWorker::listenEvent(const int i)
 					}
 
 					traceW(L"(%d): run idle task ...", i);
-					task->mWorkerId_4debug = i;
-					task->run(task->mCaller_4debug + L"->" + __FUNCTIONW__);
+					task->run(std::wstring(task->mCaller) + L"->" + __FUNCTIONW__);
 					traceW(L"(%d): run idle task done", i);
 
 				}
@@ -241,11 +260,6 @@ void IdleWorker::listenEvent(const int i)
 				// 記録のリセット
 				//logCountHist9.clear();
 			}
-		}
-		catch (const BreakLoopRequest&)
-		{
-			traceA("(%d): catch loop-break request, go exit thread", i);
-			break;
 		}
 		catch (const std::exception& ex)
 		{
@@ -263,63 +277,23 @@ void IdleWorker::listenEvent(const int i)
 }
 
 //
-// メンバに配置するとこのファイル以外からもアクセスできてしまう
-// ことの回避処置。
-// 
-// static に置くとメモリリークとして認識されたり、いろいろ面倒なので
-// コンストラクタとデストラクタで管理する
-//
-static struct LocalData
-{
-	std::mutex mGuard;
-	std::deque<std::shared_ptr<WinCseLib::ITask>> mTasks;
-}
-*Local;
-
-IdleWorker::IdleWorker(const std::wstring& argTempDir, const std::wstring& argIniSection)
-	: mTempDir(argTempDir), mIniSection(argIniSection)
-{
-	Local = new LocalData;
-	APP_ASSERT(Local);
-
-	// OnSvcStart の呼び出し順によるイベントオブジェクト未生成を
-	// 回避するため、コンストラクタで生成して OnSvcStart で null チェックする
-
-	mEvent = ::CreateEvent(NULL, FALSE, FALSE, NULL);
-	APP_ASSERT(mEvent);
-}
-
-IdleWorker::~IdleWorker()
-{
-	NEW_LOG_BLOCK();
-
-	this->OnSvcStop();
-
-	traceW(L"close event");
-	::CloseHandle(mEvent);
-
-	delete Local;
-}
-
-
-//
 // ここから下のメソッドは THREAD_SAFE マクロによる修飾が必要
 //
-#define THREAD_SAFE() std::lock_guard<std::mutex> lock_(Local->mGuard)
+static std::mutex gGuard;
+#define THREAD_SAFE() std::lock_guard<std::mutex> lock_(gGuard)
 
-
-bool IdleWorker::addTask(CALLER_ARG WinCseLib::ITask* argTask, WinCseLib::Priority priority, WinCseLib::CanIgnore ignState)
+bool IdleWorker::addTask(CALLER_ARG WinCseLib::ITask* argTask, WinCseLib::Priority priority, WinCseLib::CanIgnoreDuplicates ignState)
 {
 	THREAD_SAFE();
-	//NEW_LOG_BLOCK();
+	NEW_LOG_BLOCK();
 	APP_ASSERT(argTask);
 
 	// 無視可否は意味がないので設定させない
-	APP_ASSERT(ignState == CanIgnore::None);
+	APP_ASSERT(ignState == CanIgnoreDuplicates::None);
 
 #if ENABLE_WORKER
 	argTask->mPriority = priority;
-	argTask->mCaller_4debug = CALL_CHAIN();
+	argTask->mCaller = wcsdup(CALL_CHAIN().c_str());
 
 	if (priority == Priority::High)
 	{
@@ -353,7 +327,7 @@ std::deque<std::shared_ptr<ITask>> IdleWorker::getTasks()
 	THREAD_SAFE();
 	//NEW_LOG_BLOCK();
 
-	return Local->mTasks;
+	return mTasks;
 }
 
 // EOF

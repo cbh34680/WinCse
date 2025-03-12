@@ -11,26 +11,20 @@ using namespace WinCseLib;
 // ここでは最初に呼び出されたときに s3 からファイルをダウンロードしてキャッシュとした上で
 // そのファイルをオープンし、その後は HANDLE を使いまわす
 //
-bool AwsS3::readFile_Simple(CALLER_ARG PVOID UParam,
+NTSTATUS AwsS3::readObject_Simple(CALLER_ARG WinCseLib::IOpenContext* argOpenContext,
     PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred)
 {
-    APP_ASSERT(UParam);
-
-    ReadFileContext* ctx = (ReadFileContext*)UParam;
-    APP_ASSERT(!ctx->mBucket.empty());
-    APP_ASSERT(!ctx->mKey.empty());
-    APP_ASSERT(ctx->mKey.back() != L'/');
+    OpenContext* ctx = dynamic_cast<OpenContext*>(argOpenContext);
+    APP_ASSERT(ctx->isFile());
 
     NEW_LOG_BLOCK();
 
-    const auto remotePath{ ctx->getGuardString() };
-    traceW(L"HANDLE=%p, Offset=%llu Length=%lu remotePath=%s", ctx->mFile, Offset, Length, remotePath.c_str());
+    NTSTATUS ntstatus = STATUS_IO_DEVICE_ERROR;
+    OVERLAPPED Overlapped{};
 
-    //
-    // 同時に複数のスレッドから異なるオフセットで呼び出されるので
-    // 既に mFile に設定されているか判定し、無駄なロックは避ける
-    //
-    if (ctx->mFile == INVALID_HANDLE_VALUE)
+    const auto remotePath{ ctx->getRemotePath() };
+    traceW(L"ctx=%p HANDLE=%p, Offset=%llu Length=%lu remotePath=%s", ctx, ctx->mLocalFile, Offset, Length, remotePath.c_str());
+
     {
         // ファイル名への参照を登録
 
@@ -45,87 +39,110 @@ bool AwsS3::readFile_Simple(CALLER_ARG PVOID UParam,
             ProtectedNamedData<Shared_Simple> safeShare(unsafeShare);
 
             //
-            // 関数先頭でも mFile のチェックをしているが、ロック有無で状況が
+            // 関数先頭でも mLocalFile のチェックをしているが、ロック有無で状況が
             // 変わってくるため、改めてチェックする
             //
-            if (ctx->mFile == INVALID_HANDLE_VALUE)
+            if (ctx->mLocalFile == INVALID_HANDLE_VALUE)
             {
-                traceW(L"init mFile: HANDLE=%p, Offset=%llu Length=%lu remotePath=%s",
-                    ctx->mFile, Offset, Length, remotePath.c_str());
+                traceW(L"init mLocalFile: HANDLE=%p, Offset=%llu Length=%lu remotePath=%s",
+                    ctx->mLocalFile, Offset, Length, remotePath.c_str());
 
                 // openFile() 後の初回の呼び出し
 
-                const std::wstring localPath{ mCacheDataDir + L'\\' + EncodeFileNameToLocalNameW(remotePath) };
+                const std::wstring localPath{ ctx->getLocalPath() };
+
+                if (ctx->mFileInfo.FileSize == 0)
+                {
+                    // ファイルが空なのでダウンロードは不要
+
+                    const auto alreadyExists = std::filesystem::exists(localPath);
+
+                    if (!alreadyExists)
+                    {
+                        // ローカルに存在しないので touch と同義
+
+                        // タイムスタンプを属性情報に合わせる
+                        // SetFileTime を実行するので、GENERIC_WRITE が必要
+
+                        if (!ctx->openLocalFile(GENERIC_WRITE, CREATE_ALWAYS))
+                        {
+                            traceW(L"fault: openFile");
+                            goto exit;
+                        }
+
+                        if (!ctx->setLocalFileTime(ctx->mFileInfo.CreationTime))
+                        {
+                            traceW(L"fault: setLocalTimeTime");
+                            goto exit;
+                        }
+                    }
+
+                    // ファイルが空なので、EOF を返却
+
+                    ntstatus = STATUS_END_OF_FILE;
+                    goto exit;
+                }
 
                 // ダウンロードが必要か判断
 
-                bool needGet = false;
+                bool needDownload = false;
 
-                if (!shouldDownload(CONT_CALLER ctx->mBucket, ctx->mKey, localPath, &ctx->mFileInfo, &needGet))
+                if (!shouldDownload(CONT_CALLER ctx->mObjKey, ctx->mFileInfo, localPath, &needDownload))
                 {
                     traceW(L"fault: shouldDownload");
-                    return false;
+                    goto exit;
                 }
 
-                traceW(L"needGet: %s", needGet ? L"true" : L"false");
+                traceW(L"needDownload: %s", needDownload ? L"true" : L"false");
 
-                if (needGet)
+                if (needDownload)
                 {
                     // キャッシュ・ファイルの準備
 
-                    const FileOutputMeta meta{ localPath, CREATE_ALWAYS, false, 0, 0, true };
+                    const FileOutputMeta meta
+                    {
+                        localPath,
+                        CREATE_ALWAYS,
+                        false,              // SetRange()
+                        0,                  // Offset
+                        0,                  // Length
+                        true                // SetFileTime()
+                    };
 
-                    const auto bytesWritten = this->prepareLocalCacheFile(CONT_CALLER
-                        ctx->mBucket, ctx->mKey, meta);
+                    const auto bytesWritten = this->prepareLocalCacheFile(CONT_CALLER ctx->mObjKey, meta);
 
                     if (bytesWritten < 0)
                     {
-                        traceW(L"fault: prepareLocalCacheFile_Simple return=%lld", bytesWritten);
-                        return false;
+                        traceW(L"fault: prepareLocalCacheFile_Simple bytesWritten=%lld", bytesWritten);
+                        goto exit;
                     }
                 }
 
+                // 既存のファイルを開く
+
                 APP_ASSERT(std::filesystem::exists(localPath));
 
-                // キャッシュ・ファイルを開き、HANDLE をコンテキストに保存
-
-                ULONG CreateFlags = FILE_FLAG_BACKUP_SEMANTICS;
-                if (ctx->mCreateOptions & FILE_DELETE_ON_CLOSE)
-                    CreateFlags |= FILE_FLAG_DELETE_ON_CLOSE;
-
-#if 0
-                traceW(L"CreateFile path=%s dwDesiredAccess=%ld dwFlagsAndAttributes=%ld",
-                    localPath.c_str(), ctx->mGrantedAccess, CreateFlags);
-
-                traceW(L"compare dwDesiredAccess=%ld dwFlagsAndAttributes=%ld",
-                    FILE_READ_DATA | FILE_WRITE_DATA | FILE_WRITE_EA | FILE_READ_ATTRIBUTES | GENERIC_ALL,
-                    FILE_FLAG_BACKUP_SEMANTICS);
-#endif
-                ctx->mFile = ::CreateFileW(localPath.c_str(),
-                    ctx->mGrantedAccess, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                    NULL, OPEN_EXISTING, CreateFlags, NULL);
-
-                if (ctx->mFile == INVALID_HANDLE_VALUE)
+                if (!ctx->openLocalFile(0, OPEN_EXISTING))
                 {
-                    traceW(L"fault: CreateFileW");
-                    return false;
+                    traceW(L"fault: openFile");
+                    goto exit;
                 }
 
-                StatsIncr(_CreateFile);
+                APP_ASSERT(ctx->mLocalFile != INVALID_HANDLE_VALUE);
 
                 // 属性情報のサイズと比較
 
                 LARGE_INTEGER fileSize;
-                if(!::GetFileSizeEx(ctx->mFile, &fileSize))
+                if(!::GetFileSizeEx(ctx->mLocalFile, &fileSize))
                 {
                     traceW(L"fault: GetFileSizeEx");
-                    return false;
+                    goto exit;
                 }
 
                 if (ctx->mFileInfo.FileSize != (UINT64)fileSize.QuadPart)
                 {
                     traceW(L"fault: no match filesize ");
-                    return false;
+                    goto exit;
                 }
             }
 
@@ -135,29 +152,31 @@ bool AwsS3::readFile_Simple(CALLER_ARG PVOID UParam,
         // ファイル名への参照を解除
     }
 
-    APP_ASSERT(ctx->mFile);
-    APP_ASSERT(ctx->mFile != INVALID_HANDLE_VALUE);
+    APP_ASSERT(ctx->mLocalFile);
+    APP_ASSERT(ctx->mLocalFile != INVALID_HANDLE_VALUE);
 
     // Offset, Length によりファイルを読む
 
-    OVERLAPPED Overlapped{};
     Overlapped.Offset = (DWORD)Offset;
     Overlapped.OffsetHigh = (DWORD)(Offset >> 32);
 
-    if (!::ReadFile(ctx->mFile, Buffer, Length, PBytesTransferred, &Overlapped))
+    if (!::ReadFile(ctx->mLocalFile, Buffer, Length, PBytesTransferred, &Overlapped))
     {
         const DWORD lerr = ::GetLastError();
         traceW(L"fault: ReadFile LastError=%ld", lerr);
 
-        return false;
+        goto exit;
     }
 
     traceW(L"success: HANDLE=%p, Offset=%llu Length=%lu, PBytesTransferred=%lu, diffOffset=%llu",
-        ctx->mFile, Offset, Length, *PBytesTransferred, Offset - ctx->mLastOffset);
+        ctx->mLocalFile, Offset, Length, *PBytesTransferred);
 
-    ctx->mLastOffset = Offset;
+    ntstatus = STATUS_SUCCESS;
 
-    return true;
+exit:
+    traceW(L"ntstatus=%ld", ntstatus);
+
+    return ntstatus;
 }
 
 // EOF

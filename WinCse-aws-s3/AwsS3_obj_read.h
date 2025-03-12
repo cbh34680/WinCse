@@ -74,46 +74,6 @@ struct ProtectedNamedData
 #define SIMPLE_DOWNLOAD_THRESHOLD		(1024ULL * 1024 * 4)
 //#define SIMPLE_DOWNLOAD_THRESHOLD		(1024ULL)
 
-//
-// openFIle() Ç™åƒÇŒÇÍÇΩÇ∆Ç´Ç… UParam Ç∆ÇµÇƒ PTFS_FILE_CONTEXT Ç…ï€ë∂Ç∑ÇÈì‡ïîèÓïÒ
-// closeFile() Ç≈çÌèúÇ≥ÇÍÇÈ
-//
-
-struct ReadFileContext
-{
-	WINCSE_DEVICE_STATS& mStats;
-	const std::wstring mBucket;
-	const std::wstring mKey;
-	const UINT32 mCreateOptions;
-	const UINT32 mGrantedAccess;
-	FSP_FSCTL_FILE_INFO mFileInfo;
-
-	std::wstring mGuardString;
-
-	HANDLE mFile = INVALID_HANDLE_VALUE;
-	UINT64 mLastOffset = 0ULL;
-
-	ReadFileContext(
-		WINCSE_DEVICE_STATS& argStats,
-		const std::wstring& argBucket, const std::wstring& argKey,
-		const UINT32 argCreateOptions, const UINT32 argGrantedAccess,
-		const FSP_FSCTL_FILE_INFO& argFileInfo)
-		:
-		mStats(argStats),
-		mBucket(argBucket), mKey(argKey), mCreateOptions(argCreateOptions),
-		mGrantedAccess(argGrantedAccess), mFileInfo(argFileInfo)
-	{
-		mGuardString = mBucket + L'/' + mKey;
-	}
-
-	std::wstring getGuardString() const
-	{
-		return mGuardString;
-	}
-
-	~ReadFileContext();
-};
-
 struct FilePart
 {
 	WINCSE_DEVICE_STATS& mStats;

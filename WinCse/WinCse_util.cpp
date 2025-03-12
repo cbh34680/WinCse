@@ -16,7 +16,8 @@ bool WinCse::isFileNameIgnored(const wchar_t* arg)
 		return false;
 	}
 
-	return std::regex_match(std::wstring(arg), mIgnoredFileNamePatterns);
+	return std::regex_search(std::wstring(arg), mIgnoredFileNamePatterns);
+	//return std::regex_match(std::wstring(arg), mIgnoredFileNamePatterns);
 }
 
 //
@@ -39,7 +40,7 @@ NTSTATUS WinCse::HandleToInfo(CALLER_ARG HANDLE hFile, PUINT32 PFileAttributes,
 		}
 
 		traceW(L"FileAttributes: %u", AttributeTagInfo.FileAttributes);
-		traceW(L"\tdetect: %s", AttributeTagInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY ? L"dir" : L"file");
+		traceW(L"\tdetect: %s", FA_IS_DIR(AttributeTagInfo.FileAttributes) ? L"dir" : L"file");
 
 		*PFileAttributes = AttributeTagInfo.FileAttributes;
 	}
@@ -88,19 +89,20 @@ NTSTATUS WinCse::FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCT
 		// DoGetSecurityByName() と同様の検査をして、その結果を PFileContext
 		// と FileInfo に反映させる
 
-		const BucketKey bk{ FileName };
-		if (!bk.OK())
+		const ObjectKey objKey{ ObjectKey::fromWinPath(FileName) };
+		if (!objKey.valid())
 		{
 			traceW(L"illegal FileName: %s", FileName);
 
 			return STATUS_INVALID_PARAMETER;
 		}
 
-		if (bk.hasKey())
+		if (objKey.hasKey())
 		{
 			// "\bucket\dir" のパターン
 
-			if (mCSDevice->headObject(CONT_CALLER bk.bucket(), bk.key() + L'/', &fileInfo))
+			//if (mCSDevice->headObject(CONT_CALLER ObjectKey{ objKey.bucket(), objKey.key() + L'/' }, &fileInfo))
+			if (mCSDevice->headObject(CONT_CALLER objKey.toDir(), &fileInfo))
 			{
 				// ディレクトリを採用
 
@@ -111,7 +113,7 @@ NTSTATUS WinCse::FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCT
 			{
 				// "\bucket\dir\file.txt" のパターン
 
-				if (mCSDevice->headObject(CONT_CALLER bk.bucket(), bk.key(), &fileInfo))
+				if (mCSDevice->headObject(CONT_CALLER objKey, &fileInfo))
 				{
 					// ファイルを採用
 
@@ -130,7 +132,7 @@ NTSTATUS WinCse::FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCT
 
 			// 名前を指定してリストを取得
 
-			if (mCSDevice->listBuckets(CONT_CALLER &dirInfoList, { bk.bucket() }))
+			if (mCSDevice->listBuckets(CONT_CALLER &dirInfoList, { objKey.bucket() }))
 			{
 				APP_ASSERT(dirInfoList.size() == 1);
 
@@ -154,59 +156,6 @@ NTSTATUS WinCse::FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCT
 	*pFileInfo = fileInfo;
 
 	return STATUS_SUCCESS;
-}
-
-//
-// BucketKey
-//
-
-// 文字列をバケット名とキーに分割
-BucketKey::BucketKey(const wchar_t* arg)
-{
-	std::wstringstream input{ arg };
-
-	std::vector<std::wstring> tokens;
-	std::wstring token;
-
-	while (std::getline(input, token, L'\\'))
-	{
-		tokens.push_back(token);
-	}
-
-	switch (tokens.size())
-	{
-		case 0:
-		case 1:
-		{
-			return;
-		}
-		case 2:
-		{
-			mBucket = std::move(tokens[1]);
-			break;
-		}
-		default:
-		{
-			mBucket = std::move(tokens[1]);
-
-			std::wstringstream output;
-			for (int i = 2; i < tokens.size(); ++i)
-			{
-				if (i != 2)
-				{
-					output << L'/';
-				}
-				output << std::move(tokens[i]);
-			}
-
-			mKey = output.str();
-			mHasKey = true;
-
-			break;
-		}
-	}
-
-	mOK = true;
 }
 
 // EOF

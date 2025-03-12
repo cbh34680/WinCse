@@ -78,6 +78,51 @@ bool WinCse::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PAR
 			}
 		}
 
+#if 0
+		std::vector<std::wstring> strs =
+		{
+			L"\\nn\\desktop.ini",
+			L"abc\\desktop.ini",
+			L"abc\\folder.jpg",
+			L"abc\\folder.gif",
+			L"abc\\thumbs.db",
+			L"abc\\ehthumbs.db",
+			L"\\albumartsmall.jpg",
+			L"\\folder.ico",
+
+			L"abc/desktop.ini",
+			L"abc/folder.jpg",
+			L"abc/folder.gif",
+			L"abc/thumbs.db",
+			L"abc/ehthumbs.db",
+			L"/albumartsmall.jpg",
+			L"folder.ico",
+		};
+
+		for (const auto& str: strs)
+		{
+			std::wcout << str << ": ";
+
+			if (std::regex_match(str, mIgnoredFileNamePatterns))
+			{
+				std::wcout << L"[match] ";
+			}
+			else
+			{
+				std::wcout << L"[no match] ";
+			}
+
+			if (std::regex_search(str, mIgnoredFileNamePatterns))
+			{
+				std::wcout << L"[search] " << std::endl;
+			}
+			else
+			{
+				std::wcout << L"[no search] " << std::endl;
+			}
+		}
+#endif
+
 		//
 		// 属性参照用ファイル/ディレクトリの準備
 		//

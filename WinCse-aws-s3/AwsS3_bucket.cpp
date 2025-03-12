@@ -7,7 +7,7 @@ using namespace WinCseLib;
 extern BucketCache gBucketCache;
 
 
-std::wstring AwsS3::unsafeGetBucketRegion(CALLER_ARG const std::wstring& bucketName)
+std::wstring AwsS3::unlockGetBucketRegion(CALLER_ARG const std::wstring& bucketName)
 {
     NEW_LOG_BLOCK();
 
@@ -120,8 +120,8 @@ struct NotifRemoveBucketTask : public ITask
 
         traceW(L"exec FspFileSystemNotify**");
 
-        NTSTATUS result = FspFileSystemNotifyBegin(mFileSystem, 1000UL);
-        if (NT_SUCCESS(result))
+        NTSTATUS ntstatus = FspFileSystemNotifyBegin(mFileSystem, 1000UL);
+        if (NT_SUCCESS(ntstatus))
         {
             union
             {
@@ -142,11 +142,11 @@ struct NotifRemoveBucketTask : public ITask
 
             FspFileSystemAddNotifyInfo(&NotifyInfo.V, &Buffer, sizeof Buffer, &Length);
 
-            result = FspFileSystemNotify(mFileSystem, &Buffer.V, Length);
-            //APP_ASSERT(STATUS_SUCCESS == result);
+            ntstatus = FspFileSystemNotify(mFileSystem, &Buffer.V, Length);
+            //APP_ASSERT(STATUS_SUCCESS == ntstatus);
 
-            result = FspFileSystemNotifyEnd(mFileSystem);
-            //APP_ASSERT(STATUS_SUCCESS == result);
+            ntstatus = FspFileSystemNotifyEnd(mFileSystem);
+            //APP_ASSERT(STATUS_SUCCESS == ntstatus);
         }
     }
 };
@@ -191,7 +191,7 @@ bool AwsS3::headBucket(CALLER_ARG const std::wstring& bucketName)
         }
     }
 
-    const std::wstring bucketRegion{ this->unsafeGetBucketRegion(CONT_CALLER bucketName) };
+    const std::wstring bucketRegion{ this->unlockGetBucketRegion(CONT_CALLER bucketName) };
     if (bucketRegion != mRegion)
     {
         // バケットのリージョンが異なるので拒否
@@ -199,7 +199,7 @@ bool AwsS3::headBucket(CALLER_ARG const std::wstring& bucketName)
         traceW(L"%s: no match bucket-region", bucketRegion.c_str());
 
         // 非表示になるバケットについて WinFsp に通知
-        mDelayedWorker->addTask(START_CALLER new NotifRemoveBucketTask{ mFileSystem, std::wstring(L"\\") + bucketName }, Priority::Low, CanIgnore::Yes);
+        mDelayedWorker->addTask(START_CALLER new NotifRemoveBucketTask{ mFileSystem, std::wstring(L"\\") + bucketName }, Priority::Low, CanIgnoreDuplicates::Yes);
 
         return false;
     }
@@ -209,8 +209,7 @@ bool AwsS3::headBucket(CALLER_ARG const std::wstring& bucketName)
     return true;
 }
 
-bool AwsS3::listBuckets(CALLER_ARG
-    DirInfoListType* pDirInfoList,
+bool AwsS3::listBuckets(CALLER_ARG DirInfoListType* pDirInfoList /* nullable */,
     const std::vector<std::wstring>& options)
 {
     StatsIncr(listBuckets);
@@ -265,10 +264,17 @@ bool AwsS3::listBuckets(CALLER_ARG
             traceW(L"bucketName=%s, CreationDate=%s", bucketName.c_str(), UtcMilliToLocalTimeStringW(creationMillis).c_str());
 
             const auto FileTime = UtcMillisToWinFileTime100ns(creationMillis);
-            auto dirInfo = mallocDirInfoW_dir(bucketName, L"", FileTime);
+
+            // バケット一覧なので、他の場所と異なりバケット名をキーにする
+
+            auto dirInfo = makeDirInfo_dir(ObjectKey{ L"", bucketName }, FileTime);
             APP_ASSERT(dirInfo);
 
-            dirInfoList.push_back(dirInfo);
+            // バケットは常に読み取り専用
+
+            dirInfo->FileInfo.FileAttributes |= FILE_ATTRIBUTE_READONLY;
+
+            dirInfoList.emplace_back(dirInfo);
 
             if (mMaxBuckets > 0)
             {

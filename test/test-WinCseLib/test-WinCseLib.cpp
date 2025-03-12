@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <regex>
 #include <sstream>
+#include <deque>
 #include <bcrypt.h>
 
 using namespace WinCseLib;
@@ -166,17 +167,34 @@ void test3()
 
 void test4()
 {
-    //std::wregex pattern{ LR"(.*\\(desktop\.ini|autorun\.inf|thumbs\.db|\.DS_Store)$)", std::regex_constants::icase };
-    //std::wregex pattern{ L"(.*\\(desktop\.ini|autorun\.inf|thumbs\.db|\.DS_Store)$)", std::regex_constants::icase };
-    std::wregex pattern{ L".*\\\\(desktop\\.ini|autorun\\.inf|thumbs\\.db|\\.DS_Store)$", std::regex_constants::icase };
+    const wchar_t* pats = L"\\\\(desktop\\.ini|autorun\\.inf|(eh)?thumbs\\.db|AlbumArtSmall\\.jpg|folder\\.(ico|jpg|gif)|\\.DS_Store)$";
 
-    if (std::regex_search(L"abc\\desktop.ini", pattern))
+    //std::wregex pattern{  L".*\\\\(desktop\\.ini|autorun\\.inf|thumbs\\.db|\\.DS_Store)$", std::regex_constants::icase };
+    std::wregex pattern{ pats, std::regex_constants::icase };
+
+    std::vector<std::wstring> strs =
     {
-        puts("hit");
-    }
-    else
+        L"abc\\desktop.ini",
+        L"abc\\folder.jpg",
+        L"abc\\folder.gif",
+        L"abc\\thumbs.db",
+        L"abc\\ehthumbs.db",
+        L"\\albumartsmall.jpg",
+        L"\\folder.ico",
+    };
+
+    for (const auto& str: strs)
     {
-        puts("no");
+        std::wcout << str << ": ";
+
+        if (std::regex_search(str, pattern))
+        {
+            std::wcout << L"match" << std::endl;
+        }
+        else
+        {
+            std::wcout << L"no match" << std::endl;
+        }
     }
 
     int iii = 0;
@@ -245,6 +263,279 @@ void test7()
     int iii = 0;
 }
 
+void test8()
+{
+    std::vector<std::vector<std::wstring>> arrs
+    {
+        { L"",          L"" },
+        { L"",          L"my-key" },
+        { L"",          L"my-key/" },
+        { L"",          L"my-key/my-subkey" },
+        { L"",          L"my-key/my-subkey/" },
+        { L"my-bucket", L"" },
+        { L"my-bucket", L"my-key" },
+        { L"my-bucket", L"my-key/" },
+        { L"my-bucket", L"my-key/my-subkey" },
+        { L"my-bucket", L"my-key/my-subkey/" },
+    };
+
+    for (const auto& arr: arrs)
+    {
+        std::wcout << L"**********" << std::endl;
+
+        std::wcout << L"# [" << arr[0] << L"]" << std::endl;
+        std::wcout << L"# [" << arr[1] << L"]" << std::endl;
+        std::wcout << std::endl;
+
+        ObjectKey objKey{ arr[0], arr[1] };
+
+        std::wcout << L"valid: ";
+        std::wcout << (objKey.valid() ? L"true" : L"false");
+        std::wcout << std::endl;
+
+        std::wcout << L"hasKey: ";
+        std::wcout << (objKey.hasKey() ? L"true" : L"false");
+        std::wcout << std::endl;
+
+        std::wcout << L"bucket: ";
+        std::wcout << objKey.bucket();
+        std::wcout << std::endl;
+
+        std::wcout << L"key: ";
+        std::wcout << objKey.key();
+        std::wcout << std::endl;
+
+        std::wcout << L"str: ";
+        std::wcout << objKey.str();
+        std::wcout << std::endl;
+
+        std::wcout << L"c_str: ";
+        std::wcout << objKey.c_str();
+        std::wcout << std::endl;
+
+        std::cout << "bucketA: ";
+        std::cout << objKey.bucketA();
+        std::cout << std::endl;
+
+        std::cout << "keyA: ";
+        std::cout << objKey.keyA();
+        std::cout << std::endl;
+
+        std::cout << "strA: ";
+        std::cout << objKey.strA();
+        std::cout << std::endl;
+
+        std::wcout << L"meansDir: ";
+        std::wcout << (objKey.meansDir() ? L"true" : L"false");
+        std::wcout << std::endl;
+
+        std::wcout << std::endl;
+    }
+
+    std::cout << "done." << std::endl;
+}
+
+void test9()
+{
+    std::vector<std::wstring> arr
+    {
+        L"",
+        L"\\",
+        L"\\my-bucket",
+        L"\\my-bucket\\",
+        L"\\my-bucket\\my-key",
+        L"\\my-bucket\\my-key\\",
+        L"\\my-bucket\\my-key\\my-subkey",
+        L"\\my-bucket\\my-key\\my-subkey\\",
+    };
+
+    for (const auto& str: arr)
+    {
+        std::wcout << L"**********" << std::endl;
+
+        std::wcout << L"# [" << str << L"]" << std::endl;
+        std::wcout << std::endl;
+
+        ObjectKey objKey{ ObjectKey::fromWinPath(str) };
+
+        std::wcout << L"valid: ";
+        std::wcout << (objKey.valid() ? L"true" : L"false");
+        std::wcout << std::endl;
+
+        std::wcout << L"hasKey: ";
+        std::wcout << (objKey.hasKey() ? L"true" : L"false");
+        std::wcout << std::endl;
+
+        std::wcout << L"bucket: ";
+        std::wcout << objKey.bucket();
+        std::wcout << std::endl;
+
+        std::wcout << L"key: ";
+        std::wcout << objKey.key();
+        std::wcout << std::endl;
+
+        std::wcout << L"str: ";
+        std::wcout << objKey.str();
+        std::wcout << std::endl;
+
+        std::wcout << L"c_str: ";
+        std::wcout << objKey.c_str();
+        std::wcout << std::endl;
+
+        std::cout << "bucketA: ";
+        std::cout << objKey.bucketA();
+        std::cout << std::endl;
+
+        std::cout << "keyA: ";
+        std::cout << objKey.keyA();
+        std::cout << std::endl;
+
+        std::cout << "strA: ";
+        std::cout << objKey.strA();
+        std::cout << std::endl;
+
+        std::wcout << L"meansDir: ";
+        std::wcout << (objKey.meansDir() ? L"true" : L"false");
+        std::wcout << std::endl;
+
+        std::wcout << L"meansFile: ";
+        std::wcout << (objKey.meansFile() ? L"true" : L"false");
+        std::wcout << std::endl;
+
+        if (objKey.valid())
+        {
+            std::wcout << L"toDir: ";
+            std::wcout << objKey.toDir().str();
+            std::wcout << std::endl;
+
+            const auto parentDir{ objKey.toParentDir() };
+
+            std::wcout << L"toParentDir: ";
+            if (parentDir)
+            {
+                std::wcout << parentDir->toDir().str();
+            }
+            else
+            {
+                std::wcout << L"*** error ***";
+            }
+            std::wcout << std::endl;
+        }
+
+        std::wcout << std::endl;
+    }
+
+    std::cout << "done." << std::endl;
+}
+
+#include <iostream>
+#include <deque>
+#include <algorithm>  // std::sortを使用するために必要
+#include <memory>  // std::unique_ptrを使用するために必要
+
+// カスタムコンパレータ関数
+bool customComparator(const std::unique_ptr<int>& a, const std::unique_ptr<int>& b) {
+    return *a < *b;  // ポインタの中身を比較
+}
+
+int test10() {
+    std::deque<std::unique_ptr<int>> myDeque;
+
+    // std::unique_ptrのデックを初期化
+    myDeque.push_back(std::make_unique<int>(5));
+    myDeque.push_back(std::make_unique<int>(2));
+    myDeque.push_back(std::make_unique<int>(9));
+    myDeque.push_back(std::make_unique<int>(1));
+    myDeque.push_back(std::make_unique<int>(5));
+    myDeque.push_back(std::make_unique<int>(6));
+
+    // ソート前のデックの内容を表示
+    std::cout << "Before sorting: ";
+    for (const auto& ptr : myDeque) {
+        std::cout << *ptr << " ";
+    }
+    std::cout << std::endl;
+
+    // std::sortを使用してカスタムコンパレータでソート
+    std::sort(myDeque.begin(), myDeque.end(), customComparator);
+
+    // ソート後のデックの内容を表示
+    std::cout << "After sorting: ";
+    for (const auto& ptr : myDeque) {
+        std::cout << *ptr << " ";
+    }
+    std::cout << std::endl;
+
+    return 0;
+}
+
+void test11()
+{
+    bool b1 = ObjectKey{ L"a", L"1" } < ObjectKey{ L"b", L"1" };
+    bool b2 = ObjectKey{ L"b", L"1" } < ObjectKey{ L"a", L"1" };
+    bool b3 = ObjectKey{ L"a", L"1" } < ObjectKey{ L"a", L"1" };
+    bool b4 = ObjectKey{ L"a", L"1" } < ObjectKey{ L"a", L"2" };
+    bool b5 = ObjectKey{ L"a", L"2" } < ObjectKey{ L"a", L"1" };
+
+    std::cout << "done." << std::endl;
+}
+
+void test12_worker(bool del)
+{
+    HANDLE h = CreateFileW(L"test12.tmp", GENERIC_WRITE | DELETE, FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+        OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+    Sleep(1000);
+
+    SetLastError(0);
+
+    if (del)
+    {
+        Sleep(1000);
+
+        FILE_DISPOSITION_INFO DispositionInfo = { 0 };
+
+        DispositionInfo.DeleteFile = TRUE;
+
+        const auto rc = SetFileInformationByHandle(h,
+            FileDispositionInfo, &DispositionInfo, sizeof DispositionInfo);
+
+        const auto lerr = GetLastError();
+
+        std::cout << "delete=" << rc << " lerr=" << lerr << endl;
+    }
+    else
+    {
+        char buf[] = "abcde";
+        DWORD wn;
+        const auto rc = WriteFile(h, buf, sizeof(buf), &wn, NULL);
+        const auto lerr = GetLastError();
+
+        FlushFileBuffers(h);
+
+        std::cout << "write=" << rc << " wn=" << wn << " lerr=" << lerr << endl;
+    }
+
+    Sleep(1000);
+
+    CloseHandle(h);
+}
+
+void test12()
+{
+    wchar_t path[MAX_PATH];
+    GetCurrentDirectoryW(_countof(path), path);
+    wcout << path << endl;
+
+    thread t1(test12_worker, true);
+    thread t2(test12_worker, false);
+
+    t1.join();
+    t2.join();
+
+    cout << "done." << endl;
+}
+
 int main()
 {
     // chcp 65001
@@ -259,10 +550,15 @@ int main()
     //test1();
     //test2();
     //test3();
-    //test4();
+    test4();
     //test5();
     //test6();
-    test7();
+    //test7();
+    //test8();
+    //test9();
+    //test10();
+    //test11();
+    //test12();
 
     return EXIT_SUCCESS;
 }

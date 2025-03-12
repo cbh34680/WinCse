@@ -12,19 +12,18 @@ using namespace WinCseLib;
 struct ListObjectsTask : public ITask
 {
 	ICSDevice* mCSDevice;
-	const std::wstring mBucket;
-	const std::wstring mKey;
+	const ObjectKey mObjectKey;
 
-	ListObjectsTask(ICSDevice* arg, const std::wstring& argBucket, const std::wstring& argKey) :
-		mCSDevice(arg), mBucket(argBucket), mKey(argKey) { }
+	ListObjectsTask(ICSDevice* arg, const ObjectKey& argObjKey) :
+		mCSDevice(arg), mObjectKey(argObjKey) { }
 
 	std::wstring synonymString()
 	{
 		std::wstringstream ss;
 		ss << L"ListObjectsTask; ";
-		ss << mBucket;
+		ss << mObjectKey.bucket();
 		ss << "; ";
-		ss << mKey;
+		ss << mObjectKey.key();
 		
 		return ss.str();
 	}
@@ -35,7 +34,7 @@ struct ListObjectsTask : public ITask
 
 		traceW(L"Request ListObjects");
 
-		mCSDevice->listObjects(CONT_CALLER mBucket, mKey, nullptr);
+		mCSDevice->listObjects(CONT_CALLER mObjectKey, nullptr);
 	}
 };
 
@@ -51,6 +50,16 @@ NTSTATUS WinCse::DoGetSecurityByName(
 	APP_ASSERT(FileName[0] == L'\\');
 
 	traceW(L"FileName: \"%s\"", FileName);
+
+	/*
+	{
+		std::wstring s{ FileName };
+		if (s.find(L"desktop") != std::wstring::npos)
+		{
+			int iii = 0;
+		}
+	}
+	*/
 
 	if (isFileNameIgnored(FileName))
 	{
@@ -74,52 +83,73 @@ NTSTATUS WinCse::DoGetSecurityByName(
 	{
 		// ここを通過するときは FileName が "\bucket\key" のようになるはず
 
-		const BucketKey bk{ FileName };
-		if (!bk.OK())
+		const ObjectKey objKey{ ObjectKey::fromWinPath(FileName) };
+		if (!objKey.valid())
 		{
 			traceW(L"illegal FileName: \"%s\"", FileName);
 			return STATUS_INVALID_PARAMETER;
 		}
 
-		if (bk.hasKey())
+		if (objKey.hasKey())
 		{
 			// "\bucket\dir" のパターン
 
-			if (mCSDevice->headObject(START_CALLER bk.bucket(), bk.key() + L'/', nullptr))
+			if (mCSDevice->headObject(START_CALLER objKey.toDir(), nullptr))
 			{
 				// ディレクトリを採用
+
 				isDir = true;
 				traceW(L"detect directory(2)");
 
 				// ディレクトリ内のオブジェクトを先読みし、キャッシュを作成しておく
 				// 優先度は低く、無視できる
-				mDelayedWorker->addTask(START_CALLER new ListObjectsTask{ mCSDevice, bk.bucket(), bk.key() + L'/' }, Priority::Low, CanIgnore::Yes);
+
+				mDelayedWorker->addTask
+				(
+					START_CALLER
+					new ListObjectsTask{ mCSDevice, objKey.toDir() },
+					Priority::Low,
+					CanIgnoreDuplicates::Yes
+				);
 			}
 			else
 			{
 				// "\bucket\dir\file.txt" のパターン
 
-				if (mCSDevice->headObject(START_CALLER bk.bucket(), bk.key(), nullptr))
+				if (mCSDevice->headObject(START_CALLER objKey, nullptr))
 				{
 					// ファイルを採用
+
 					isFile = true;
 					traceW(L"detect file");
 				}
 			}
 		}
-		else // !bk.HasKey
+		else // !objKey.HasKey
 		{
 			// "\bucket" のパターン
 
-			if (mCSDevice->headBucket(START_CALLER bk.bucket()))
+			if (mCSDevice->headBucket(START_CALLER objKey.bucket()))
 			{
 				// ディレクトリを採用
+
 				isDir = true;
 				traceW(L"detect directory(3)");
 
 				// ディレクトリ内のオブジェクトを先読みし、キャッシュを作成しておく
 				// 優先度は低く、無視できる
-				mDelayedWorker->addTask(START_CALLER new ListObjectsTask{ mCSDevice, bk.bucket(), L"" }, Priority::Low, CanIgnore::Yes);
+
+				mDelayedWorker->addTask
+				(
+					START_CALLER
+					new ListObjectsTask
+					{
+						mCSDevice,
+						ObjectKey{ objKey.bucket(), L"" }
+					},
+					Priority::Low,
+					CanIgnoreDuplicates::Yes
+				);
 			}
 		}
 	}
@@ -153,11 +183,10 @@ NTSTATUS WinCse::DoGetFileInfo(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_IN
 	APP_ASSERT(FileContext);
 	APP_ASSERT(FileInfo);
 
-	traceW(L"OpenFileName: \"%s\"", FileContext->FileName);
+	traceW(L"FileName: \"%s\"", FileContext->FileName);
 	PCWSTR FileName = FileContext->FileName;
 
-	FSP_FSCTL_FILE_INFO fileInfo = {};
-
+	FSP_FSCTL_FILE_INFO fileInfo;
 	NTSTATUS Result = FileNameToFileInfo(START_CALLER FileName, &fileInfo);
 	if (!NT_SUCCESS(Result))
 	{
@@ -182,10 +211,10 @@ NTSTATUS WinCse::DoGetSecurity(PTFS_FILE_CONTEXT* FileContext,
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext);
 
-	traceW(L"OpenFileName: \"%s\"", FileContext->FileName);
-	traceW(L"OpenFileAttributes: %u", FileContext->FileInfo.FileAttributes);
+	traceW(L"FileName: \"%s\"", FileContext->FileName);
+	traceW(L"FileAttributes: %u", FileContext->FileInfo.FileAttributes);
 
-	const bool isFile = !(FileContext->FileInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+	const bool isFile = !FA_IS_DIR(FileContext->FileInfo.FileAttributes);
 
 	traceW(L"isFile: %s", isFile ? L"true" : L"false");
 
@@ -213,32 +242,17 @@ NTSTATUS WinCse::DoRead(PTFS_FILE_CONTEXT* FileContext,
 	PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred)
 {
 	StatsIncr(DoRead);
-
 	NEW_LOG_BLOCK();
-	APP_ASSERT(FileContext);
-	APP_ASSERT(Buffer);
-	APP_ASSERT(PBytesTransferred);
-	APP_ASSERT(!(FileContext->FileInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY));
-	APP_ASSERT(Offset <= FileContext->FileInfo.FileSize)
+	APP_ASSERT(FileContext && Buffer && PBytesTransferred);
+	APP_ASSERT(!FA_IS_DIR(FileContext->FileInfo.FileAttributes));		// ファイルのみ
+	APP_ASSERT(Offset <= FileContext->FileInfo.FileSize);
 
-	traceW(L"OpenFileName: \"%s\"", FileContext->FileName);
-	traceW(L"OpenFileAttributes: %u", FileContext->FileInfo.FileAttributes);
+	traceW(L"FileName: \"%s\"", FileContext->FileName);
+	traceW(L"FileAttributes: %u", FileContext->FileInfo.FileAttributes);
 	traceW(L"Size=%llu Offset=%llu", FileContext->FileInfo.FileSize, Offset);
 
-	if (Offset == FileContext->FileInfo.FileSize)
-	{
-		// ファイルの最後まで到達しているので、これ以上は読む必要がない
-
-		traceW(L"EOF marker has been reached");
-		return STATUS_END_OF_FILE;
-	}
-
-	bool ret = mCSDevice->readFile(START_CALLER FileContext->UParam,
+	return mCSDevice->readObject(START_CALLER (IOpenContext*)FileContext->UParam,
 		Buffer, Offset, Length, PBytesTransferred);
-
-	traceW(L"readFile return %s", ret ? L"true" : L"false");
-
-	return ret ? STATUS_SUCCESS : STATUS_IO_DEVICE_ERROR;
 }
 
 NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
@@ -249,9 +263,9 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext);
 
-	traceW(L"OpenFileName: \"%s\"", FileContext->FileName);
+	traceW(L"FileName: \"%s\"", FileContext->FileName);
 
-	APP_ASSERT(FileContext->FileInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+	APP_ASSERT(FA_IS_DIR(FileContext->FileInfo.FileAttributes));
 
 	std::wregex re;
 	std::wregex* pRe = nullptr;
@@ -287,8 +301,8 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 	{
 		// "\bucket" または "\bucket\key"
 
-		const BucketKey bk{ FileName };
-		if (!bk.OK())
+		const ObjectKey objKey{ ObjectKey::fromWinPath(FileName) };
+		if (!objKey.valid())
 		{
 			traceW(L"illegal FileName: \"%s\"", FileName);
 
@@ -298,9 +312,10 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 		// キーが空の場合)		bucket & ""     で検索
 		// キーが空でない場合)	bucket & "key/" で検索
 
-		const auto key{ bk.hasKey() ? bk.key() + L'/' : bk.key() };
+		//const auto key{ objKey.hasKey() ? objKey.key() + L'/' : objKey.key() };
 
-		if (!mCSDevice->listObjects(START_CALLER bk.bucket(), key, &dirInfoList))
+		//if (!mCSDevice->listObjects(START_CALLER ObjectKey{ objKey.bucket(), key }, &dirInfoList))
+		if (!mCSDevice->listObjects(START_CALLER objKey.toDir(), &dirInfoList))
 		{
 			traceW(L"not found/2");
 

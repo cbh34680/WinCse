@@ -1,8 +1,8 @@
 #pragma once
 
-#define USE_UNORDERED_MAP		(0)
+#define OBJECT_CACHE_KEY_UNORDERED_MAP		(0)
 
-#if USE_UNORDERED_MAP
+#if OBJECT_CACHE_KEY_UNORDERED_MAP
 #include <unordered_map>
 #else
 #include <map>
@@ -17,48 +17,31 @@
 // S3 オブジェクト・キャッシュのキー
 struct ObjectCacheKey
 {
+	WinCseLib::ObjectKey mObjKey;
 	Purpose mPurpose = Purpose::None;
-	std::wstring mBucket;
-	std::wstring mKey;
 
-	ObjectCacheKey() = default;
-
-	ObjectCacheKey(const Purpose argPurpose,
-		const std::wstring& argBucket, const std::wstring& argKey)
-		: mPurpose(argPurpose), mBucket(argBucket), mKey(argKey)
+	ObjectCacheKey(const WinCseLib::ObjectKey& argObjectKey, const Purpose argPurpose)
+		: mObjKey(argObjectKey), mPurpose(argPurpose)
 	{
 	}
 
-	ObjectCacheKey(const ObjectCacheKey& other)
-	{
-		mPurpose = other.mPurpose;
-		mBucket = other.mBucket;
-		mKey = other.mKey;
-	}
-
-#if USE_UNORDERED_MAP
+	//
 	// unorderd_map のキーになるために必要
+	//
 	bool operator==(const ObjectCacheKey& other) const
 	{
-		return mBucket == other.mBucket && mKey == other.mKey && mPurpose == other.mPurpose;
+		return mObjKey == other.mObjKey && mPurpose == other.mPurpose;
 	}
 
-#else
 	//
 	// std::map のキーにする場合に必要
 	//
 	bool operator<(const ObjectCacheKey& other) const
 	{
-		if (mBucket < other.mBucket) {			// bucket
+		if (mObjKey < other.mObjKey) {		// ObjectKey
 			return true;
 		}
-		else if (mBucket > other.mBucket) {
-			return false;
-		}
-		else if (mKey < other.mKey) {				// key
-			return true;
-		}
-		else if (mKey > other.mKey) {
+		else if (mObjKey > other.mObjKey) {
 			return false;
 		}
 		else if (mPurpose < other.mPurpose) {		// purpose
@@ -70,10 +53,8 @@ struct ObjectCacheKey
 
 		return false;
 	}
-#endif
 };
 
-#if USE_UNORDERED_MAP
 // カスタムハッシュ関数 ... unorderd_map のキーになるために必要
 namespace std
 {
@@ -82,13 +63,12 @@ namespace std
 	{
 		size_t operator()(const ObjectCacheKey& that) const
 		{
-			return hash<wstring>()(that.mBucket) ^ (hash<wstring>()(that.mKey) << 1) ^ (hash<int>()(that.mPurpose) << 2);
+			return hash<WinCseLib::ObjectKey>()(that.mObjKey) ^ (hash<int>()(static_cast<int>(that.mPurpose)) << 2);
 		}
 	};
 }
-#endif
 
-struct NegativeCacheVal
+struct BaseCacheVal
 {
 	std::wstring mCreateCallChain;
 	std::wstring mAccessCallChain;
@@ -96,20 +76,22 @@ struct NegativeCacheVal
 	std::chrono::system_clock::time_point mAccessTime;
 	int mRefCount = 0;
 
-	NegativeCacheVal(CALLER_ARG0)
+	BaseCacheVal(CALLER_ARG0)
 	{
 		mCreateCallChain = mAccessCallChain = CALL_CHAIN();
 		mCreateTime = mAccessTime = std::chrono::system_clock::now();
 	}
 };
 
-struct PosisiveCacheVal : public NegativeCacheVal
+struct NegativeCacheVal : public BaseCacheVal { };
+
+struct PosisiveCacheVal : public BaseCacheVal
 {
 	DirInfoListType mDirInfoList;
 
 	PosisiveCacheVal(CALLER_ARG
 		const DirInfoListType& argDirInfoList)
-		: NegativeCacheVal(CONT_CALLER0), mDirInfoList(argDirInfoList)
+		: BaseCacheVal(CONT_CALLER0), mDirInfoList(argDirInfoList)
 	{
 	}
 };
@@ -117,7 +99,7 @@ struct PosisiveCacheVal : public NegativeCacheVal
 class ObjectCache
 {
 private:
-#if USE_UNORDERED_MAP
+#if OBJECT_CACHE_KEY_UNORDERED_MAP
 	std::unordered_map<ObjectCacheKey, PosisiveCacheVal> mPositive;
 	std::unordered_map<ObjectCacheKey, NegativeCacheVal> mNegative;
 #else
@@ -135,37 +117,30 @@ private:
 
 protected:
 public:
+	void clear(CALLER_ARG0)
+	{
+		mPositive.clear();
+		mNegative.clear();
+	}
+
 	void report(CALLER_ARG FILE* fp);
+
+	bool getPositive(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		const Purpose argPurpose, DirInfoListType* pDirInfoList);
+	void setPositive(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		Purpose argPurpose, DirInfoListType& pDirInfoList);
+	bool getPositive_File(CALLER_ARG
+		const WinCseLib::ObjectKey& argObjKey, DirInfoType* pDirInfo);
+	void setPositive_File(CALLER_ARG
+		const WinCseLib::ObjectKey& argObjKey, DirInfoType& pDirInfo);
+	bool isInNegative(CALLER_ARG const WinCseLib::ObjectKey& argObjKey, const Purpose argPurpose);
+	void addNegative(CALLER_ARG const WinCseLib::ObjectKey& argObjKey, const Purpose argPurpose);
+	bool isInNegative_File(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
+	void addNegative_File(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
 
 	int deleteOldRecords(CALLER_ARG std::chrono::system_clock::time_point threshold);
 
-	bool getPositive(CALLER_ARG const Purpose argPurpose,
-		const std::wstring& argBucket, const std::wstring& argKey,
-		DirInfoListType* pDirInfoList);
-
-	void setPositive(CALLER_ARG const Purpose argPurpose,
-		const std::wstring& argBucket, const std::wstring& argKey,
-		DirInfoListType& pDirInfoList);
-
-	bool getPositive_File(CALLER_ARG
-		const std::wstring& argBucket, const std::wstring& argKey,
-		DirInfoType* pDirInfo);
-
-	void setPositive_File(CALLER_ARG
-		const std::wstring& argBucket, const std::wstring& argKey,
-		DirInfoType& pDirInfo);
-
-	bool isInNegative(CALLER_ARG const Purpose argPurpose,
-		const std::wstring& argBucket, const std::wstring& argKey);
-
-	void addNegative(CALLER_ARG const Purpose argPurpose,
-		const std::wstring& argBucket, const std::wstring& argKey);
-
-	bool isInNegative_File(CALLER_ARG
-		const std::wstring& argBucket, const std::wstring& argKey);
-
-	void addNegative_File(CALLER_ARG
-		const std::wstring& argBucket, const std::wstring& argKey);
+	int deleteByObjKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
 };
 
 // EOF

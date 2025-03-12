@@ -1,29 +1,13 @@
 #pragma once
 
 #include <regex>
-
-// 文字列をバケット名とキーに分割
-class BucketKey
-{
-private:
-	std::wstring mBucket;
-	std::wstring mKey;
-
-	bool mHasKey = false;
-	bool mOK = false;
-
-public:
-	const std::wstring& bucket() const { return mBucket; }
-	const std::wstring& key() const { return mKey; }
-	bool hasKey() const { return mHasKey; }
-	bool OK() const { return mOK; }
-
-	BucketKey(const wchar_t* wstr);
-};
+#include <set>
 
 class WinCse : public WinCseLib::ICSDriver
 {
 private:
+	WINCSE_DRIVER_STATS& mStats;
+
 	WinCseLib::IWorker* mDelayedWorker;
 	WinCseLib::IWorker* mIdleWorker;
 
@@ -46,11 +30,25 @@ private:
 	NTSTATUS FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCTL_FILE_INFO* pFileInfo);
 	NTSTATUS HandleToInfo(CALLER_ARG HANDLE handle, PUINT32 PFileAttributes, PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize);
 
+	struct ResourceRAII
+	{
+		WinCse* mThat;
+
+		ResourceRAII(WinCse* argThat) : mThat(argThat) { }
+
+		std::set<PTFS_FILE_CONTEXT*> mOpenAddrs;
+		void add(PTFS_FILE_CONTEXT* FileContext);
+		void del(PTFS_FILE_CONTEXT* FileContext);
+
+		~ResourceRAII();
+	}
+	mResourceRAII;
+
 protected:
 	bool isFileNameIgnored(const wchar_t* FileName);
 
 public:
-	WinCse(const std::wstring& argTempDir, const std::wstring& argIniSection,
+	WinCse(WINCSE_DRIVER_STATS* argStats, const std::wstring& argTempDir, const std::wstring& argIniSection,
 		WinCseLib::IWorker* argDelayedWorker, WinCseLib::IWorker* argIdleWorker,
 		WinCseLib::ICSDevice* argCSDevice);
 
@@ -69,7 +67,7 @@ public:
 
 	NTSTATUS DoClose(PTFS_FILE_CONTEXT* FileContext) override;
 
-	NTSTATUS DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags) override;
+	VOID DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags) override;
 
 	NTSTATUS DoCreate() override;
 	NTSTATUS DoFlush() override;
@@ -95,9 +93,6 @@ public:
 	NTSTATUS DoWrite() override;
 
 	NTSTATUS DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOOLEAN deleteFile) override;
-
-public:
-	WINCSE_DRIVER_STATS mStats = {};
 };
 
 #define StatsIncr(name)			::InterlockedIncrement(& (this->mStats.name))

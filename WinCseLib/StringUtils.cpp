@@ -206,7 +206,7 @@ std::string WildcardToRegexA(const std::string& arg)
 	return WC2MB(WildcardToRegexW(MB2WC(arg)));
 }
 
-std::vector<std::wstring> SplitW(const std::wstring& input, const wchar_t sep, const bool ignoreEmpty)
+std::vector<std::wstring> SplitString(const std::wstring& input, const wchar_t sep, const bool ignoreEmpty)
 {
     std::wistringstream ss{ input };
     std::wstring token;
@@ -228,7 +228,7 @@ std::vector<std::wstring> SplitW(const std::wstring& input, const wchar_t sep, c
 	return strs;
 }
 
-std::wstring JoinW(const std::vector<std::wstring>& tokens, const wchar_t sep, const bool ignoreEmpty)
+std::wstring JoinStrings(const std::vector<std::wstring>& tokens, const wchar_t sep, const bool ignoreEmpty)
 {
 	std::wostringstream ss;
 

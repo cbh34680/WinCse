@@ -3,6 +3,7 @@
 #pragma comment(lib, "winfsp-x64.lib")
 #pragma comment(lib, "WinCseLib.lib")
 
+
 #include "WinCseLib.h"
 #include "DelayedWorker.hpp"
 #include "IdleWorker.hpp"
@@ -11,6 +12,13 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+
+#define DIRECT_LINK_TEST        (0)
+
+#if DIRECT_LINK_TEST
+#pragma comment(lib, "WinCse-aws-s3.lib")
+#include "..\WinCse-aws-s3\\AwsS3.hpp"
+#endif
 
 
 using namespace WinCseLib;
@@ -21,6 +29,10 @@ static bool app_tempdir(std::wstring* tmpDir);
 static void app_terminate();
 static void app_sighandler(int signum);
 
+static void writeStats(
+    const wchar_t* logDir, const WINFSP_STATS* libStats,
+    const WINCSE_DRIVER_STATS* appStats, const WINCSE_DEVICE_STATS* devStats);
+
 /*
  * DEBUG ARGS
 
@@ -30,7 +42,6 @@ static void app_sighandler(int signum);
     [with log]
         -u \WinCse.aws-s3.Y\C$\$(MSBuildProjectDirectoryNoRoot)\..\..\MOUNT -m Y: -T $(SolutionDir)\trace
 */
-
 
 // DLL 解放のための RAII
 struct DllModuleRAII
@@ -52,6 +63,18 @@ struct DllModuleRAII
     }
 };
 
+#if DIRECT_LINK_TEST
+bool loadCSDevice(const std::wstring& dllType,
+    const std::wstring& tmpDir, const wchar_t* iniSection,
+    WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker,
+    DllModuleRAII* pDll)
+{
+    pDll->mCSDevice = NewCSDevice(tmpDir.c_str(), iniSection, delayedWorker, idleWorker);
+
+    return true;
+}
+
+#else
 //
 // 引数の名前 (dllType) からファイル名を作り、LoadLibrary を実行し
 // その中にエクスポートされた NewCSDevice() を実行する。
@@ -120,114 +143,7 @@ exit:
     return ret;
 }
 
-static void writeStats(
-    const wchar_t* logDir, const WINFSP_STATS* libStats,
-    const WINCSE_DRIVER_STATS* appStats, const WINCSE_DEVICE_STATS* devStats)
-{
-    SYSTEMTIME st;
-    ::GetLocalTime(&st);
-
-    std::wstringstream ss;
-    ss << logDir;
-    ss << L'\\';
-    ss << L"stats";
-    ss << L'-';
-    ss << std::setw(4) << std::setfill(L'0') << st.wYear;
-    ss << std::setw(2) << std::setfill(L'0') << st.wMonth;
-    ss << std::setw(2) << std::setfill(L'0') << st.wDay;
-    ss << L'-';
-    ss << std::setw(2) << std::setfill(L'0') << st.wHour;
-    ss << std::setw(2) << std::setfill(L'0') << st.wMinute;
-    ss << std::setw(2) << std::setfill(L'0') << st.wSecond;
-    ss << L".log";
-
-    const std::wstring path{ ss.str() };
-
-    FILE* fp = nullptr;
-    if (_wfopen_s(&fp, path.c_str(), L"wt") == 0)
-    {
-        if (fp)
-        {
-            fprintf(fp, "Main Thread: %ld\n", ::GetCurrentThreadId());
-            fputs("\n", fp);
-
-            fputs("[WinFsp Stats]\n", fp);
-            fprintf(fp, "\t" "Cleanup: %ld\n", libStats->Cleanup);
-            fprintf(fp, "\t" "Close: %ld\n", libStats->Close);
-            fprintf(fp, "\t" "Create: %ld\n", libStats->Create);
-            fprintf(fp, "\t" "Flush: %ld\n", libStats->Flush);
-            fprintf(fp, "\t" "GetFileInfo: %ld\n", libStats->GetFileInfo);
-            fprintf(fp, "\t" "GetFileInfoInternal: %ld\n", libStats->GetFileInfoInternal);
-            fprintf(fp, "\t" "GetSecurity: %ld\n", libStats->GetSecurity);
-            fprintf(fp, "\t" "GetSecurityByName: %ld\n", libStats->GetSecurityByName);
-            fprintf(fp, "\t" "GetVolumeInfo: %ld\n", libStats->GetVolumeInfo);
-            fprintf(fp, "\t" "Open: %ld\n", libStats->Open);
-            fprintf(fp, "\t" "Overwrite: %ld\n", libStats->Overwrite);
-            fprintf(fp, "\t" "Read: %ld\n", libStats->Read);
-            fprintf(fp, "\t" "ReadDirectory: %ld\n", libStats->ReadDirectory);
-            fprintf(fp, "\t" "Rename: %ld\n", libStats->Rename);
-            fprintf(fp, "\t" "SetBasicInfo: %ld\n", libStats->SetBasicInfo);
-            fprintf(fp, "\t" "SetDelete: %ld\n", libStats->SetDelete);
-            fprintf(fp, "\t" "SetFileSize: %ld\n", libStats->SetFileSize);
-            fprintf(fp, "\t" "SetSecurity: %ld\n", libStats->SetSecurity);
-            fprintf(fp, "\t" "SetVolumeLabel_: %ld\n", libStats->SetVolumeLabel_);
-            fprintf(fp, "\t" "Write: %ld\n", libStats->Write);
-            fputs("\n", fp);
-
-            fputs("[CSDriver Stats]\n", fp);
-            fprintf(fp, "\t" "DoCleanup: %ld\n", appStats->DoCleanup);
-            fprintf(fp, "\t" "DoClose: %ld\n", appStats->DoClose);
-            fprintf(fp, "\t" "DoCreate: %ld\n", appStats->DoCreate);
-            fprintf(fp, "\t" "DoFlush: %ld\n", appStats->DoFlush);
-            fprintf(fp, "\t" "DoGetFileInfo: %ld\n", appStats->DoGetFileInfo);
-            fprintf(fp, "\t" "DoGetSecurity: %ld\n", appStats->DoGetSecurity);
-            fprintf(fp, "\t" "DoGetSecurityByName: %ld\n", appStats->DoGetSecurityByName);
-            fprintf(fp, "\t" "DoGetVolumeInfo: %ld\n", appStats->DoGetVolumeInfo);
-            fprintf(fp, "\t" "DoOpen: %ld\n", appStats->DoOpen);
-            fprintf(fp, "\t" "DoOverwrite: %ld\n", appStats->DoOverwrite);
-            fprintf(fp, "\t" "DoRead: %ld\n", appStats->DoRead);
-            fprintf(fp, "\t" "DoReadDirectory: %ld\n", appStats->DoReadDirectory);
-            fprintf(fp, "\t" "DoRename: %ld\n", appStats->DoRename);
-            fprintf(fp, "\t" "DoSetBasicInfo: %ld\n", appStats->DoSetBasicInfo);
-            fprintf(fp, "\t" "DoSetDelete: %ld\n", appStats->DoSetDelete);
-            fprintf(fp, "\t" "DoSetFileSize: %ld\n", appStats->DoSetFileSize);
-            fprintf(fp, "\t" "DoSetPath: %ld\n", appStats->DoSetPath);
-            fprintf(fp, "\t" "DoSetSecurity: %ld\n", appStats->DoSetSecurity);
-            fprintf(fp, "\t" "DoWrite: %ld\n", appStats->DoWrite);
-            fprintf(fp, "\t" "OnSvcStart: %ld\n", appStats->OnSvcStart);
-            fprintf(fp, "\t" "OnSvcStop: %ld\n", appStats->OnSvcStop);
-            fprintf(fp, "\t" "PreCreateFilesystem: %ld\n", appStats->PreCreateFilesystem);
-
-            fprintf(fp, "\t" "_CallCloseFile: %ld\n", appStats->_CallCloseFile);
-            fputs("\n", fp);
-
-            fputs("[CSDevice Stats]\n", fp);
-            fprintf(fp, "\t" "OnSvcStart: %ld\n", devStats->OnSvcStart);
-            fprintf(fp, "\t" "OnSvcStop: %ld\n", devStats->OnSvcStop);
-            fprintf(fp, "\t" "closeFile: %ld\n", devStats->closeFile);
-            fprintf(fp, "\t" "headBucket: %ld\n", devStats->headBucket);
-            fprintf(fp, "\t" "headObject: %ld\n", devStats->headObject);
-            fprintf(fp, "\t" "listBuckets: %ld\n", devStats->listBuckets);
-            fprintf(fp, "\t" "listObjects: %ld\n", devStats->listObjects);
-            fprintf(fp, "\t" "openFile: %ld\n", devStats->openFile);
-            fprintf(fp, "\t" "readFile: %ld\n", devStats->readFile);
-
-            fprintf(fp, "\t" "_CloseHandle_Event: %ld\n", devStats->_CloseHandle_Event);
-            fprintf(fp, "\t" "_CloseHandle_File: %ld\n", devStats->_CloseHandle_File);
-            fprintf(fp, "\t" "_CreateEvent: %ld\n", devStats->_CreateEvent);
-            fprintf(fp, "\t" "_CreateFile: %ld\n", devStats->_CreateFile);
-            fprintf(fp, "\t" "_ReadError: %ld\n", devStats->_ReadError);
-            fprintf(fp, "\t" "_ReadSuccess: %ld\n", devStats->_ReadSuccess);
-            fprintf(fp, "\t" "_findFileInParentDirectry: %ld\n", devStats->_findFileInParentDirectry);
-            fprintf(fp, "\t" "_unsafeHeadObject_File: %ld\n", devStats->_unsafeHeadObject_File);
-            fprintf(fp, "\t" "_unsafeListObjects_Dir: %ld\n", devStats->_unsafeListObjects_Dir);
-            fprintf(fp, "\t" "_unsafeListObjects_Display: %ld\n", devStats->_unsafeListObjects_Display);
-            fputs("\n", fp);
-
-            fclose(fp);
-        }
-    }
-}
+#endif
 
 static int app_main(int argc, wchar_t** argv,
     const wchar_t* iniSection, const wchar_t* trcDir, const std::wstring& dllType)
@@ -247,7 +163,7 @@ static int app_main(int argc, wchar_t** argv,
     std::wcout << L"use Tempdir: " << tmpDir << std::endl;
 
     // ここ以降は return は使わず、ret に設定して最後まで進める
-    int ret = EXIT_FAILURE;
+    int rc = EXIT_FAILURE;
 
     //
     // ネストが深くなっているが、dll の解放と logger が複雑に絡むので
@@ -294,27 +210,34 @@ static int app_main(int argc, wchar_t** argv,
                 // dll のロード
                 if (loadCSDevice(dllType, tmpDir, iniSection, &dworker, &iworker, &dll))
                 {
-                    WinCse app(tmpDir, iniSection, &dworker, &iworker, dll.mCSDevice);
+                    // WinCse メンバのデストラクタでの処理を appSTats に反映させるため
+                    // app の生存期間より長くする
 
-                    std::wcout << L"call WinFspMain" << std::endl;
-                    traceW(L"call WinFspMain");
+                    WINCSE_DRIVER_STATS appStats{};
+                    WINFSP_IF libif{};
 
-                    WINFSP_IF libif{ 0 };
-                    libif.pDriver = &app;
+                    {
+                        WinCse app(&appStats, tmpDir, iniSection, &dworker, &iworker, dll.mCSDevice);
 
-                    ret = WinFspMain(argc, argv, PROGNAME, &libif);
+                        std::wcout << L"call WinFspMain" << std::endl;
+                        traceW(L"call WinFspMain");
+
+                        libif.pDriver = &app;
+
+                        rc = WinFspMain(argc, argv, PROGNAME, &libif);
+                    }
 
                     const wchar_t* logDir = GetLogger()->getOutputDirectory();
                     if (logDir)
                     {
-                        WINCSE_DEVICE_STATS devStats;
+                        WINCSE_DEVICE_STATS devStats{};
                         dll.mCSDevice->queryStats(&devStats);
 
-                        writeStats(logDir, &libif.stats, &app.mStats, &devStats);
+                        writeStats(logDir, &libif.stats, &appStats, &devStats);
                     }
 
-                    std::wcout << L"WinFspMain done. return=" << ret << std::endl;
-                    traceW(L"WinFspMain done. return=%s", ret ? L"true" : L"false");
+                    std::wcout << L"WinFspMain done. return=" << rc << std::endl;
+                    traceW(L"WinFspMain done. return=%d", rc);
                 }
                 else
                 {
@@ -346,7 +269,7 @@ static int app_main(int argc, wchar_t** argv,
     // 順番があるので、try ブロックには入れない
     DeleteLogger();
 
-    return ret;
+    return rc;
 }
 
 int wmain(int argc, wchar_t** argv)
@@ -433,7 +356,7 @@ int wmain(int argc, wchar_t** argv)
         }
 
         // "\WinCse.aws-s3.Y\C$\folder\to\work" から "WinCse.aws-s3.Y" を取り出す
-        const auto segments{ SplitW(VolumePrefix, L'\\', true) };
+        const auto segments{ SplitString(VolumePrefix, L'\\', true) };
         if (segments.size() < 1)
         {
             std::wcerr << L"[u] parameter parse error" << std::endl;
@@ -441,7 +364,7 @@ int wmain(int argc, wchar_t** argv)
         }
 
         // "WinCse.aws-s3.Y" の中から "aws-s3" を取り出す
-        const auto names{ SplitW(segments[0], L'.', false) };
+        const auto names{ SplitString(segments[0], L'.', false) };
         if (names.size() < 2)
         {
             std::wcerr << L"[u] parameter parse error" << std::endl;
@@ -498,6 +421,117 @@ static void app_sighandler(int signum)
 static void app_terminate()
 {
     WinCseLib::AbnormalEnd(__FILE__, __LINE__, __FUNCTION__, -1);
+}
+
+static void writeStats(
+    const wchar_t* logDir, const WINFSP_STATS* libStats,
+    const WINCSE_DRIVER_STATS* appStats, const WINCSE_DEVICE_STATS* devStats)
+{
+    SYSTEMTIME st;
+    ::GetLocalTime(&st);
+
+    std::wstringstream ss;
+    ss << logDir;
+    ss << L'\\';
+    ss << L"stats";
+    ss << L'-';
+    ss << std::setw(4) << std::setfill(L'0') << st.wYear;
+    ss << std::setw(2) << std::setfill(L'0') << st.wMonth;
+    ss << std::setw(2) << std::setfill(L'0') << st.wDay;
+    ss << L'-';
+    ss << std::setw(2) << std::setfill(L'0') << st.wHour;
+    ss << std::setw(2) << std::setfill(L'0') << st.wMinute;
+    ss << std::setw(2) << std::setfill(L'0') << st.wSecond;
+    ss << L".log";
+
+    const std::wstring path{ ss.str() };
+
+    FILE* fp = nullptr;
+    if (_wfopen_s(&fp, path.c_str(), L"wt") == 0)
+    {
+        if (fp)
+        {
+            fprintf(fp, "Main Thread: %ld\n", ::GetCurrentThreadId());
+            fputs("\n", fp);
+
+            fputs("[WinFsp Stats]\n", fp);
+            fprintf(fp, "\t" "GetSecurityByName: %ld\n", libStats->GetSecurityByName);
+            fprintf(fp, "\t" "GetFileInfo: %ld\n", libStats->GetFileInfo);
+            fprintf(fp, "\t" "GetFileInfoInternal: %ld\n", libStats->GetFileInfoInternal);
+            fprintf(fp, "\t" "GetSecurity: %ld\n", libStats->GetSecurity);
+            fprintf(fp, "\t" "GetVolumeInfo: %ld\n", libStats->GetVolumeInfo);
+            fprintf(fp, "\t" "Open: %ld\n", libStats->Open);
+            fprintf(fp, "\t" "Cleanup: %ld\n", libStats->Cleanup);
+            fprintf(fp, "\t" "Close: %ld\n", libStats->Close);
+            fprintf(fp, "\t" "ReadDirectory: %ld\n", libStats->ReadDirectory);
+            fprintf(fp, "\t" "Read: %ld\n", libStats->Read);
+            fprintf(fp, "\t" "Write: %ld\n", libStats->Write);
+            fprintf(fp, "\t" "Create: %ld\n", libStats->Create);
+            fprintf(fp, "\t" "Flush: %ld\n", libStats->Flush);
+            fprintf(fp, "\t" "Overwrite: %ld\n", libStats->Overwrite);
+            fprintf(fp, "\t" "Rename: %ld\n", libStats->Rename);
+            fprintf(fp, "\t" "SetBasicInfo: %ld\n", libStats->SetBasicInfo);
+            fprintf(fp, "\t" "SetDelete: %ld\n", libStats->SetDelete);
+            fprintf(fp, "\t" "SetFileSize: %ld\n", libStats->SetFileSize);
+            fprintf(fp, "\t" "SetSecurity: %ld\n", libStats->SetSecurity);
+            fprintf(fp, "\t" "SetVolumeLabel_: %ld\n", libStats->SetVolumeLabel_);
+            fputs("\n", fp);
+
+            fputs("[CSDriver Stats]\n", fp);
+            fprintf(fp, "\t" "PreCreateFilesystem: %ld\n", appStats->PreCreateFilesystem);
+            fprintf(fp, "\t" "OnSvcStart: %ld\n", appStats->OnSvcStart);
+            fprintf(fp, "\t" "OnSvcStop: %ld\n", appStats->OnSvcStop);
+            fprintf(fp, "\t" "DoGetSecurityByName: %ld\n", appStats->DoGetSecurityByName);
+            fprintf(fp, "\t" "DoGetFileInfo: %ld\n", appStats->DoGetFileInfo);
+            fprintf(fp, "\t" "DoGetSecurity: %ld\n", appStats->DoGetSecurity);
+            fprintf(fp, "\t" "DoGetVolumeInfo: %ld\n", appStats->DoGetVolumeInfo);
+            fprintf(fp, "\t" "DoOpen: %ld\n", appStats->DoOpen);
+            fprintf(fp, "\t" "DoCleanup: %ld\n", appStats->DoCleanup);
+            fprintf(fp, "\t" "DoClose: %ld\n", appStats->DoClose);
+            fprintf(fp, "\t" "DoReadDirectory: %ld\n", appStats->DoReadDirectory);
+            fprintf(fp, "\t" "DoRead: %ld\n", appStats->DoRead);
+            fprintf(fp, "\t" "DoWrite: %ld\n", appStats->DoWrite);
+            fprintf(fp, "\t" "DoCreate: %ld\n", appStats->DoCreate);
+            fprintf(fp, "\t" "DoFlush: %ld\n", appStats->DoFlush);
+            fprintf(fp, "\t" "DoOverwrite: %ld\n", appStats->DoOverwrite);
+            fprintf(fp, "\t" "DoRename: %ld\n", appStats->DoRename);
+            fprintf(fp, "\t" "DoSetBasicInfo: %ld\n", appStats->DoSetBasicInfo);
+            fprintf(fp, "\t" "DoSetDelete: %ld\n", appStats->DoSetDelete);
+            fprintf(fp, "\t" "DoSetFileSize: %ld\n", appStats->DoSetFileSize);
+            fprintf(fp, "\t" "DoSetPath: %ld\n", appStats->DoSetPath);
+            fprintf(fp, "\t" "DoSetSecurity: %ld\n", appStats->DoSetSecurity);
+
+            fprintf(fp, "\t" "_CallOpen: %ld\n", appStats->_CallOpen);
+            fprintf(fp, "\t" "_CallClose: %ld\n", appStats->_CallClose);
+            fprintf(fp, "\t" "_ForceClose: %ld\n", appStats->_ForceClose);
+            fputs("\n", fp);
+
+            fputs("[CSDevice Stats]\n", fp);
+            fprintf(fp, "\t" "OnSvcStart: %ld\n", devStats->OnSvcStart);
+            fprintf(fp, "\t" "OnSvcStop: %ld\n", devStats->OnSvcStop);
+            fprintf(fp, "\t" "headBucket: %ld\n", devStats->headBucket);
+            fprintf(fp, "\t" "headObject: %ld\n", devStats->headObject);
+            fprintf(fp, "\t" "listBuckets: %ld\n", devStats->listBuckets);
+            fprintf(fp, "\t" "listObjects: %ld\n", devStats->listObjects);
+            fprintf(fp, "\t" "open: %ld\n", devStats->open);
+            fprintf(fp, "\t" "cleanup: %ld\n", devStats->cleanup);
+            fprintf(fp, "\t" "close: %ld\n", devStats->close);
+            fprintf(fp, "\t" "read: %ld\n", devStats->read);
+            fprintf(fp, "\t" "remove: %ld\n", devStats->remove);
+
+            fprintf(fp, "\t" "_CreateEvent: %ld\n", devStats->_CreateEvent);
+            fprintf(fp, "\t" "_CloseHandle_Event: %ld\n", devStats->_CloseHandle_Event);
+            fprintf(fp, "\t" "_CreateFile: %ld\n", devStats->_CreateFile);
+            fprintf(fp, "\t" "_CloseHandle_File: %ld\n", devStats->_CloseHandle_File);
+            fprintf(fp, "\t" "_unlockFindInParentOfDisplay: %ld\n", devStats->_unlockFindInParentOfDisplay);
+            fprintf(fp, "\t" "_unlockHeadObject_File: %ld\n", devStats->_unlockHeadObject_File);
+            fprintf(fp, "\t" "_unlockListObjects_Dir: %ld\n", devStats->_unlockListObjects_Dir);
+            fprintf(fp, "\t" "_unlockListObjects_Display: %ld\n", devStats->_unlockListObjects_Display);
+            fputs("\n", fp);
+
+            fclose(fp);
+        }
+    }
 }
 
 // EOF
