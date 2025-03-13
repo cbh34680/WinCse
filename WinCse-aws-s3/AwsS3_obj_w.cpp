@@ -30,7 +30,20 @@ NTSTATUS AwsS3::remove(CALLER_ARG WinCseLib::IOpenContext* argOpenContext, BOOLE
 
     traceW(L"mObjKey=%s", ctx->mObjKey.c_str());
 
-    // https://docs.aws.amazon.com/AmazonS3/latest/API/s3_example_s3_DeleteObjects_section.html
+    if (mReadonlyFilesystem)
+    {
+        // ‚±‚±‚Í’Ê‰ß‚µ‚È‚¢
+        // ‚¨‚»‚ç‚­ƒVƒFƒ‹‚Åíœ‘€ì‚ªŽ~‚ß‚ç‚ê‚Ä‚¢‚é
+
+        traceW(L"readonly filesystem");
+        goto exit;
+    }
+
+    if (!ctx->mObjKey.hasKey())
+    {
+        traceW(L"fault: delete bucket");
+        goto exit;
+    }
 
     if (ctx->isDir())
     {

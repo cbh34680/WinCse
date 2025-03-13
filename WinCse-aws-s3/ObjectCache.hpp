@@ -2,9 +2,7 @@
 
 #define OBJECT_CACHE_KEY_UNORDERED_MAP		(0)
 
-#if OBJECT_CACHE_KEY_UNORDERED_MAP
-#include <unordered_map>
-#else
+#if !OBJECT_CACHE_KEY_UNORDERED_MAP
 #include <map>
 #endif
 

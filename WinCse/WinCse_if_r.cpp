@@ -2,7 +2,6 @@
 #include "WinCse.hpp"
 #include <sstream>
 #include <filesystem>
-#include <mutex>
 
 using namespace WinCseLib;
 
@@ -312,9 +311,6 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 		// キーが空の場合)		bucket & ""     で検索
 		// キーが空でない場合)	bucket & "key/" で検索
 
-		//const auto key{ objKey.hasKey() ? objKey.key() + L'/' : objKey.key() };
-
-		//if (!mCSDevice->listObjects(START_CALLER ObjectKey{ objKey.bucket(), key }, &dirInfoList))
 		if (!mCSDevice->listObjects(START_CALLER objKey.toDir(), &dirInfoList))
 		{
 			traceW(L"not found/2");

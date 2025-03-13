@@ -18,10 +18,10 @@ AwsS3::AwsS3(const std::wstring& argTempDir, const std::wstring& argIniSection,
     mTempDir(argTempDir), mIniSection(argIniSection),
     mDelayedWorker(argDelayedWorker), mIdleWorker(argIdleWorker)
 {
-    NEW_LOG_BLOCK();
-
     APP_ASSERT(std::filesystem::exists(argTempDir));
     APP_ASSERT(std::filesystem::is_directory(argTempDir));
+
+    mStats = &mStats_;
 }
 
 AwsS3::~AwsS3()

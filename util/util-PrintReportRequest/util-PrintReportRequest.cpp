@@ -1,4 +1,4 @@
-﻿// util-SendReportRequest.cpp : このファイルには 'main' 関数が含まれています。プログラム実行の開始と終了がそこで行われます。
+﻿// util-PrintReportRequest.cpp : このファイルには 'main' 関数が含まれています。プログラム実行の開始と終了がそこで行われます。
 //
 
 #include <iostream>
@@ -6,7 +6,7 @@
 
 int wmain(int argc, wchar_t** argv)
 {
-	HANDLE hEvent = ::OpenEvent(EVENT_ALL_ACCESS, FALSE, L"Global\\WinCse-AwsS3-cache-report");
+	HANDLE hEvent = ::OpenEvent(EVENT_ALL_ACCESS, FALSE, L"Global\\WinCse-AwsS3-util-print-report");
 	if (!hEvent)
 	{
 		const auto lerr = ::GetLastError();

@@ -6,7 +6,7 @@
 class WinCse : public WinCseLib::ICSDriver
 {
 private:
-	WINCSE_DRIVER_STATS& mStats;
+	WINCSE_DRIVER_STATS* mStats;
 
 	WinCseLib::IWorker* mDelayedWorker;
 	WinCseLib::IWorker* mIdleWorker;
@@ -95,6 +95,6 @@ public:
 	NTSTATUS DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOOLEAN deleteFile) override;
 };
 
-#define StatsIncr(name)			::InterlockedIncrement(& (this->mStats.name))
+#define StatsIncr(name)			::InterlockedIncrement(& (this->mStats->name))
 
 // EOF

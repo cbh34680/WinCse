@@ -41,9 +41,17 @@ struct IdleTask : public ITask
     }
 };
 
-static HANDLE gNotifEvent = NULL;
-static bool gEndNotifWorker = false;
-static std::thread* gNotifWorker = nullptr;
+static std::atomic<bool> gEndWorkerFlag;
+static std::thread* gNotifWorker;
+
+static HANDLE gNotifEvents[2];
+static const wchar_t* gEventNames[] =
+{
+    L"Global\\WinCse-AwsS3-util-print-report",
+    L"Global\\WinCse-AwsS3-util-clear-cache",
+};
+
+static const int gNumNotifEvents = _countof(gNotifEvents);
 
 bool AwsS3::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 {
@@ -94,12 +102,19 @@ bool AwsS3::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 
     sa.lpSecurityDescriptor = pSD;
 
-    gNotifEvent = ::CreateEventW(&sa, FALSE, FALSE, L"Global\\WinCse-AwsS3-cache-report");
-    if (!gNotifEvent)
+    gEndWorkerFlag = false;
+
+    static_assert(_countof(gEventNames) == gNumNotifEvents);
+
+    for (int i=0; i<gNumNotifEvents; i++)
     {
-        const auto lerr = ::GetLastError();
-        traceW(L"fault: CreateEvent error=%ld", lerr);
-        return false;
+        gNotifEvents[i] = ::CreateEventW(&sa, FALSE, FALSE, gEventNames[i]);
+        if (!gNotifEvents[i])
+        {
+            const auto lerr = ::GetLastError();
+            traceW(L"fault: CreateEvent(%s) error=%ld", gEventNames[i], lerr);
+            return false;
+        }
     }
 
     gNotifWorker = new std::thread(&AwsS3::notifListener, this);
@@ -127,11 +142,15 @@ void AwsS3::OnSvcStop()
 
     // デストラクタからも呼ばれるので、再入可能としておくこと
 
-    if (gNotifEvent)
+    gEndWorkerFlag = true;
+
+    for (int i=0; i<gNumNotifEvents; i++)
     {
-        gEndNotifWorker = true;
-        const auto b = ::SetEvent(gNotifEvent);
-        APP_ASSERT(b);
+        if (gNotifEvents[i])
+        {
+            const auto b = ::SetEvent(gNotifEvents[i]);
+            APP_ASSERT(b);
+        }
     }
 
     if (gNotifWorker)
@@ -141,10 +160,13 @@ void AwsS3::OnSvcStop()
         gNotifWorker = nullptr;
     }
 
-    if (gNotifEvent)
+    for (int i=0; i<gNumNotifEvents; i++)
     {
-        ::CloseHandle(gNotifEvent);
-        gNotifEvent = NULL;
+        if (gNotifEvents[i])
+        {
+            ::CloseHandle(gNotifEvents[i]);
+            gNotifEvents[i] = NULL;
+        }
     }
 
     // AWS S3 処理終了
@@ -164,55 +186,76 @@ void AwsS3::notifListener()
 
     while (true)
     {
-        const auto reason = ::WaitForSingleObject(gNotifEvent, INFINITE);
-        if (reason != WAIT_OBJECT_0)
+        const auto reason = ::WaitForMultipleObjects(gNumNotifEvents, gNotifEvents, FALSE, INFINITE);
+
+        if (WAIT_OBJECT_0 <= reason && reason < (WAIT_OBJECT_0 + gNumNotifEvents))
+        {
+            // go next
+        }
+        else
         {
             const auto lerr = ::GetLastError();
             traceW(L"un-expected reason=%lu, lerr=%lu, break", reason, lerr);
             break;
         }
 
-        if (gEndNotifWorker)
+        if (gEndWorkerFlag)
         {
             traceW(L"catch end-thread request, break");
             break;
         }
 
-        //
-        // 各種情報のログ
-        //
-        SYSTEMTIME st;
-        ::GetLocalTime(&st);
-
-        std::wstringstream ss;
-        ss << mCacheReportDir;
-        ss << L'\\';
-        ss << L"report";
-        ss << L'-';
-        ss << std::setw(4) << std::setfill(L'0') << st.wYear;
-        ss << std::setw(2) << std::setfill(L'0') << st.wMonth;
-        ss << std::setw(2) << std::setfill(L'0') << st.wDay;
-        ss << L'-';
-        ss << std::setw(2) << std::setfill(L'0') << st.wHour;
-        ss << std::setw(2) << std::setfill(L'0') << st.wMinute;
-        ss << std::setw(2) << std::setfill(L'0') << st.wSecond;
-        ss << L".log";
-
-        const auto path{ ss.str() };
-
-        FILE* fp = nullptr;
-        if (_wfopen_s(&fp, path.c_str(), L"wt") == 0)
+        switch (reason - WAIT_OBJECT_0)
         {
-            fwprintf(fp, L"ClientPtr.RefCount=%d\n", mClient.ptr.getRefCount());
+            case 0:
+            {
+                //
+                // 各種情報のレポートを出力
+                //
+                SYSTEMTIME st;
+                ::GetLocalTime(&st);
 
-            fwprintf(fp, L"[BucketCache]\n");
-            this->reportBucketCache(START_CALLER fp);
+                std::wstringstream ss;
+                ss << mCacheReportDir;
+                ss << L'\\';
+                ss << L"report";
+                ss << L'-';
+                ss << std::setw(4) << std::setfill(L'0') << st.wYear;
+                ss << std::setw(2) << std::setfill(L'0') << st.wMonth;
+                ss << std::setw(2) << std::setfill(L'0') << st.wDay;
+                ss << L'-';
+                ss << std::setw(2) << std::setfill(L'0') << st.wHour;
+                ss << std::setw(2) << std::setfill(L'0') << st.wMinute;
+                ss << std::setw(2) << std::setfill(L'0') << st.wSecond;
+                ss << L".log";
 
-            fwprintf(fp, L"[ObjectCache]\n");
-            this->reportObjectCache(START_CALLER fp);
+                const auto path{ ss.str() };
 
-            fclose(fp);
-            fp = nullptr;
+                FILE* fp = nullptr;
+                if (_wfopen_s(&fp, path.c_str(), L"wt") == 0)
+                {
+                    fwprintf(fp, L"ClientPtr.RefCount=%d\n", mClient.ptr.getRefCount());
+
+                    fwprintf(fp, L"[BucketCache]\n");
+                    this->reportBucketCache(START_CALLER fp);
+
+                    fwprintf(fp, L"[ObjectCache]\n");
+                    this->reportObjectCache(START_CALLER fp);
+
+                    fclose(fp);
+                    fp = nullptr;
+                }
+
+                break;
+            }
+
+            case 1:
+            {
+                const auto now{ std::chrono::system_clock::now() };
+                this->deleteOldObjects(START_CALLER now);
+
+                break;
+            }
         }
     }
 

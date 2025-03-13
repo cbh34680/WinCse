@@ -24,6 +24,8 @@
 #include <vector>
 #include <memory>
 #include <chrono>
+#include <unordered_map>
+#include <mutex>
 
 typedef std::shared_ptr<FSP_FSCTL_DIR_INFO> DirInfoType;
 typedef std::list<DirInfoType> DirInfoListType;
@@ -96,6 +98,7 @@ WINCSELIB_API std::string WildcardToRegexA(const std::string& wildcard);
 
 WINCSELIB_API std::vector<std::wstring> SplitString(const std::wstring& input, const wchar_t sep, const bool ignoreEmpty);
 WINCSELIB_API std::wstring JoinStrings(const std::vector<std::wstring>& tokens, const wchar_t sep, const bool ignoreEmpty);
+WINCSELIB_API std::wstring ToUpper(const std::wstring& input);
 
 WINCSELIB_API bool GetIniStringW(const std::wstring& confPath, const wchar_t* argSection, const wchar_t* keyName, std::wstring* pValue);
 WINCSELIB_API bool GetIniStringA(const std::string& confPath, const char* argSection, const char* keyName, std::string* pValue);
@@ -133,6 +136,114 @@ public:
 	int depth();
 
 	static int getCount();
+};
+
+template<typename T> class UnprotectedShare;
+template<typename T> class ProtectedShare;
+
+class SharedBase
+{
+	//HANDLE mMutexHandle;
+	std::mutex mMutex;
+	int mRefCount = 0;
+
+	template<typename T> friend class UnprotectedShare;
+	template<typename T> friend class ProtectedShare;
+
+public:
+	/*
+	SharedBase()
+	{
+	mMutexHandle = ::CreateMutexW(NULL, FALSE, NULL);
+	APP_ASSERT(mMutexHandle);
+	}
+
+	virtual ~SharedBase()
+	{
+	::CloseHandle(mMutexHandle);
+	}
+	*/
+};
+
+template<typename T>
+struct ShareStore
+{
+	std::mutex mMapGuard;
+	std::unordered_map<std::wstring, std::unique_ptr<T>> mMap;
+};
+
+template<typename T>
+class UnprotectedShare
+{
+	ShareStore<T>* mStore;
+	const std::wstring mName;
+	T* mV = nullptr;
+
+	template<typename T> friend class ProtectedShare;
+
+public:
+	template<typename... Args>
+	UnprotectedShare(ShareStore<T>* argStore, const std::wstring& argName, Args... args)
+		: mStore(argStore), mName(argName)
+	{
+		std::lock_guard<std::mutex> lock_(mStore->mMapGuard);
+
+		auto it{ mStore->mMap.find(mName) };
+		if (it == mStore->mMap.end())
+		{
+			it = mStore->mMap.emplace(mName, std::make_unique<T>(args...)).first;
+		}
+
+		it->second->mRefCount++;
+
+		static_assert(std::is_base_of<SharedBase, T>::value, "T must be derived from SharedBase");
+
+		mV = dynamic_cast<T*>(it->second.get());
+		_ASSERT(mV);
+	}
+
+	~UnprotectedShare()
+	{
+		std::lock_guard<std::mutex> lock_(mStore->mMapGuard);
+
+		auto it{ mStore->mMap.find(mName) };
+
+		it->second->mRefCount--;
+
+		if (it->second->mRefCount == 0)
+		{
+			mStore->mMap.erase(it);
+		}
+	}
+};
+
+template<typename T>
+class ProtectedShare
+{
+	UnprotectedShare<T>* mUnprotectedShare;
+
+public:
+	ProtectedShare(UnprotectedShare<T>* argUnprotectedShare)
+		: mUnprotectedShare(argUnprotectedShare)
+	{
+		//const auto reason = ::WaitForSingleObject(mUnprotectedShare->mV->mMutexHandle, INFINITE);
+		//APP_ASSERT(reason == WAIT_OBJECT_0);
+		mUnprotectedShare->mV->mMutex.lock();
+	}
+
+	~ProtectedShare()
+	{
+		//::ReleaseMutex(mUnprotectedShare->mV->mMutexHandle);
+		mUnprotectedShare->mV->mMutex.unlock();
+	}
+
+	T* operator->() {
+		return mUnprotectedShare->mV;
+	}
+
+	const T* operator->() const {
+		return mUnprotectedShare->mV;
+	}
 };
 
 } // namespace WinCseLib
@@ -175,11 +286,6 @@ WINCSELIB_API int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINFSP_I
 //
 // ƒ}ƒNƒ’è‹`
 //
-#define APP_ASSERT(expr) \
-    if (!(expr)) { \
-        WinCseLib::AbnormalEnd(__FILE__, __LINE__, __FUNCTION__, -1); \
-    }
-
 #define START_CALLER0   std::wstring(__FUNCTIONW__)
 #define START_CALLER	START_CALLER0,
 
@@ -202,5 +308,10 @@ WINCSELIB_API int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINFSP_I
 	WinCseLib::GetLogger()->traceW_impl(LOG_DEPTH(), __FILEW__, __LINE__, __FUNCTIONW__, format, __VA_ARGS__)
 
 #define FA_IS_DIR(fa)   ((fa) & FILE_ATTRIBUTE_DIRECTORY)
+
+#define APP_ASSERT(expr) \
+    if (!(expr)) { \
+        WinCseLib::AbnormalEnd(__FILE__, __LINE__, __FUNCTION__, -1); \
+    }
 
 // EOF

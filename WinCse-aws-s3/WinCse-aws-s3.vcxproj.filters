@@ -77,8 +77,5 @@
     <ClInclude Include="aws_sdk_s3.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="AwsS3_obj_read.h">
-      <Filter>ヘッダー ファイル</Filter>
-    </ClInclude>
   </ItemGroup>
 </Project>

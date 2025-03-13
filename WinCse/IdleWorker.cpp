@@ -1,7 +1,6 @@
 #include "WinCseLib.h"
 #include "IdleWorker.hpp"
 #include <filesystem>
-#include <mutex>
 #include <numeric>
 #include <sstream>
 

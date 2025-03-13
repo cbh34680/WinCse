@@ -9,7 +9,7 @@ WinCse::WinCse(WINCSE_DRIVER_STATS* argStats,
 	const std::wstring& argTempDir, const std::wstring& argIniSection,
 	IWorker* argDelayedWorker, IWorker* argIdleWorker, ICSDevice* argCSDevice)
 	:
-	mStats(*argStats),
+	mStats(argStats),
 	mTempDir(argTempDir), mIniSection(argIniSection),
 	mDelayedWorker(argDelayedWorker), mIdleWorker(argIdleWorker), mCSDevice(argCSDevice),
 	mMaxFileSize(-1),

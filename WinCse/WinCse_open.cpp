@@ -2,7 +2,6 @@
 #include "WinCse.hpp"
 #include <filesystem>
 #include <sstream>
-#include <mutex>
 
 using namespace WinCseLib;
 
@@ -180,7 +179,7 @@ WinCse::ResourceRAII::~ResourceRAII()
 
 	for (auto& FileContext: copy)
 	{
-		::_InterlockedIncrement(&(mThat->mStats._ForceClose));
+		::_InterlockedIncrement(&(mThat->mStats->_ForceClose));
 
 		traceW(L"force close address=%p", FileContext);
 

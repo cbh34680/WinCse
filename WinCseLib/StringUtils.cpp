@@ -2,6 +2,8 @@
 #include <sstream>
 #include <iomanip>
 #include <cwctype>
+#include <algorithm>
+//#include <locale>
 
 namespace WinCseLib {
 
@@ -256,6 +258,16 @@ std::wstring JoinStrings(const std::vector<std::wstring>& tokens, const wchar_t 
 	}
 
 	return ss.str();
+}
+
+std::wstring ToUpper(const std::wstring& input)
+{
+	std::wstring result{ input };
+
+	std::transform(result.begin(), result.end(), result.begin(), 
+		[](wchar_t c) { return std::towupper(c); });
+
+	return result;
 }
 
 } // WInCseLib

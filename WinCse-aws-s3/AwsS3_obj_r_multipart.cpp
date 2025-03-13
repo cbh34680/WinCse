@@ -1,10 +1,51 @@
 #include "AwsS3.hpp"
-#include "AwsS3_obj_read.h"
 #include <filesystem>
+
+
+// 一つのパート・サイズ
+#define PART_LENGTH_BYTE		(1024ULL * 1024 * 4)
 
 
 using namespace WinCseLib;
 
+
+struct FilePart
+{
+    WINCSE_DEVICE_STATS* mStats;
+    const UINT64 mOffset;
+    const ULONG mLength;
+
+    HANDLE mDone = NULL;
+    bool mResult = false;
+
+    std::atomic<bool> mInterrupt = false;
+
+    FilePart(WINCSE_DEVICE_STATS* argStats, UINT64 argOffset, ULONG argLength)
+        : mStats(argStats), mOffset(argOffset), mLength(argLength)
+    {
+        StatsIncr(_CreateEvent);
+
+        mDone = ::CreateEventW(NULL,
+            TRUE,				// 手動リセットイベント
+            FALSE,				// 初期状態：非シグナル状態
+            NULL);
+
+        APP_ASSERT(mDone);
+    }
+
+    void SetResult(bool argResult)
+    {
+        mResult = argResult;
+        const auto b = ::SetEvent(mDone);					// シグナル状態に設定
+        APP_ASSERT(b);
+    }
+
+    ~FilePart()
+    {
+        StatsIncr(_CloseHandle_Event);
+        ::CloseHandle(mDone);
+    }
+};
 
 struct ReadPartTask : public ITask
 {
@@ -83,7 +124,7 @@ bool AwsS3::doMultipartDownload(CALLER_ARG WinCseLib::IOpenContext* argOpenConte
 
     // 分割取得する領域を作成
 
-    const int numParts = (int)((ctx->mFileInfo.FileSize + SIMPLE_DOWNLOAD_THRESHOLD - 1) / SIMPLE_DOWNLOAD_THRESHOLD);
+    const int numParts = (int)((ctx->mFileInfo.FileSize + PART_LENGTH_BYTE - 1) / PART_LENGTH_BYTE);
 
     auto remaining = ctx->mFileInfo.FileSize;
 
@@ -94,12 +135,12 @@ bool AwsS3::doMultipartDownload(CALLER_ARG WinCseLib::IOpenContext* argOpenConte
             std::make_shared<FilePart>
             (
             mStats,
-            SIMPLE_DOWNLOAD_THRESHOLD * i,
-            (ULONG)min(SIMPLE_DOWNLOAD_THRESHOLD, remaining)
+            PART_LENGTH_BYTE * i,                       // Offset
+            (ULONG)min(PART_LENGTH_BYTE, remaining)     // Length
         )
         );
 
-        remaining -= SIMPLE_DOWNLOAD_THRESHOLD;
+        remaining -= PART_LENGTH_BYTE;
     }
 
     for (auto& filePart: fileParts)
@@ -174,6 +215,9 @@ bool AwsS3::doMultipartDownload(CALLER_ARG WinCseLib::IOpenContext* argOpenConte
 // ここでは最初に呼び出されたときに s3 からファイルをダウンロードしてキャッシュとした上で
 // そのファイルをオープンし、その後は HANDLE を使いまわす
 //
+struct Shared : public SharedBase { };
+static ShareStore<Shared> gSharedStore;
+
 NTSTATUS AwsS3::readObject_Multipart(CALLER_ARG WinCseLib::IOpenContext* argOpenContext,
     PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred)
 {
@@ -191,7 +235,7 @@ NTSTATUS AwsS3::readObject_Multipart(CALLER_ARG WinCseLib::IOpenContext* argOpen
     {
         // ファイル名への参照を登録
 
-        UnprotectedNamedData<Shared_Simple> unsafeShare(remotePath);
+        UnprotectedShare<Shared> unsafeShare(&gSharedStore, remotePath);
 
         {
             // ファイル名のロック
@@ -199,7 +243,7 @@ NTSTATUS AwsS3::readObject_Multipart(CALLER_ARG WinCseLib::IOpenContext* argOpen
             // 複数スレッドから同一ファイルへの同時アクセスは行われない
             // --> ファイルを安全に操作できることを保証
 
-            ProtectedNamedData<Shared_Simple> safeShare(unsafeShare);
+            ProtectedShare<Shared> safeShare(&unsafeShare);
 
             //
             // 関数先頭でも mLocalFile のチェックをしているが、ロック有無で状況が

@@ -229,6 +229,7 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
             VolumeParams->ReadOnlyVolume = 1;
 
             mDefaultFileAttributes |= FILE_ATTRIBUTE_READONLY;
+            mReadonlyFilesystem = true;
         }
 
         //

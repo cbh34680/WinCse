@@ -67,7 +67,8 @@ public:
 class AwsS3 : public WinCseLib::ICSDevice
 {
 private:
-	WINCSE_DEVICE_STATS mStats = {};
+	WINCSE_DEVICE_STATS* mStats = nullptr;
+	WINCSE_DEVICE_STATS mStats_{};
 
 	WinCseLib::IWorker* mDelayedWorker;
 	WinCseLib::IWorker* mIdleWorker;
@@ -84,6 +85,7 @@ private:
 	std::wstring mRegion;
 	FSP_FILE_SYSTEM* mFileSystem = nullptr;
 
+	bool mReadonlyFilesystem = false;
 	UINT32 mDefaultFileAttributes = 0;
 
 	// シャットダウン要否判定のためポインタにしている
@@ -115,10 +117,11 @@ private:
 
 	int unlockDeleteCacheByObjKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
 
-	bool unlockHeadObject(CALLER_ARG const WinCseLib::ObjectKey& argObjKey, FSP_FSCTL_FILE_INFO* pFileInfo);
+	bool unlockHeadObject(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */);
 
 	bool unlockHeadObject_File(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
-		FSP_FSCTL_FILE_INFO* pFileInfo);
+		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */);
 
 	bool unlockListObjects(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		const Purpose purpose, DirInfoListType* pDirInfoList /* nullable */);
@@ -164,7 +167,7 @@ public:
 
 	void queryStats(WINCSE_DEVICE_STATS* pStats) override
 	{
-		*pStats = mStats;
+		*pStats = *mStats;
 	}
 
 	bool PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
@@ -228,7 +231,7 @@ private:
 //
 struct OpenContext : public WinCseLib::IOpenContext
 {
-	WINCSE_DEVICE_STATS& mStats;
+	WINCSE_DEVICE_STATS* mStats;
 	const std::wstring mCacheDataDir;
 	WinCseLib::ObjectKey mObjKey;
 	FSP_FSCTL_FILE_INFO mFileInfo;
@@ -237,7 +240,7 @@ struct OpenContext : public WinCseLib::IOpenContext
 	HANDLE mLocalFile = INVALID_HANDLE_VALUE;
 
 	OpenContext(
-		WINCSE_DEVICE_STATS& argStats,
+		WINCSE_DEVICE_STATS* argStats,
 		const std::wstring& argCacheDataDir,
 		const WinCseLib::ObjectKey& argObjKey,
 		const FSP_FSCTL_FILE_INFO& argFileInfo,
@@ -289,11 +292,11 @@ extern "C"
 		WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker);
 }
 
-#define StatsIncr(name)					::InterlockedIncrement(& (this->mStats.name))
+#define StatsIncr(name)					::InterlockedIncrement(& (this->mStats->name))
 
 #define StatsIncrBool(b, sname, ename) \
-	if (b) ::InterlockedIncrement(& (this->mStats.sname)); \
-	else   ::InterlockedIncrement(& (this->mStats.ename))
+	if (b) ::InterlockedIncrement(& (this->mStats->sname)); \
+	else   ::InterlockedIncrement(& (this->mStats->ename))
 
 #define AWS_DEFAULT_REGION			Aws::Region::US_EAST_1
 

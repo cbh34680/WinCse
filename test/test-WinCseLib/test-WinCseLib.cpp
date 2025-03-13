@@ -5,9 +5,7 @@
 #include "WinCseLib.h"
 #include <iostream>
 #include <thread>
-#include <mutex>
 //#include <map>
-#include <unordered_map>
 #include <regex>
 #include <sstream>
 #include <deque>
@@ -260,7 +258,8 @@ void test7()
     std::vector<char> cs{ '1', '2', '3', '4', '5' };
     std::vector<char> cs2{ cs.begin() + 5, cs.end() };
 
-    int iii = 0;
+    std::cout << cs2.data() << std::endl;
+    std::cout << "done." << std::endl;
 }
 
 void test8()
@@ -476,6 +475,12 @@ void test11()
     bool b3 = ObjectKey{ L"a", L"1" } < ObjectKey{ L"a", L"1" };
     bool b4 = ObjectKey{ L"a", L"1" } < ObjectKey{ L"a", L"2" };
     bool b5 = ObjectKey{ L"a", L"2" } < ObjectKey{ L"a", L"1" };
+
+    std::cout << (b1 ? "true" : "false") << std::endl;
+    std::cout << (b2 ? "true" : "false") << std::endl;
+    std::cout << (b3 ? "true" : "false") << std::endl;
+    std::cout << (b4 ? "true" : "false") << std::endl;
+    std::cout << (b5 ? "true" : "false") << std::endl;
 
     std::cout << "done." << std::endl;
 }

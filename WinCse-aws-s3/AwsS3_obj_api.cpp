@@ -192,13 +192,18 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
 
             APP_ASSERT(!key.empty());
 
-            if (std::find(already.begin(), already.end(), key) != already.end())
             {
-                traceW(L"%s: already added", key.c_str());
-                continue;
-            }
+                // 大文字小文字を同一視した上で、同じ名前があったら無視する
+                std::wstring keyUpper{ ToUpper(key) };
 
-            already.insert(key);
+                if (std::find(already.begin(), already.end(), keyUpper) != already.end())
+                {
+                    traceW(L"%s: already added", keyUpper.c_str());
+                    continue;
+                }
+
+                already.insert(keyUpper);
+            }
 
             dirInfoList.push_back(makeDirInfo_dir(ObjectKey{ argObjKey.bucket(), key }, commonPrefixTime));
 
@@ -248,13 +253,18 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
 
             APP_ASSERT(!key.empty());
 
-            if (std::find(already.begin(), already.end(), key) != already.end())
             {
-                traceW(L"%s: already added", key.c_str());
-                continue;
-            }
+                // 大文字小文字を同一視した上で、同じ名前があったら無視する
+                std::wstring keyUpper{ ToUpper(key) };
 
-            already.insert(key);
+                if (std::find(already.begin(), already.end(), keyUpper) != already.end())
+                {
+                    traceW(L"%s: already added", keyUpper.c_str());
+                    continue;
+                }
+
+                already.insert(keyUpper);
+            }
 
             auto dirInfo = makeDirInfo(ObjectKey{ argObjKey.bucket(), key });
             APP_ASSERT(dirInfo);

@@ -1,5 +1,4 @@
 #include "AwsS3.hpp"
-#include "AwsS3_obj_read.h"
 #include <filesystem>
 
 
@@ -11,6 +10,9 @@ using namespace WinCseLib;
 // ここでは最初に呼び出されたときに s3 からファイルをダウンロードしてキャッシュとした上で
 // そのファイルをオープンし、その後は HANDLE を使いまわす
 //
+struct Shared : public SharedBase { };
+static ShareStore<Shared> gSharedStore;
+
 NTSTATUS AwsS3::readObject_Simple(CALLER_ARG WinCseLib::IOpenContext* argOpenContext,
     PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred)
 {
@@ -28,7 +30,7 @@ NTSTATUS AwsS3::readObject_Simple(CALLER_ARG WinCseLib::IOpenContext* argOpenCon
     {
         // ファイル名への参照を登録
 
-        UnprotectedNamedData<Shared_Simple> unsafeShare(remotePath);
+        UnprotectedShare<Shared> unsafeShare(&gSharedStore, remotePath);
         
         {
             // ファイル名のロック
@@ -36,7 +38,7 @@ NTSTATUS AwsS3::readObject_Simple(CALLER_ARG WinCseLib::IOpenContext* argOpenCon
             // 複数スレッドから同一ファイルへの同時アクセスは行われない
             // --> ファイルを安全に操作できることを保証
 
-            ProtectedNamedData<Shared_Simple> safeShare(unsafeShare);
+            ProtectedShare<Shared> safeShare(&unsafeShare);
 
             //
             // 関数先頭でも mLocalFile のチェックをしているが、ロック有無で状況が

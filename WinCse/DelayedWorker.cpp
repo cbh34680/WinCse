@@ -2,7 +2,6 @@
 #include "DelayedWorker.hpp"
 #include <filesystem>
 #include <sstream>
-#include <mutex>
 
 using namespace WinCseLib;
 
@@ -216,7 +215,7 @@ bool DelayedWorker::addTask(CALLER_ARG WinCseLib::ITask* argTask, WinCseLib::Pri
 #if ENABLE_TASK
 	argTask->mPriority = priority;
 	argTask->mAddTime = GetCurrentUtcMillis();
-	argTask->mCaller = wcsdup(CALL_CHAIN().c_str());
+	argTask->mCaller = _wcsdup(CALL_CHAIN().c_str());
 
 	if (priority == Priority::High)
 	{
