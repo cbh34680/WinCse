@@ -6,8 +6,6 @@
 using namespace WinCseLib;
 
 static const wchar_t* CONFIGFILE_FNAME = L"WinCse.conf";
-static const wchar_t* FILE_REFERENCE_FNAME = L"reference.file";
-static const wchar_t* DIR_REFERENCE_FNAME = L"reference.dir";
 
 template <typename T>
 std::string getDerivedClassNames(T* baseClass)
@@ -37,6 +35,26 @@ bool WinCse::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PAR
 
 	try
 	{
+		// VolumeParams の設定
+
+		VolumeParams->CaseSensitiveSearch = 1;
+
+		const UINT32 Timeout = 2000U;
+
+		VolumeParams->FileInfoTimeout = Timeout;
+
+		//VolumeParams->VolumeInfoTimeout = Timeout;
+		VolumeParams->DirInfoTimeout = Timeout;
+		//VolumeParams->SecurityTimeout = Timeout;
+		//VolumeParams->StreamInfoTimeout = Timeout;
+		//VolumeParams->EaTimeout = Timeout;
+
+		//VolumeParams->VolumeInfoTimeoutValid = 1;
+		VolumeParams->DirInfoTimeoutValid = 1;
+		//VolumeParams->SecurityTimeoutValid = 1;
+		//VolumeParams->StreamInfoTimeoutValid = 1;
+		//VolumeParams->EaTimeoutValid = 1;
+
 		const std::wstring workDir{ fs::weakly_canonical(fs::path(argWorkDir)).wstring() };
 
 		//
@@ -48,14 +66,20 @@ bool WinCse::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PAR
 
 		const auto iniSection = mIniSection.c_str();
 
-		//
+		// 読み取り専用
+
+		const bool readonly = ::GetPrivateProfileIntW(iniSection, L"readonly", 0, confPath.c_str()) != 0;
+		if (readonly)
+		{
+			VolumeParams->ReadOnlyVolume = 1;
+		}
+
 		// 最大ファイルサイズ(MB)
-		//
+
 		const int maxFileSize = (int)::GetPrivateProfileIntW(iniSection, L"max_filesize_mb", 4, confPath.c_str());
 
-		//
 		// 無視するファイル名のパターン
-		//
+
 		std::wstring re_ignored_patterns;
 		GetIniStringW(confPath.c_str(), iniSection, L"re_ignored_patterns", &re_ignored_patterns);
 
@@ -78,98 +102,54 @@ bool WinCse::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PAR
 			}
 		}
 
-#if 0
-		std::vector<std::wstring> strs =
-		{
-			L"\\nn\\desktop.ini",
-			L"abc\\desktop.ini",
-			L"abc\\folder.jpg",
-			L"abc\\folder.gif",
-			L"abc\\thumbs.db",
-			L"abc\\ehthumbs.db",
-			L"\\albumartsmall.jpg",
-			L"\\folder.ico",
-
-			L"abc/desktop.ini",
-			L"abc/folder.jpg",
-			L"abc/folder.gif",
-			L"abc/thumbs.db",
-			L"abc/ehthumbs.db",
-			L"/albumartsmall.jpg",
-			L"folder.ico",
-		};
-
-		for (const auto& str: strs)
-		{
-			std::wcout << str << ": ";
-
-			if (std::regex_match(str, mIgnoredFileNamePatterns))
-			{
-				std::wcout << L"[match] ";
-			}
-			else
-			{
-				std::wcout << L"[no match] ";
-			}
-
-			if (std::regex_search(str, mIgnoredFileNamePatterns))
-			{
-				std::wcout << L"[search] " << std::endl;
-			}
-			else
-			{
-				std::wcout << L"[no search] " << std::endl;
-			}
-		}
-#endif
-
 		//
 		// 属性参照用ファイル/ディレクトリの準備
 		//
-		const std::wstring fileRefPath{ workDir + L'\\' + FILE_REFERENCE_FNAME };
-		if (!TouchIfNotExists(fileRefPath))
+		mRefFile = ::CreateFileW
+		(
+			confPath.c_str(),
+			GENERIC_READ,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,		// 共有モード
+			NULL,														// セキュリティ属性
+			OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL,
+			NULL														// テンプレートなし
+		);
+
+		if (mRefFile.invalid())
 		{
-			traceW(L"file not exists: %s", fileRefPath.c_str());
+			traceW(L"file open error: %s", confPath.c_str());
 			return false;
 		}
 
-		const std::wstring dirRefPath{ workDir + L'\\' + DIR_REFERENCE_FNAME };
-		if (!MkdirIfNotExists(dirRefPath))
+		mRefDir = ::CreateFileW
+		(
+			argWorkDir,
+			GENERIC_READ,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+			NULL,
+			OPEN_EXISTING,
+			FILE_FLAG_BACKUP_SEMANTICS,
+			0
+		);
+
+		if (mRefDir.invalid())
 		{
-			traceW(L"dir not exists: %s", dirRefPath.c_str());
+			traceW(L"file open error: %s", argWorkDir);
 			return false;
 		}
 
-		//
-		// 属性参照用ファイル/ディレクトリを開く
-		//
-		mFileRefHandle = ::CreateFileW(fileRefPath.c_str(),
-			FILE_READ_ATTRIBUTES | READ_CONTROL, 0, 0,
-			OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
-		if (INVALID_HANDLE_VALUE == mFileRefHandle)
-		{
-			traceW(L"file open error: %s", fileRefPath.c_str());
-			return false;
-		}
-
-		mDirRefHandle = ::CreateFileW(dirRefPath.c_str(),
-			FILE_READ_ATTRIBUTES | READ_CONTROL, 0, 0,
-			OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
-		if (INVALID_HANDLE_VALUE == mDirRefHandle)
-		{
-			traceW(L"file open error: %s", dirRefPath.c_str());
-			return false;
-		}
+		// メンバに保存
 
 		mMaxFileSize = maxFileSize;
 		mWorkDir = workDir;
 
-		traceW(L"INFO: TempDir=%s, WorkDir=%s, DirRef=%s, FileRef=%s",
-			mTempDir.c_str(), mWorkDir.c_str(), dirRefPath.c_str(), fileRefPath.c_str());
+		traceW(L"INFO: TempDir=%s, WorkDir=%s", mTempDir.c_str(), mWorkDir.c_str());
+
+		// PreCreateFilesystem() の伝播
 
 		ICSService* services[] = { mDelayedWorker, mIdleWorker, mCSDevice };
 
-		// PreCreateFilesystem() の伝播
 		for (int i=0; i<_countof(services); i++)
 		{
 			const auto service = services[i];
@@ -210,9 +190,9 @@ bool WinCse::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 
 	try
 	{
+		// OnSvcStart() の伝播
 		ICSService* services[] = { mDelayedWorker, mIdleWorker, mCSDevice };
 
-		// OnSvcStart() の伝播
 		for (int i=0; i<_countof(services); i++)
 		{
 			const auto service = services[i];
@@ -259,6 +239,9 @@ void WinCse::OnSvcStop()
 
 		services[i]->OnSvcStop();
 	}
+
+	mRefFile.close();
+	mRefDir.close();
 }
 
 // EOF

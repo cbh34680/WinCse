@@ -178,6 +178,9 @@ void AwsS3::OnSvcStop()
 
         mSDKOptions.reset();
     }
+
+    mRefFile.close();
+    mRefDir.close();
 }
 
 void AwsS3::notifListener()

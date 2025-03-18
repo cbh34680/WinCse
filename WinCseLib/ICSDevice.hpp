@@ -11,11 +11,15 @@ typedef struct
 	long listBuckets;
 	long headObject;
 	long listObjects;
+	long create;
 	long open;
-	long read;
+	long readObject;
 	long close;
 	long cleanup;
 	long remove;
+	long writeObject;
+	long setFileSize;
+	long setBasicInfo;
 
 	long _CreateFile;
 	long _CloseHandle_File;
@@ -100,9 +104,37 @@ public:
 	}
 };
 
-struct IOpenContext
+struct CSDeviceContext
 {
-	virtual ~IOpenContext() = default;
+	const std::wstring mCacheDataDir;
+	ObjectKey mObjKey;
+	const FSP_FSCTL_FILE_INFO mFileInfo;
+	FileHandleRAII mLocalFile;
+
+	WINCSELIB_API CSDeviceContext(
+		const std::wstring& argCacheDataDir,
+		const WinCseLib::ObjectKey& argObjKey,
+		const FSP_FSCTL_FILE_INFO& argFileInfo);
+
+	WINCSELIB_API bool isDir() const;
+	WINCSELIB_API std::wstring getLocalPath() const;
+	WINCSELIB_API bool setLocalFileTime(UINT64 argCreationTime);
+
+	bool isFile() const { return !isDir(); }
+	std::wstring getRemotePath() const { return mObjKey.str(); }
+
+	void closeLocalFile()
+	{
+		if (mLocalFile.valid())
+		{
+			mLocalFile.close();
+		}
+	}
+
+	virtual ~CSDeviceContext()
+	{
+		closeLocalFile();
+	}
 };
 
 struct WINCSELIB_API ICSDevice : public ICSService
@@ -121,18 +153,27 @@ struct WINCSELIB_API ICSDevice : public ICSService
 
 	virtual bool listObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* pDirInfoList) = 0;
 
-	virtual IOpenContext* open(CALLER_ARG const ObjectKey& argObjKey,
-		const FSP_FSCTL_FILE_INFO& FileInfo,
-		const UINT32 CreateOptions, const UINT32 GrantedAccess) = 0;
+	virtual CSDeviceContext* create(CALLER_ARG const ObjectKey& argObjKey,
+		const UINT32 CreateOptions, const UINT32 GrantedAccess, const UINT32 FileAttributes,
+		FSP_FSCTL_FILE_INFO* pFileInfo) = 0;
 
-	virtual void close(CALLER_ARG IOpenContext* argOpenContext) = 0;
+	virtual CSDeviceContext* open(CALLER_ARG const ObjectKey& argObjKey,
+		const UINT32 CreateOptions, const UINT32 GrantedAccess,
+		const FSP_FSCTL_FILE_INFO& FileInfo) = 0;
 
-	virtual NTSTATUS readObject(CALLER_ARG IOpenContext* argOpenContext,
+	virtual void close(CALLER_ARG CSDeviceContext* argCSDeviceContext) = 0;
+
+	virtual bool readObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred) = 0;
 
-	virtual NTSTATUS remove(CALLER_ARG IOpenContext* argOpenContext, BOOLEAN argDeleteFile) = 0;
+	virtual bool writeObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
+		PVOID Buffer, UINT64 Offset, ULONG Length,
+		BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
+		PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO *FileInfo) = 0;
 
-	virtual void cleanup(CALLER_ARG IOpenContext* argOpenContext, ULONG argFlags) = 0;
+	virtual bool remove(CALLER_ARG CSDeviceContext* argCSDeviceContext, BOOLEAN argDeleteFile) = 0;
+
+	virtual void cleanup(CALLER_ARG CSDeviceContext* argCSDeviceContext, ULONG argFlags) = 0;
 };
 
 } // namespace WinCseLib

@@ -14,8 +14,7 @@ WinCse::WinCse(WINCSE_DRIVER_STATS* argStats,
 	mDelayedWorker(argDelayedWorker), mIdleWorker(argIdleWorker), mCSDevice(argCSDevice),
 	mMaxFileSize(-1),
 	mResourceRAII(this),
-	mIgnoredFileNamePatterns{ LR"(\\(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif)|\.DS_Store)$)", std::regex_constants::icase }
-	//mIgnoredFileNamePatterns{ LR"(\\(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif)|\.DS_Store)$)", std::regex_constants::icase }
+	mIgnoredFileNamePatterns{ LR"(\b(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif)|\.DS_Store)$)", std::regex_constants::icase }
 {
 	NEW_LOG_BLOCK();
 
@@ -32,17 +31,8 @@ WinCse::~WinCse()
 
 	traceW(L"close handle");
 
-	if (mFileRefHandle != INVALID_HANDLE_VALUE)
-	{
-		::CloseHandle(mFileRefHandle);
-		mFileRefHandle = INVALID_HANDLE_VALUE;
-	}
-
-	if (mDirRefHandle != INVALID_HANDLE_VALUE)
-	{
-		::CloseHandle(mDirRefHandle);
-		mDirRefHandle = INVALID_HANDLE_VALUE;
-	}
+	mRefFile.close();
+	mRefDir.close();
 
 	traceW(L"all done.");
 }

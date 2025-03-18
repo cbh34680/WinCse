@@ -429,6 +429,60 @@ std::string ObjectKey::strA() const
 }
 
 //
+// CSDeviceContext
+//
+CSDeviceContext::CSDeviceContext(
+	const std::wstring& argCacheDataDir,
+	const WinCseLib::ObjectKey& argObjKey,
+	const FSP_FSCTL_FILE_INFO& argFileInfo)
+	:
+	mCacheDataDir(argCacheDataDir),
+	mFileInfo(argFileInfo)
+{
+	if (FA_IS_DIR(mFileInfo.FileAttributes))
+	{
+		mObjKey = argObjKey.toDir();
+	}
+	else
+	{
+		mObjKey = argObjKey;
+	}
+}
+
+bool CSDeviceContext::isDir() const
+{
+	return FA_IS_DIR(mFileInfo.FileAttributes);
+}
+
+std::wstring CSDeviceContext::getLocalPath() const
+{
+	return mCacheDataDir + L'\\' + EncodeFileNameToLocalNameW(getRemotePath());
+}
+
+bool CSDeviceContext::setLocalFileTime(UINT64 argCreationTime)
+{
+	NEW_LOG_BLOCK();
+
+	APP_ASSERT(mLocalFile.valid());
+
+	FILETIME ft;
+	WinFileTime100nsToWinFile(argCreationTime, &ft);
+
+	FILETIME ftNow;
+	::GetSystemTimeAsFileTime(&ftNow);
+
+	if (!::SetFileTime(mLocalFile.handle(), &ft, &ftNow, &ft))
+	{
+		const auto lerr = ::GetLastError();
+		traceW(L"fault: SetFileTime lerr=%ld", lerr);
+
+		return false;
+	}
+
+	return true;
+}
+
+//
 // LogBlock
 //
 static std::atomic<int> mCounter(0);

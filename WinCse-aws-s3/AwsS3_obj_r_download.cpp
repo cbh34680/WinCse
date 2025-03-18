@@ -1,5 +1,4 @@
 #include "AwsS3.hpp"
-#include "AwsS3_obj_read.h"
 #include <filesystem>
 
 
@@ -13,7 +12,7 @@ using namespace WinCseLib;
 //      -1 以下     書き出しオフセット指定なし
 //      それ以外    CreateFile 後に SetFilePointerEx が実行される
 //
-static int64_t writeObjectResultToFile(CALLER_ARG
+static int64_t outputObjectResultToFile(CALLER_ARG
     const Aws::S3::Model::GetObjectResult& argResult, const FileOutputMeta& argMeta)
 {
     NEW_LOG_BLOCK();
@@ -29,15 +28,21 @@ static int64_t writeObjectResultToFile(CALLER_ARG
     traceW(argMeta.str().c_str());
 
     // result の内容をファイルに出力する
-    HANDLE hFile = INVALID_HANDLE_VALUE;
 
     auto remainingTotal = inputSize;
 
-    hFile = ::CreateFileW(argMeta.mPath.c_str(),
-        GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-        NULL, argMeta.mCreationDisposition, FILE_ATTRIBUTE_NORMAL, NULL);
+    FileHandleRAII hFile = ::CreateFileW
+    (
+        argMeta.mPath.c_str(),
+        GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        NULL,
+        argMeta.mCreationDisposition,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
 
-    if (hFile == INVALID_HANDLE_VALUE)
+    if (hFile.invalid())
     {
         const auto lerr = ::GetLastError();
         traceW(L"fault: CreateFileW lerr=%ld", lerr);
@@ -49,7 +54,7 @@ static int64_t writeObjectResultToFile(CALLER_ARG
         LARGE_INTEGER li{};
         li.QuadPart = argMeta.mOffset;
 
-        if (::SetFilePointerEx(hFile, li, NULL, FILE_BEGIN) == 0)
+        if (::SetFilePointerEx(hFile.handle(), li, NULL, FILE_BEGIN) == 0)
         {
             const auto lerr = ::GetLastError();
             traceW(L"fault: SetFilePointerEx lerr=%ld", lerr);
@@ -81,7 +86,7 @@ static int64_t writeObjectResultToFile(CALLER_ARG
             traceW(L"%lld bytes remaining", remainingWrite);
 
             DWORD bytesWritten = 0;
-            if (!::WriteFile(hFile, pos, (DWORD)remainingWrite, &bytesWritten, NULL))
+            if (!::WriteFile(hFile.handle(), pos, (DWORD)remainingWrite, &bytesWritten, NULL))
             {
                 const auto lerr = ::GetLastError();
                 traceW(L"fault: WriteFile lerr=%ld", lerr);
@@ -109,7 +114,7 @@ static int64_t writeObjectResultToFile(CALLER_ARG
         FILETIME ftNow;
         ::GetSystemTimeAsFileTime(&ftNow);
 
-        if (!::SetFileTime(hFile, &ft, &ftNow, &ft))
+        if (!::SetFileTime(hFile.handle(), &ft, &ftNow, &ft))
         {
             const auto lerr = ::GetLastError();
             traceW(L"fault: SetFileTime lerr=%ld", lerr);
@@ -120,11 +125,7 @@ static int64_t writeObjectResultToFile(CALLER_ARG
     ret = inputSize;
 
 exit:
-    if (hFile != INVALID_HANDLE_VALUE)
-    {
-        ::CloseHandle(hFile);
-        hFile = INVALID_HANDLE_VALUE;
-    }
+    hFile.close();
 
     traceW(L"return %lld", ret);
 
@@ -185,11 +186,11 @@ int64_t AwsS3::prepareLocalCacheFile(CALLER_ARG
 
     // result の内容をファイルに出力する
 
-    const auto bytesWritten = writeObjectResultToFile(CONT_CALLER result, argMeta);
+    const auto bytesWritten = outputObjectResultToFile(CONT_CALLER result, argMeta);
 
     if (bytesWritten < 0)
     {
-        traceW(L"fault: writeObjectResultToFile");
+        traceW(L"fault: outputObjectResultToFile");
         return -1LL;
     }
 

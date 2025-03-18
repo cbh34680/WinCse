@@ -513,11 +513,14 @@ static void writeStats(
             fprintf(fp, "\t" "headObject: %ld\n", devStats->headObject);
             fprintf(fp, "\t" "listBuckets: %ld\n", devStats->listBuckets);
             fprintf(fp, "\t" "listObjects: %ld\n", devStats->listObjects);
+            fprintf(fp, "\t" "create: %ld\n", devStats->create);
             fprintf(fp, "\t" "open: %ld\n", devStats->open);
             fprintf(fp, "\t" "cleanup: %ld\n", devStats->cleanup);
             fprintf(fp, "\t" "close: %ld\n", devStats->close);
-            fprintf(fp, "\t" "read: %ld\n", devStats->read);
+            fprintf(fp, "\t" "readObject: %ld\n", devStats->readObject);
             fprintf(fp, "\t" "remove: %ld\n", devStats->remove);
+            fprintf(fp, "\t" "writeObject: %ld\n", devStats->writeObject);
+            fprintf(fp, "\t" "setFileSize: %ld\n", devStats->setFileSize);
 
             fprintf(fp, "\t" "_CreateEvent: %ld\n", devStats->_CreateEvent);
             fprintf(fp, "\t" "_CloseHandle_Event: %ld\n", devStats->_CloseHandle_Event);

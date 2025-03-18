@@ -289,11 +289,11 @@ void test8()
         ObjectKey objKey{ arr[0], arr[1] };
 
         std::wcout << L"valid: ";
-        std::wcout << (objKey.valid() ? L"true" : L"false");
+        std::wcout << BOOL_CSTRW(objKey.valid());
         std::wcout << std::endl;
 
         std::wcout << L"hasKey: ";
-        std::wcout << (objKey.hasKey() ? L"true" : L"false");
+        std::wcout << BOOL_CSTRW(objKey.hasKey());
         std::wcout << std::endl;
 
         std::wcout << L"bucket: ";
@@ -325,7 +325,7 @@ void test8()
         std::cout << std::endl;
 
         std::wcout << L"meansDir: ";
-        std::wcout << (objKey.meansDir() ? L"true" : L"false");
+        std::wcout << BOOL_CSTRW(objKey.meansDir());
         std::wcout << std::endl;
 
         std::wcout << std::endl;
@@ -358,11 +358,11 @@ void test9()
         ObjectKey objKey{ ObjectKey::fromWinPath(str) };
 
         std::wcout << L"valid: ";
-        std::wcout << (objKey.valid() ? L"true" : L"false");
+        std::wcout << BOOL_CSTRW(objKey.valid());
         std::wcout << std::endl;
 
         std::wcout << L"hasKey: ";
-        std::wcout << (objKey.hasKey() ? L"true" : L"false");
+        std::wcout << BOOL_CSTRW(objKey.hasKey());
         std::wcout << std::endl;
 
         std::wcout << L"bucket: ";
@@ -394,11 +394,11 @@ void test9()
         std::cout << std::endl;
 
         std::wcout << L"meansDir: ";
-        std::wcout << (objKey.meansDir() ? L"true" : L"false");
+        std::wcout << BOOL_CSTRW(objKey.meansDir());
         std::wcout << std::endl;
 
         std::wcout << L"meansFile: ";
-        std::wcout << (objKey.meansFile() ? L"true" : L"false");
+        std::wcout << BOOL_CSTRW(objKey.meansFile());
         std::wcout << std::endl;
 
         if (objKey.valid())
@@ -541,6 +541,98 @@ void test12()
     cout << "done." << endl;
 }
 
+struct Shared_Simple : public SharedBase { };
+
+struct Shared_Multipart : public SharedBase
+{
+    Shared_Multipart(int i)
+    {
+        std::wcout << L"construct i=" << i << std::endl;
+    }
+};
+
+struct ShareStore<Shared_Simple> gSimpleDB;
+struct ShareStore<Shared_Multipart> gMultipartDB;
+
+void test13_worker(int id, const std::wstring& key, int sec)
+{
+    UnprotectedShare<Shared_Simple> unlockLocal(&gSimpleDB, key);
+
+    {
+        const auto lockedLocal{ unlockLocal.lock() };
+
+        std::wcerr << key << L" id=" << id << L" sleep(" << sec << L") in ..." << std::endl;
+        ::Sleep(1000 * sec);
+        std::wcerr << key << L" id=" << id << L" sleep(" << sec << L") out" << std::endl;
+    }
+}
+
+void test13()
+{
+    std::thread t1(test13_worker, 1, L"file1.txt", 10);
+    std::thread t2(test13_worker, 2, L"file1.txt", 10);
+    std::thread t3(test13_worker, 3, L"file2.txt", 0);
+    std::thread t4(test13_worker, 4, L"file2.txt", 0);
+    std::thread t5(test13_worker, 5, L"file3.txt", 2);
+    std::thread t6(test13_worker, 6, L"file3.txt", 2);
+
+    t1.join();
+    t2.join();
+    t3.join();
+    t4.join();
+    t5.join();
+    t6.join();
+
+    std::wcout << L"done." << std::endl;
+}
+
+class Klass
+{
+    std::string mName;
+
+public:
+    Klass(std::string name) : mName(name)
+    {
+        std::cout << "contruct " << mName << std::endl;
+    }
+
+    ~Klass()
+    {
+        std::cout << "destruct " << mName << std::endl;
+    }
+};
+
+void test14()
+{
+    Klass a{ "a" };
+    Klass b{ "b" };
+}
+
+class Test15Base
+{
+public:
+    virtual int myInt() const = 0;
+    void printInt()
+    {
+        std::cout << myInt() << std::endl;
+    }
+};
+
+class Test15 : public Test15Base
+{
+public:
+    int myInt() const override
+    {
+        return 15;
+    }
+};
+
+void test15()
+{
+    Test15 o;
+    o.printInt();
+}
+
 int main()
 {
     // chcp 65001
@@ -555,7 +647,7 @@ int main()
     //test1();
     //test2();
     //test3();
-    test4();
+    //test4();
     //test5();
     //test6();
     //test7();
@@ -564,6 +656,9 @@ int main()
     //test10();
     //test11();
     //test12();
+    //test13();
+    //test14();
+    test15();
 
     return EXIT_SUCCESS;
 }

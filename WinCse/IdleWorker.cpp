@@ -21,8 +21,8 @@ IdleWorker::IdleWorker(const std::wstring& argTempDir, const std::wstring& argIn
 	// OnSvcStart の呼び出し順によるイベントオブジェクト未生成を
 	// 回避するため、コンストラクタで生成して OnSvcStart で null チェックする
 
-	mEvent = ::CreateEvent(NULL, FALSE, FALSE, NULL);
-	APP_ASSERT(mEvent);
+	mEvent = ::CreateEventW(NULL, FALSE, FALSE, NULL);
+	APP_ASSERT(mEvent.valid());
 }
 
 IdleWorker::~IdleWorker()
@@ -32,7 +32,7 @@ IdleWorker::~IdleWorker()
 	this->OnSvcStop();
 
 	traceW(L"close event");
-	::CloseHandle(mEvent);
+	mEvent.close();
 }
 
 bool IdleWorker::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
@@ -40,7 +40,7 @@ bool IdleWorker::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSyst
 	NEW_LOG_BLOCK();
 	APP_ASSERT(argWorkDir);
 
-	if (!mEvent)
+	if (mEvent.invalid())
 	{
 		traceW(L"mEvent is null");
 		return false;
@@ -83,7 +83,7 @@ void IdleWorker::OnSvcStop()
 
 		for (int i=0; i<mThreads.size(); i++)
 		{
-			const auto b = ::SetEvent(mEvent);
+			const auto b = ::SetEvent(mEvent.handle());
 			APP_ASSERT(b);
 		}
 
@@ -131,7 +131,7 @@ void IdleWorker::listenEvent(const int i)
 			// この数値を変えるときはログ記録回数にも注意する
 
 			traceW(L"(%d): wait for signal ...", i);
-			const auto reason = ::WaitForSingleObject(mEvent, 1000 * 10);
+			const auto reason = ::WaitForSingleObject(mEvent.handle(), 1000 * 10);
 
 			if (mEndWorkerFlag)
 			{
@@ -241,7 +241,7 @@ void IdleWorker::listenEvent(const int i)
 						// 緊急度は低いので、他のスレッドを優先させる
 
 						const auto b = ::SwitchToThread();
-						traceW(L"(%d): SwitchToThread return %s", b ? L"true" : L"false");
+						traceW(L"(%d): SwitchToThread return %s", BOOL_CSTRW(b));
 					}
 
 					traceW(L"(%d): run idle task ...", i);

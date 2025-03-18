@@ -20,11 +20,11 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 	traceW(L"CreateOptions=%u, GrantedAccess=%u, PFileContext=%p, FileInfo=%p", CreateOptions, GrantedAccess, PFileContext, FileInfo);
 
 	PTFS_FILE_CONTEXT* FileContext = nullptr;
-	FSP_FSCTL_FILE_INFO fileInfo = {};
-	NTSTATUS Result = STATUS_UNSUCCESSFUL;
+	FSP_FSCTL_FILE_INFO fileInfo{};
+	NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
 
-	Result = FileNameToFileInfo(START_CALLER FileName, &fileInfo);
-	if (!NT_SUCCESS(Result))
+	ntstatus = FileNameToFileInfo(START_CALLER FileName, &fileInfo);
+	if (!NT_SUCCESS(ntstatus))
 	{
 		traceW(L"fault: FileNameToFileInfo");
 		goto exit;
@@ -35,11 +35,11 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 
 	// WinFsp に保存されるファイル・コンテキストを生成
 
-	FileContext = (PTFS_FILE_CONTEXT*)calloc(1, sizeof *FileContext);
+	FileContext = (PTFS_FILE_CONTEXT*)calloc(1, sizeof(*FileContext));
 	if (!FileContext)
 	{
 		traceW(L"fault: calloc");
-		Result = STATUS_INSUFFICIENT_RESOURCES;
+		ntstatus = STATUS_INSUFFICIENT_RESOURCES;
 		goto exit;
 	}
 
@@ -47,7 +47,7 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 	if (!FileContext->FileName)
 	{
 		traceW(L"fault: _wcsdup");
-		Result = STATUS_INSUFFICIENT_RESOURCES;
+		ntstatus = STATUS_INSUFFICIENT_RESOURCES;
 		goto exit;
 	}
 
@@ -55,7 +55,7 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 	{
 		traceW(L"root access");
 
-		APP_ASSERT(fileInfo.FileSize == 0);
+		//APP_ASSERT(fileInfo.FileSize == 0);
 	}
 	else
 	{
@@ -64,7 +64,7 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 		if (!objKey.valid())
 		{
 			traceW(L"illegal FileName: \"%s\"", FileName);
-			Result = STATUS_INVALID_PARAMETER;
+			ntstatus = STATUS_OBJECT_NAME_INVALID;
 			goto exit;
 		}
 
@@ -72,7 +72,7 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 		{
 			// ディレクトリへのアクセス
 
-			APP_ASSERT(fileInfo.FileSize == 0);
+			//APP_ASSERT(fileInfo.FileSize == 0);
 		}
 		else
 		{
@@ -86,7 +86,7 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 			{
 				if (fileInfo.FileSize > 1024ULL * 1024 * mMaxFileSize)
 				{
-					Result = STATUS_DEVICE_NOT_READY;
+					ntstatus = STATUS_DEVICE_NOT_READY;
 					traceW(L"%llu: When a file size exceeds the maximum size that can be opened.", fileInfo.FileSize);
 					goto exit;
 				}
@@ -97,11 +97,11 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 
 		StatsIncr(_CallOpen);
 
-		IOpenContext* ctx = mCSDevice->open(START_CALLER objKey, fileInfo, CreateOptions, GrantedAccess);
+		CSDeviceContext* ctx = mCSDevice->open(START_CALLER objKey, CreateOptions, GrantedAccess, fileInfo);
 		if (!ctx)
 		{
 			traceW(L"fault: openFile");
-			Result = STATUS_DEVICE_NOT_READY;
+			ntstatus = STATUS_DEVICE_NOT_READY;
 			goto exit;
 		}
 
@@ -118,6 +118,8 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 
 	*FileInfo = fileInfo;
 
+	ntstatus = STATUS_SUCCESS;
+
 exit:
 	if (FileContext)
 	{
@@ -125,9 +127,9 @@ exit:
 	}
 	free(FileContext);
 
-	traceW(L"return %ld", Result);
+	traceW(L"return NTSTATUS=%ld", ntstatus);
 
-	return Result;
+	return ntstatus;
 }
 
 NTSTATUS WinCse::DoClose(PTFS_FILE_CONTEXT* FileContext)
@@ -138,15 +140,18 @@ NTSTATUS WinCse::DoClose(PTFS_FILE_CONTEXT* FileContext)
 	APP_ASSERT(FileContext);
 
 	traceW(L"FileName: \"%s\"", FileContext->FileName);
+	traceW(L"UParam=%p", FileContext->UParam);
 
-	if (FileContext->UParam)
+	CSDeviceContext* ctx = (CSDeviceContext*)FileContext->UParam;
+
+	if (ctx)
 	{
 		APP_ASSERT(wcscmp(FileContext->FileName, L"\\") != 0);
 
 		// クラウド・ストレージに UParam を解放させる
 
 		StatsIncr(_CallClose);
-		mCSDevice->close(START_CALLER (IOpenContext*)FileContext->UParam);
+		mCSDevice->close(START_CALLER ctx);
 	}
 
 	free(FileContext->FileName);

@@ -71,17 +71,25 @@ std::wstring TimePointToLocalTimeStringW(const std::chrono::system_clock::time_p
 // ƒpƒX‚©‚ç FILETIME ‚Ì’l‚ðŽæ“¾
 bool PathToWinFileTimes(const std::wstring& path, FILETIME* pFtCreate, FILETIME* pFtAccess, FILETIME* pFtWrite)
 {
-	HANDLE hFile = ::CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
-		OPEN_EXISTING, 0, NULL);
+	FileHandleRAII hFile = ::CreateFileW
+	(
+		path.c_str(),
+		GENERIC_READ,
+		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+		NULL,
+		OPEN_EXISTING,
+		0,
+		NULL
+	);
 
-	if(hFile == INVALID_HANDLE_VALUE)
+	if(hFile.invalid())
 	{
 		return false;
 	}
 
-	const BOOL ret = ::GetFileTime(hFile, pFtCreate, pFtAccess, pFtWrite);
+	const BOOL ret = ::GetFileTime(hFile.handle(), pFtCreate, pFtAccess, pFtWrite);
 
-	::CloseHandle(hFile);
+	hFile.close();
 
 	return ret;
 }

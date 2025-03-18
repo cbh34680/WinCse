@@ -202,34 +202,46 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
         //
         const int maxObjects = (int)::GetPrivateProfileIntW(iniSection, L"max_objects", 1000, confPath.c_str());
 
-        // VolumeParams の設定
-
-        VolumeParams->CaseSensitiveSearch = 1;
-
-        const UINT32 Timeout = 2000U;
-
-        VolumeParams->FileInfoTimeout = Timeout;
-
-        //VolumeParams->VolumeInfoTimeout = Timeout;
-        VolumeParams->DirInfoTimeout = Timeout;
-        //VolumeParams->SecurityTimeout = Timeout;
-        //VolumeParams->StreamInfoTimeout = Timeout;
-        //VolumeParams->EaTimeout = Timeout;
-
-        //VolumeParams->VolumeInfoTimeoutValid = 1;
-        VolumeParams->DirInfoTimeoutValid = 1;
-        //VolumeParams->SecurityTimeoutValid = 1;
-        //VolumeParams->StreamInfoTimeoutValid = 1;
-        //VolumeParams->EaTimeoutValid = 1;
-
-        // 読み取り専用
-        const bool readonly = ::GetPrivateProfileIntW(iniSection, L"readonly", 0, confPath.c_str()) != 0;
-        if (readonly)
+        if (VolumeParams->ReadOnlyVolume)
         {
-            VolumeParams->ReadOnlyVolume = 1;
-
             mDefaultFileAttributes |= FILE_ATTRIBUTE_READONLY;
-            mReadonlyFilesystem = true;
+        }
+
+        //
+        // 属性参照用ファイル/ディレクトリの準備
+        //
+        mRefFile = ::CreateFileW
+        (
+            confPath.c_str(),
+            GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,		// 共有モード
+            NULL,														// セキュリティ属性
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            NULL														// テンプレートなし
+        );
+
+        if (mRefFile.invalid())
+        {
+            traceW(L"file open error: %s", confPath.c_str());
+            return false;
+        }
+
+        mRefDir = ::CreateFileW
+        (
+            argWorkDir,
+            GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            NULL,
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS,
+            0
+        );
+
+        if (mRefDir.invalid())
+        {
+            traceW(L"file open error: %s", argWorkDir);
+            return false;
         }
 
         //

@@ -8,6 +8,7 @@ class WinCse : public WinCseLib::ICSDriver
 private:
 	WINCSE_DRIVER_STATS* mStats;
 
+	bool mReadonlyVolume = false;
 	WinCseLib::IWorker* mDelayedWorker;
 	WinCseLib::IWorker* mIdleWorker;
 
@@ -24,8 +25,8 @@ private:
 	std::wstring mWorkDir;
 
 	// 属性参照用ファイル・ハンドル
-	HANDLE mFileRefHandle = INVALID_HANDLE_VALUE;
-	HANDLE mDirRefHandle = INVALID_HANDLE_VALUE;
+	WinCseLib::FileHandleRAII mRefFile;
+	WinCseLib::FileHandleRAII mRefDir;
 
 	NTSTATUS FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCTL_FILE_INFO* pFileInfo);
 	NTSTATUS HandleToInfo(CALLER_ARG HANDLE handle, PUINT32 PFileAttributes, PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize);
@@ -45,7 +46,7 @@ private:
 	mResourceRAII;
 
 protected:
-	bool isFileNameIgnored(const wchar_t* FileName);
+	bool isFileNameIgnored(const std::wstring& FileName);
 
 public:
 	WinCse(WINCSE_DRIVER_STATS* argStats, const std::wstring& argTempDir, const std::wstring& argIniSection,
@@ -69,7 +70,10 @@ public:
 
 	VOID DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags) override;
 
-	NTSTATUS DoCreate() override;
+	NTSTATUS DoCreate(const wchar_t* FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
+		UINT32 FileAttributes, PSECURITY_DESCRIPTOR SecurityDescriptor, UINT64 AllocationSize,
+		PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo) override;
+
 	NTSTATUS DoFlush() override;
 
 	NTSTATUS DoGetFileInfo(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO* FileInfo) override;
@@ -77,7 +81,7 @@ public:
 	NTSTATUS DoGetSecurity(PTFS_FILE_CONTEXT* FileContext,
 		PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize) override;
 
-	NTSTATUS DoGetVolumeInfo(PCWSTR Path, FSP_FSCTL_VOLUME_INFO* VolumeInfo) override;
+	void DoGetVolumeInfo(PCWSTR Path, FSP_FSCTL_VOLUME_INFO* VolumeInfo) override;
 	NTSTATUS DoOverwrite() override;
 	NTSTATUS DoRead(PTFS_FILE_CONTEXT* FileContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred) override;
@@ -86,11 +90,20 @@ public:
 		PVOID Buffer, ULONG BufferLength, PULONG PBytesTransferred) override;
 
 	NTSTATUS DoRename() override;
-	NTSTATUS DoSetBasicInfo() override;
-	NTSTATUS DoSetFileSize() override;
+
+	NTSTATUS DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttributes,
+		UINT64 CreationTime, UINT64 LastAccessTime, UINT64 LastWriteTime, UINT64 ChangeTime,
+		FSP_FSCTL_FILE_INFO *FileInfo) override;
+
+	NTSTATUS DoSetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize, BOOLEAN SetAllocationSize,
+		FSP_FSCTL_FILE_INFO *FileInfo) override;
+
 	NTSTATUS DoSetPath() override;
 	NTSTATUS DoSetSecurity() override;
-	NTSTATUS DoWrite() override;
+
+	NTSTATUS DoWrite(PTFS_FILE_CONTEXT* FileContext, PVOID Buffer, UINT64 Offset, ULONG Length,
+		BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
+		PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO *FileInfo) override;
 
 	NTSTATUS DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOOLEAN deleteFile) override;
 };

@@ -335,7 +335,7 @@ bool AwsS3::headObject(CALLER_ARG const ObjectKey& argObjKey, FSP_FSCTL_FILE_INF
 
     UnprotectedShare<Shared> unsafeShare(&gSharedStore, argObjKey.str());   // 名前への参照を登録
     {
-        ProtectedShare<Shared> safeShare(&unsafeShare);                     // 名前のロック
+        const auto safeShare{ unsafeShare.lock() };                         // 名前のロック
 
         bool ret = false;
 
@@ -393,7 +393,7 @@ bool AwsS3::listObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* 
 
     UnprotectedShare<Shared> unsafeShare(&gSharedStore, argObjKey.str());   // 名前への参照を登録
     {
-        ProtectedShare<Shared> safeShare(&unsafeShare);                     // 名前のロック
+        const auto safeShare{ unsafeShare.lock() };                         // 名前のロック
 
         return this->unlockListObjects_Display(CONT_CALLER argObjKey, pDirInfoList);
 
@@ -411,7 +411,7 @@ int AwsS3::deleteCacheByObjKey(CALLER_ARG const ObjectKey& argObjKey)
 
     UnprotectedShare<Shared> unsafeShare(&gSharedStore, argObjKey.str());   // 名前への参照を登録
     {
-        ProtectedShare<Shared> safeShare(&unsafeShare);                     // 名前のロック
+        const auto safeShare{ unsafeShare.lock() };                         // 名前のロック
 
         return this->unlockDeleteCacheByObjKey(CONT_CALLER argObjKey);
 

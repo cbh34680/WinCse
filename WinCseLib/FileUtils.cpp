@@ -12,18 +12,25 @@ bool PathToFileInfo(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo)
 	//FILETIME ftCreate, ftAccess, ftWrite;
 	//LARGE_INTEGER fileSize;
 	BOOL ret = FALSE;
-	HANDLE hFile = INVALID_HANDLE_VALUE;
 	NTSTATUS ntstatus = STATUS_UNSUCCESSFUL;
 
-	hFile = ::CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
-		OPEN_EXISTING, 0, NULL);
+	FileHandleRAII hFile = ::CreateFileW
+	(
+		path.c_str(),
+		GENERIC_READ,
+		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+		NULL,
+		OPEN_EXISTING,
+		0,
+		NULL
+	);
 
-	if(hFile == INVALID_HANDLE_VALUE)
+	if(hFile.invalid())
 	{
 		goto exit;
 	}
 
-	ntstatus = GetFileInfoInternal(hFile, pFileInfo);
+	ntstatus = GetFileInfoInternal(hFile.handle(), pFileInfo);
 	if (!NT_SUCCESS(ntstatus))
 	{
 		goto exit;
@@ -32,10 +39,7 @@ bool PathToFileInfo(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo)
 	ret = true;
 
 exit:
-	if (hFile != INVALID_HANDLE_VALUE)
-	{
-		::CloseHandle(hFile);
-	}
+	hFile.close();
 
 	return ret;
 }
@@ -90,6 +94,7 @@ bool MkdirIfNotExists(const std::wstring& arg)
 	}
 
 	// èëÇ´çûÇ›ÉeÉXÉg
+#if 0
 	const auto tmpfile{ _wtempnam(arg.c_str(), L"wtest") };
 	APP_ASSERT(tmpfile);
 
@@ -98,12 +103,29 @@ bool MkdirIfNotExists(const std::wstring& arg)
 	{
 		return false;
 	}
-
 	ofs.close();
 
 	std::error_code ec;
 	std::filesystem::remove(tmpfile, ec);
 	free(tmpfile);
+
+#else
+	WCHAR tmpfile[MAX_PATH];
+	if (!::GetTempFileName(arg.c_str(), L"tst", 0, tmpfile))
+	{
+		return false;
+	}
+
+	std::ofstream ofs(tmpfile);
+	if (!ofs)
+	{
+		return false;
+	}
+	ofs.close();
+
+	std::error_code ec;
+	std::filesystem::remove(tmpfile, ec);
+#endif
 
 	return true;
 }
@@ -220,16 +242,22 @@ static LPWSTR PathToSDStr_(LPCWSTR Path)
 
 	LPWSTR pStringSD = nullptr;
 
-	HANDLE Handle = ::CreateFileW(Path,
-		FILE_READ_ATTRIBUTES | READ_CONTROL, 0, 0,
-		OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+	FileHandleRAII hFile = ::CreateFileW
+	(
+		Path,
+		FILE_READ_ATTRIBUTES | READ_CONTROL,
+		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+		NULL,
+		OPEN_EXISTING,
+		FILE_FLAG_BACKUP_SEMANTICS,
+		NULL
+	);
 
-	if (INVALID_HANDLE_VALUE != Handle)
+	if (hFile.valid())
 	{
-		pStringSD = HandleToSDStr_(Handle);
+		pStringSD = HandleToSDStr_(hFile.handle());
 
-		::CloseHandle(Handle);
-		Handle = INVALID_HANDLE_VALUE;
+		hFile.close();
 	}
 
 	return pStringSD;

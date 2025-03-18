@@ -25,8 +25,8 @@ DelayedWorker::DelayedWorker(const std::wstring& tmpdir, const std::wstring& ini
 	// OnSvcStart の呼び出し順によるイベントオブジェクト未生成を
 	// 回避するため、コンストラクタで生成して OnSvcStart で null チェックする
 
-	mEvent = ::CreateEvent(NULL, FALSE, FALSE, NULL);
-	APP_ASSERT(mEvent);
+	mEvent = ::CreateEventW(NULL, FALSE, FALSE, NULL);
+	APP_ASSERT(mEvent.valid());
 }
 
 DelayedWorker::~DelayedWorker()
@@ -36,7 +36,7 @@ DelayedWorker::~DelayedWorker()
 	this->OnSvcStop();
 
 	traceW(L"close event");
-	::CloseHandle(mEvent);
+	mEvent.close();
 	traceW(L"close event done");
 }
 
@@ -45,7 +45,7 @@ bool DelayedWorker::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileS
 	NEW_LOG_BLOCK();
 	APP_ASSERT(argWorkDir);
 
-	if (!mEvent)
+	if (mEvent.invalid())
 	{
 		traceW(L"mEvent is null");
 		return false;
@@ -81,7 +81,7 @@ void DelayedWorker::OnSvcStop()
 
 		for (int i=0; i<mThreads.size(); i++)
 		{
-			const auto b = ::SetEvent(mEvent);
+			const auto b = ::SetEvent(mEvent.handle());
 			APP_ASSERT(b);
 		}
 
@@ -107,7 +107,7 @@ void DelayedWorker::listenEvent(const int i)
 		try
 		{
 			traceW(L"(%d): wait for signal ...", i);
-			const auto reason = ::WaitForSingleObject(mEvent, INFINITE);
+			const auto reason = ::WaitForSingleObject(mEvent.handle(), INFINITE);
 
 			if (mEndWorkerFlag)
 			{
@@ -278,7 +278,7 @@ bool DelayedWorker::addTask(CALLER_ARG WinCseLib::ITask* argTask, WinCseLib::Pri
 #endif
 
 		// WaitForSingleObject() に通知
-		const auto b = ::SetEvent(mEvent);
+		const auto b = ::SetEvent(mEvent.handle());
 		APP_ASSERT(b);
 	}
 	else

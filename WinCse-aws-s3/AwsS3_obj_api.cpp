@@ -77,7 +77,7 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
             // ディレクトリの存在確認の為にだけ呼ばれるはず
 
             APP_ASSERT(argObjKey.hasKey());
-            APP_ASSERT(argObjKey.key().back() == L'/');
+            APP_ASSERT(argObjKey.meansDir());
 
             limit = 1;
 
@@ -87,10 +87,7 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
         {
             // DoReadDirectory() からのみ呼び出されるはず
 
-            if (argObjKey.hasKey())
-            {
-                APP_ASSERT(argObjKey.key().back() == L'/');
-            }
+            APP_ASSERT(argObjKey.meansDir());
 
             delimiter = true;
 
@@ -103,7 +100,7 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
     }
 
     traceW(L"purpose=%s, argObjKey=%s, delimiter=%s, limit=%d",
-        PurposeString(argPurpose), argObjKey.c_str(), delimiter ? L"true" : L"false", limit);
+        PurposeString(argPurpose), argObjKey.c_str(), BOOL_CSTRW(delimiter), limit);
 
     DirInfoListType dirInfoList;
 
@@ -152,9 +149,9 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
         // ディレクトリ・エントリのため最初に一番古いタイムスタンプを収集
         // * CommonPrefix にはタイムスタンプがないため
         //
-        for (const auto& obj : result.GetContents())
+        for (const auto& it : result.GetContents())
         {
-            const auto lastModified = UtcMillisToWinFileTime100ns(obj.GetLastModified().Millis());
+            const auto lastModified = UtcMillisToWinFileTime100ns(it.GetLastModified().Millis());
 
             if (lastModified < commonPrefixTime)
             {
@@ -170,13 +167,17 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
         }
 
         // ディレクトリの収集
-        for (const auto& obj : result.GetCommonPrefixes())
+        for (const auto& it : result.GetCommonPrefixes())
         {
-            const std::string fullPath{ obj.GetPrefix().c_str() };      // Aws::String -> std::string
+            const auto fullPath{ MB2WC(it.GetPrefix()) };
+            traceW(L"GetCommonPrefixes: %s", fullPath.c_str());
 
-            traceA("GetCommonPrefixes: %s", fullPath.c_str());
+            // Prefix 部分を取り除く
+            // 
+            // "dir/"           --> ""
+            // "dir/file1.txt"  --> "file1.txt"
 
-            std::wstring key{ MB2WC(fullPath.substr(argKeyLen)) };
+            auto key{ fullPath.substr(argKeyLen) };
             if (!key.empty())
             {
                 if (key.back() == L'/')
@@ -187,6 +188,8 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
 
             if (key.empty())
             {
+                // ファイル名が空("") のものはディレクトリ・オブジェクトとして扱う
+
                 key = L".";
             }
 
@@ -194,7 +197,10 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
 
             {
                 // 大文字小文字を同一視した上で、同じ名前があったら無視する
-                std::wstring keyUpper{ ToUpper(key) };
+                // 
+                // --> Windows では同じディレクトリとして扱われるため
+
+                auto keyUpper{ ToUpper(key) };
 
                 if (std::find(already.begin(), already.end(), keyUpper) != already.end())
                 {
@@ -227,26 +233,32 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
         }
 
         // ファイルの収集
-        for (const auto& obj : result.GetContents())
+        for (const auto& it : result.GetContents())
         {
-            const std::string fullPath{ obj.GetKey().c_str() };     // Aws::String -> std::string
-
-            traceA("GetContents: %s", fullPath.c_str());
-
             bool isDir = false;
 
-            std::wstring key{ MB2WC(fullPath.substr(argKeyLen)) };
+            const auto fullPath{ MB2WC(it.GetKey()) };
+            traceW(L"GetContents: %s", fullPath.c_str());
+
+            // Prefix 部分を取り除く
+            // 
+            // "dir/"           --> ""
+            // "dir/file1.txt"  --> "file1.txt"
+
+            auto key{ fullPath.substr(argKeyLen) };
             if (!key.empty())
             {
                 if (key.back() == L'/')
                 {
-                    isDir = true;
                     key.pop_back();
+                    isDir = true;
                 }
             }
 
             if (key.empty())
             {
+                // ファイル名が空("") のものはディレクトリ・オブジェクトとして扱う
+
                 isDir = true;
                 key = L".";
             }
@@ -284,13 +296,13 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
             }
             else
             {
-                dirInfo->FileInfo.FileSize = obj.GetSize();
+                dirInfo->FileInfo.FileSize = it.GetSize();
                 dirInfo->FileInfo.AllocationSize = (dirInfo->FileInfo.FileSize + ALLOCATION_UNIT - 1) / ALLOCATION_UNIT * ALLOCATION_UNIT;
             }
 
             dirInfo->FileInfo.FileAttributes |= FileAttributes;
 
-            const auto lastModified = UtcMillisToWinFileTime100ns(obj.GetLastModified().Millis());
+            const auto lastModified = UtcMillisToWinFileTime100ns(it.GetLastModified().Millis());
 
             dirInfo->FileInfo.CreationTime = lastModified;
             dirInfo->FileInfo.LastAccessTime = lastModified;

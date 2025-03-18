@@ -56,26 +56,27 @@ typedef struct
 } PTFS_FILE_CONTEXT;
 */
 
-#if WINFSP_PASSTHROUGH
-#define StatsIncr(fname)
-
-#else
 WINFSP_IF* gWinFspIf;
+#define StatsIncr(fname)    if (gWinFspIf) InterlockedIncrement(& (gWinFspIf->stats.fname))
 
+#if !WINFSP_PASSTHROUGH
 WinCseLib::ICSDriver* CSDriver()
 {
     return gWinFspIf->pDriver;
 }
-
-#define StatsIncr(fname)    if (gWinFspIf) InterlockedIncrement(& (gWinFspIf->stats.fname))
-
 #endif
 
 static const FSP_FILE_SYSTEM_INTERFACE* getPtfsInterface();
 
+
 /*static*/ NTSTATUS GetFileInfoInternal(HANDLE Handle, FSP_FSCTL_FILE_INFO *FileInfo)
 {
     StatsIncr(GetFileInfoInternal);
+
+#if !WINFSP_PASSTHROUGH
+    APP_ASSERT(Handle);
+    APP_ASSERT(Handle != INVALID_HANDLE_VALUE);
+#endif
 
     BY_HANDLE_FILE_INFORMATION ByHandleFileInfo = { 0 };
 
@@ -207,7 +208,7 @@ static NTSTATUS Create(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(Create);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoCreate();
+    return CSDriver()->DoCreate(FileName, CreateOptions, GrantedAccess, FileAttributes, SecurityDescriptor, AllocationSize, PFileContext, FileInfo);
 
 #else
     PTFS* Ptfs = (PTFS*)FileSystem->UserContext;
@@ -430,7 +431,7 @@ static NTSTATUS Write(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(Write);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoWrite();
+    return CSDriver()->DoWrite((PTFS_FILE_CONTEXT*)FileContext, Buffer, Offset, Length, WriteToEndOfFile, ConstrainedIo, PBytesTransferred, FileInfo);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -505,7 +506,8 @@ static NTSTATUS SetBasicInfo(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(SetBasicInfo);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoSetBasicInfo();
+    return CSDriver()->DoSetBasicInfo((PTFS_FILE_CONTEXT*)FileContext, FileAttributes,
+        CreationTime, LastAccessTime, LastWriteTime, ChangeTime, FileInfo);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -538,7 +540,7 @@ static NTSTATUS SetFileSize(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(SetFileSize);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoSetFileSize();
+    return CSDriver()->DoSetFileSize((PTFS_FILE_CONTEXT*)FileContext, NewSize, SetAllocationSize, FileInfo);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -1242,10 +1244,7 @@ static const FSP_FILE_SYSTEM_INTERFACE* getPtfsInterface()
 //int wmain(int argc, wchar_t **argv)
 int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINFSP_IF* argWinFspIf)
 {
-#if !WINFSP_PASSTHROUGH
     gWinFspIf = argWinFspIf;
-#endif
-
     PROGNAME = progname;
 
     if (!NT_SUCCESS(FspLoad(0)))

@@ -14,7 +14,7 @@ private:
 	std::deque<std::unique_ptr<WinCseLib::ITask>> mTaskQueue;
 	std::atomic<bool> mEndWorkerFlag = false;
 
-	HANDLE mEvent = NULL;
+	WinCseLib::EventHandleRAII mEvent;
 
 protected:
 	void listenEvent(const int i);

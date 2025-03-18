@@ -20,7 +20,7 @@ extern "C"
         IWorker* argDelayedWorker, IWorker* argIdleWorker);
 }
 
-int app_main(int argc, wchar_t** argv)
+static int app_main(int argc, wchar_t** argv)
 {
     std::wstring tmpDir;
     app_tempdir(&tmpDir);
@@ -75,7 +75,7 @@ int app_main(int argc, wchar_t** argv)
 
                     ObjectKey objKey{ bucketName, obj->FileNameBuf };
 
-                    IOpenContext* ctx = cs->open(START_CALLER objKey, fileInfo, CreateOptions, GrantedAccess);
+                    CSDeviceContext* ctx = cs->open(START_CALLER objKey, CreateOptions, GrantedAccess, fileInfo);
                     if (!ctx)
                     {
                         continue;

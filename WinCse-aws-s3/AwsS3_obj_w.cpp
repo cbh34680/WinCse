@@ -1,13 +1,34 @@
 #include "AwsS3.hpp"
 
+
 using namespace WinCseLib;
 
-void AwsS3::cleanup(CALLER_ARG WinCseLib::IOpenContext* argOpenContext, ULONG argFlags)
+
+//
+// WinFsp の Read() により呼び出され、Offset から Lengh のファイル・データを返却する
+// ここでは最初に呼び出されたときに s3 からファイルをダウンロードしてキャッシュとした上で
+// そのファイルをオープンし、その後は HANDLE を使いまわす
+//
+bool AwsS3::readObject(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
+    PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred)
+{
+    StatsIncr(readObject);
+    NEW_LOG_BLOCK();
+
+    CSDeviceContext* ctx = dynamic_cast<CSDeviceContext*>(argCSDeviceContext);
+    APP_ASSERT(ctx);
+    APP_ASSERT(ctx->isFile());
+
+    //return readObject_Simple(CONT_CALLER ctx, Buffer, Offset, Length, PBytesTransferred);
+    return readObject_Multipart(CONT_CALLER ctx, Buffer, Offset, Length, PBytesTransferred);
+}
+
+void AwsS3::cleanup(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext, ULONG argFlags)
 {
     StatsIncr(cleanup);
     NEW_LOG_BLOCK();
 
-    OpenContext* ctx = dynamic_cast<OpenContext*>(argOpenContext);
+    CSDeviceContext* ctx = dynamic_cast<CSDeviceContext*>(argCSDeviceContext);
     APP_ASSERT(ctx);
 
     if (argFlags & FspCleanupDelete)
@@ -18,26 +39,17 @@ void AwsS3::cleanup(CALLER_ARG WinCseLib::IOpenContext* argOpenContext, ULONG ar
     }
 }
 
-NTSTATUS AwsS3::remove(CALLER_ARG WinCseLib::IOpenContext* argOpenContext, BOOLEAN argDeleteFile)
+bool AwsS3::remove(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext, BOOLEAN argDeleteFile)
 {
     StatsIncr(remove);
     NEW_LOG_BLOCK();
 
-    OpenContext* ctx = dynamic_cast<OpenContext*>(argOpenContext);
+    OpenContext* ctx = dynamic_cast<OpenContext*>(argCSDeviceContext);
     APP_ASSERT(ctx);
-
-    NTSTATUS ntstatus = STATUS_IO_DEVICE_ERROR;
 
     traceW(L"mObjKey=%s", ctx->mObjKey.c_str());
 
-    if (mReadonlyFilesystem)
-    {
-        // ここは通過しない
-        // おそらくシェルで削除操作が止められている
-
-        traceW(L"readonly filesystem");
-        goto exit;
-    }
+    bool ret = false;
 
     if (!ctx->mObjKey.hasKey())
     {
@@ -64,8 +76,6 @@ NTSTATUS AwsS3::remove(CALLER_ARG WinCseLib::IOpenContext* argOpenContext, BOOLE
         {
             // 空でないディレクトリは削除不可
             // --> ".", ".." 以外のファイル/ディレクトリが存在する
-
-            ntstatus = STATUS_CANNOT_DELETE;
 
             traceW(L"dir not empty");
             goto exit;
@@ -96,6 +106,8 @@ NTSTATUS AwsS3::remove(CALLER_ARG WinCseLib::IOpenContext* argOpenContext, BOOLE
     {
         // キャッシュ・ファイルを削除
 
+        APP_ASSERT(ctx->mGrantedAccess & DELETE);
+
         if (!ctx->openLocalFile(0, OPEN_ALWAYS))
         {
             traceW(L"fault: openLocalFile");
@@ -106,23 +118,86 @@ NTSTATUS AwsS3::remove(CALLER_ARG WinCseLib::IOpenContext* argOpenContext, BOOLE
 
         DispositionInfo.DeleteFile = argDeleteFile;
 
-        if (!::SetFileInformationByHandle(ctx->mLocalFile,
+        if (!::SetFileInformationByHandle(ctx->mLocalFile.handle(),
             FileDispositionInfo, &DispositionInfo, sizeof DispositionInfo))
         {
             traceW(L"fault: SetFileInformationByHandle");
             goto exit;
         }
 
-        traceW(L"success: SetFileInformationByHandle(DeleteFile=%s)", argDeleteFile ? L"true" : L"false");
+        traceW(L"success: SetFileInformationByHandle(DeleteFile=%s)", BOOL_CSTRW(argDeleteFile));
     }
 
-    ntstatus = STATUS_SUCCESS;
+    ret = true;
 
 exit:
-    traceW(L"ntstatus=%ld", ntstatus);
+    traceW(L"ret = %s", BOOL_CSTRW(ret));
 
-	return ntstatus;
+	return ret;
 }
 
+bool AwsS3::writeObject(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
+    PVOID Buffer, UINT64 Offset, ULONG Length,
+    BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
+    PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO *FileInfo)
+{
+    StatsIncr(writeObject);
+    NEW_LOG_BLOCK();
+
+    CSDeviceContext* ctx = dynamic_cast<CSDeviceContext*>(argCSDeviceContext);
+    APP_ASSERT(ctx);
+    APP_ASSERT(ctx->isFile());
+
+    traceW(L"mObjKey=%s", ctx->mObjKey.c_str());
+
+    bool ret = false;
+    auto Handle = ctx->mLocalFile.handle();
+    NTSTATUS ntstatus = STATUS_UNSUCCESSFUL;
+
+    LARGE_INTEGER FileSize{};
+    OVERLAPPED Overlapped{};
+
+    if (ConstrainedIo)
+    {
+        if (!::GetFileSizeEx(Handle, &FileSize))
+        {
+            ntstatus = FspNtStatusFromWin32(GetLastError());
+            goto exit;
+        }
+
+        if (Offset >= (UINT64)FileSize.QuadPart)
+        {
+            ret = true;
+            goto exit;
+        }
+
+        if (Offset + Length > (UINT64)FileSize.QuadPart)
+        {
+            Length = (ULONG)((UINT64)FileSize.QuadPart - Offset);
+        }
+    }
+
+    Overlapped.Offset = (DWORD)Offset;
+    Overlapped.OffsetHigh = (DWORD)(Offset >> 32);
+
+    if (!::WriteFile(Handle, Buffer, Length, PBytesTransferred, &Overlapped))
+    {
+        ntstatus = FspNtStatusFromWin32(GetLastError());
+        goto exit;
+    }
+
+    ntstatus = GetFileInfoInternal(Handle, FileInfo);
+    if (!NT_SUCCESS(ntstatus))
+    {
+        goto exit;
+    }
+
+    ret = true;
+
+exit:
+    traceW(L"ret = %s", BOOL_CSTRW(ret));
+
+    return ret;
+}
 
 // EOF

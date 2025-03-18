@@ -42,9 +42,6 @@
     <ClCompile Include="AwsS3_obj_api.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="AwsS3_obj_read.cpp">
-      <Filter>ソース ファイル</Filter>
-    </ClCompile>
     <ClCompile Include="AwsS3_svc_init.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>

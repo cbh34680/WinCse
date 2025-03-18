@@ -12,3 +12,14 @@ echo on
 pushd %~dp0..
 
 if exist Y:\ net use Y: /delete
+
+for /f "tokens=2 delims=," %%A in ('tasklist /fi "imagename eq WinCse.exe" /fo csv /nh') do (
+  set "pid=%%A"
+)
+
+if not defined pid (
+  exit
+)
+
+call taskkill /IM WinCse.exe /F
+

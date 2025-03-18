@@ -199,51 +199,75 @@ int ObjectCache::deleteByObjKey(CALLER_ARG const ObjectKey& argObjKey)
 
     traceW(L"delete records: Positive=%d Negative=%d", delPositive, delNegative);
 
-    // 表示用キャッシュから親ディレクトリを探す
+#if 0
+    int delDisplay = 0;
+#else
+    int delPositiveP = 0;
+    int delNegativeP = 0;
+#endif
 
-    const auto parentDir{ argObjKey.toParentDir() };
-    if (!parentDir)
+    const auto parentDirPtr{ argObjKey.toParentDir() };
+    if (parentDirPtr)
     {
-        traceW(L"fault: toParentDir");
-        return -1;
-    }
+#if 0
+        // 表示用キャッシュから親ディレクトリを探す
 
-    const auto& itParentDir{ mPositive.find(ObjectCacheKey{ *parentDir, Purpose::Display }) };
-    if (itParentDir == mPositive.end())
-    {
-        traceW(L"%s: no parent dir", parentDir->c_str());
-        return -1;
-    }
-
-    // 親ディレクトリのキャッシュからファイル名が一致するものを削除
-
-    const auto searchName{ argObjKey.key().substr(itParentDir->first.mObjKey.key().length()) };
-
-    const auto EqualFileName = [&searchName](const auto& it)
-    {
-        if (wcscmp((*it)->FileNameBuf, L".") == 0 || wcscmp((*it)->FileNameBuf, L"..") == 0)
+        const auto& itParentDir{ mPositive.find(ObjectCacheKey{ *parentDirPtr, Purpose::Display }) };
+        if (itParentDir != mPositive.end())
         {
-            return false;
+            // 親ディレクトリのキャッシュからファイル名が一致するものを削除
+
+            const auto searchName{ argObjKey.key().substr(itParentDir->first.mObjKey.key().length()) };
+
+            const auto EqualFileName = [&searchName](const auto& it)
+            {
+                if (wcscmp((*it)->FileNameBuf, L".") == 0 || wcscmp((*it)->FileNameBuf, L"..") == 0)
+                {
+                    return false;
+                }
+
+                std::wstring fn{ (*it)->FileNameBuf };
+
+                if (FA_IS_DIR((*it)->FileInfo.FileAttributes))
+                {
+                    // FSP_FSCTL_DIR_INFO.FileNameBuf にはディレクトリの場合でも
+                    // "/" で終端されていないので、比較名に "/" を付与する
+
+                    fn += L'/';
+                }
+
+                return searchName == fn;
+            };
+
+            delDisplay = eraseCacheBy(EqualFileName, itParentDir->second.mDirInfoList);
+            traceW(L"delete records: Display=%d", delDisplay);
         }
 
-        std::wstring fn{ (*it)->FileNameBuf };
+#else
+        const auto& parentDir{ *parentDirPtr };
 
-        if (FA_IS_DIR((*it)->FileInfo.FileAttributes))
+        const auto EqualParentDir = [&parentDir](const auto& it)
         {
-            // FSP_FSCTL_DIR_INFO.FileNameBuf にはディレクトリの場合でも
-            // "/" で終端されていないので、比較名に "/" を付与する
+            return it->first.mObjKey == parentDir;
+        };
 
-            fn += L'/';
-        }
+        delPositiveP = eraseCacheBy(EqualParentDir, mPositive);
+        delNegativeP = eraseCacheBy(EqualParentDir, mNegative);
 
-        return searchName == fn;
-    };
+        traceW(L"delete records: PositiveP=%d NegativeP=%d", delPositiveP, delNegativeP);
+#endif
+    }
+    else
+    {
+        // 引数が "\bucket" の場合はこちらを通過するが
+        // 親ディレクトリは存在しないので問題なし
+    }
 
-    const int delDisplay = eraseCacheBy(EqualFileName, itParentDir->second.mDirInfoList);
-
-    traceW(L"delete records: Display=%d", delDisplay);
-
+#if 0
     return delPositive + delNegative + delDisplay;
+#else
+    return delPositive + delNegative + delPositiveP + delNegativeP;
+#endif
 }
 
 // ----------------------- Positive

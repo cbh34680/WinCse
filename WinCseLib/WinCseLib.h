@@ -33,6 +33,151 @@ typedef std::list<DirInfoType> DirInfoListType;
 #define CALLER_ARG0			const std::wstring& caller_
 #define CALLER_ARG			CALLER_ARG0,
 
+namespace WinCseLib {
+
+#if 0
+class FileHandleRAII
+{
+	HANDLE mHandle;
+
+public:
+	HANDLE handle() const { return mHandle; }
+
+	bool invalid() const { return mHandle == INVALID_HANDLE_VALUE; }
+	bool valid() const { return !invalid(); }
+
+	FileHandleRAII() : mHandle(INVALID_HANDLE_VALUE) { }
+	FileHandleRAII(HANDLE argHandle) : mHandle(argHandle) { }
+
+	FileHandleRAII& operator=(HANDLE argHandle)
+	{
+		close();
+		mHandle = argHandle;
+
+		return *this;
+	}
+
+	void close()
+	{
+		if (mHandle != INVALID_HANDLE_VALUE)
+		{
+			::CloseHandle(mHandle);
+			mHandle = INVALID_HANDLE_VALUE;
+		}
+	}
+
+	~FileHandleRAII() { close(); }
+};
+
+class EventHandleRAII
+{
+	HANDLE mHandle;
+
+public:
+	HANDLE handle() const { return mHandle; }
+
+	bool invalid() const { return !mHandle; }
+	bool valid() const { return mHandle; }
+
+	EventHandleRAII() : mHandle(NULL) { }
+	EventHandleRAII(HANDLE argHandle) : mHandle(argHandle) { }
+
+	EventHandleRAII& operator=(HANDLE argHandle)
+	{
+		close();
+		mHandle = argHandle;
+
+		return *this;
+	}
+
+	void close()
+	{
+		if (mHandle)
+		{
+			::CloseHandle(mHandle);
+			mHandle = NULL;
+		}
+	}
+
+	~EventHandleRAII() { close(); }
+};
+
+#else
+template<HANDLE InvalidHandleValue>
+class HandleRAII
+{
+	HANDLE mHandle;
+
+protected:
+	HandleRAII() : mHandle(InvalidHandleValue) { }
+	HandleRAII(HANDLE argHandle) : mHandle(argHandle) { }
+
+	void assign(HANDLE argHandle)
+	{
+		close();
+		mHandle = argHandle;
+	}
+
+public:
+	HANDLE handle() const { return mHandle; }
+	bool invalid() const { return mHandle == InvalidHandleValue; }
+	bool valid() const { return !invalid(); }
+
+	void close()
+	{
+		if (mHandle != InvalidHandleValue)
+		{
+			::CloseHandle(mHandle);
+			mHandle = InvalidHandleValue;
+		}
+	}
+
+	virtual ~HandleRAII() { close(); }
+};
+
+//
+// コンストラクタやデストラクタ内で仮想関数を呼び出すと、仮想関数は派生クラスではなく
+// 基底クラスのバージョンで解決されてしまうので、初期値をコンストラクタで渡す
+// 
+// --> 値によるテンプレートに変更
+//
+
+//
+// 基底クラス (HandleRAII) に operator=() を準備しても、派生クラス (FileHandleRAII) に
+// コピーコンストラクタがあると、一時オブジェクトの生成とコピーコンストラクタの呼び出しが行われる
+// このため、派生クラスに operator=() を用意した
+//
+
+class FileHandleRAII : public HandleRAII<INVALID_HANDLE_VALUE>
+{
+public:
+	FileHandleRAII() {}
+	FileHandleRAII(HANDLE argHandle) : HandleRAII(argHandle) { }
+
+	FileHandleRAII& operator=(HANDLE argHandle)
+	{
+		assign(argHandle);
+		return *this;
+	}
+};
+
+class EventHandleRAII : public HandleRAII<(HANDLE)NULL>
+{
+public:
+	EventHandleRAII() {}
+	EventHandleRAII(HANDLE argHandle) : HandleRAII(argHandle) { }
+
+	EventHandleRAII& operator=(HANDLE argHandle)
+	{
+		assign(argHandle);
+		return *this;
+	}
+};
+
+#endif
+
+}
+
 // インターフェース定義
 #include "ICSService.hpp"
 #include "ICSDriver.hpp"
@@ -115,7 +260,7 @@ WINCSELIB_API ILogger* GetLogger();
 WINCSELIB_API void DeleteLogger();
 
 // ファイル名から FSP_FSCTL_DIR_INFO のヒープ領域を生成し、いくつかのメンバを設定して返却
-WINCSELIB_API DirInfoType makeDirInfo(const WinCseLib::ObjectKey& argObjKey);
+WINCSELIB_API DirInfoType makeDirInfo(const ObjectKey& argObjKey);
 
 WINCSELIB_API bool SplitPath(const std::wstring& argKey,
     std::wstring* pParentDir /* nullable */, std::wstring* pFilename /* nullable */);
@@ -143,26 +288,11 @@ template<typename T> class ProtectedShare;
 
 class SharedBase
 {
-	//HANDLE mMutexHandle;
 	std::mutex mMutex;
 	int mRefCount = 0;
 
 	template<typename T> friend class UnprotectedShare;
 	template<typename T> friend class ProtectedShare;
-
-public:
-	/*
-	SharedBase()
-	{
-	mMutexHandle = ::CreateMutexW(NULL, FALSE, NULL);
-	APP_ASSERT(mMutexHandle);
-	}
-
-	virtual ~SharedBase()
-	{
-	::CloseHandle(mMutexHandle);
-	}
-	*/
 };
 
 template<typename T>
@@ -173,20 +303,55 @@ struct ShareStore
 };
 
 template<typename T>
+class ProtectedShare
+{
+	T* mV;
+
+	template<typename T> friend class UnprotectedShare;
+
+	ProtectedShare(T* argV) : mV(argV)
+	{
+		mV->mMutex.lock();
+	}
+
+public:
+	~ProtectedShare()
+	{
+		unlock();
+	}
+
+	void unlock()
+	{
+		if (mV)
+		{
+#pragma warning(suppress: 26110)
+			mV->mMutex.unlock();
+			mV = nullptr;
+		}
+	}
+
+	T* operator->() {
+		return mV;
+	}
+
+	const T* operator->() const {
+		return mV;
+	}
+};
+
+template<typename T>
 class UnprotectedShare
 {
 	ShareStore<T>* mStore;
 	const std::wstring mName;
 	T* mV = nullptr;
 
-	template<typename T> friend class ProtectedShare;
-
 public:
 	template<typename... Args>
 	UnprotectedShare(ShareStore<T>* argStore, const std::wstring& argName, Args... args)
 		: mStore(argStore), mName(argName)
 	{
-		std::lock_guard<std::mutex> lock_(mStore->mMapGuard);
+		std::lock_guard<std::mutex> _(mStore->mMapGuard);
 
 		auto it{ mStore->mMap.find(mName) };
 		if (it == mStore->mMap.end())
@@ -204,7 +369,7 @@ public:
 
 	~UnprotectedShare()
 	{
-		std::lock_guard<std::mutex> lock_(mStore->mMapGuard);
+		std::lock_guard<std::mutex> _(mStore->mMapGuard);
 
 		auto it{ mStore->mMap.find(mName) };
 
@@ -215,34 +380,10 @@ public:
 			mStore->mMap.erase(it);
 		}
 	}
-};
 
-template<typename T>
-class ProtectedShare
-{
-	UnprotectedShare<T>* mUnprotectedShare;
-
-public:
-	ProtectedShare(UnprotectedShare<T>* argUnprotectedShare)
-		: mUnprotectedShare(argUnprotectedShare)
+	ProtectedShare<T> lock()
 	{
-		//const auto reason = ::WaitForSingleObject(mUnprotectedShare->mV->mMutexHandle, INFINITE);
-		//APP_ASSERT(reason == WAIT_OBJECT_0);
-		mUnprotectedShare->mV->mMutex.lock();
-	}
-
-	~ProtectedShare()
-	{
-		//::ReleaseMutex(mUnprotectedShare->mV->mMutexHandle);
-		mUnprotectedShare->mV->mMutex.unlock();
-	}
-
-	T* operator->() {
-		return mUnprotectedShare->mV;
-	}
-
-	const T* operator->() const {
-		return mUnprotectedShare->mV;
+		return ProtectedShare<T>(this->mV);
 	}
 };
 
@@ -307,11 +448,13 @@ WINCSELIB_API int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINFSP_I
 #define traceW(format, ...) \
 	WinCseLib::GetLogger()->traceW_impl(LOG_DEPTH(), __FILEW__, __LINE__, __FUNCTIONW__, format, __VA_ARGS__)
 
-#define FA_IS_DIR(fa)   ((fa) & FILE_ATTRIBUTE_DIRECTORY)
-
 #define APP_ASSERT(expr) \
     if (!(expr)) { \
         WinCseLib::AbnormalEnd(__FILE__, __LINE__, __FUNCTION__, -1); \
     }
+
+#define FA_IS_DIR(fa)		((fa) & FILE_ATTRIBUTE_DIRECTORY)
+
+#define BOOL_CSTRW(b)	((b) ? L"true" : L"false")
 
 // EOF

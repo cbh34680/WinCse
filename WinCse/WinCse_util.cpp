@@ -6,7 +6,7 @@
 using namespace WinCseLib;
 
 
-bool WinCse::isFileNameIgnored(const wchar_t* arg)
+bool WinCse::isFileNameIgnored(const std::wstring& arg)
 {
 	// desktop.ini などリクエストが増え過ぎるものは無視する
 
@@ -16,8 +16,7 @@ bool WinCse::isFileNameIgnored(const wchar_t* arg)
 		return false;
 	}
 
-	return std::regex_search(std::wstring(arg), mIgnoredFileNamePatterns);
-	//return std::regex_match(std::wstring(arg), mIgnoredFileNamePatterns);
+	return std::regex_search(arg, mIgnoredFileNamePatterns);
 }
 
 //
@@ -80,7 +79,7 @@ NTSTATUS WinCse::FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCT
 		isDir = true;
 		traceW(L"detect directory(1)");
 
-		GetFileInfoInternal(this->mDirRefHandle, &fileInfo);
+		GetFileInfoInternal(this->mRefDir.handle(), &fileInfo);
 	}
 	else
 	{
@@ -90,18 +89,17 @@ NTSTATUS WinCse::FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCT
 		// と FileInfo に反映させる
 
 		const ObjectKey objKey{ ObjectKey::fromWinPath(FileName) };
-		if (!objKey.valid())
+		if (objKey.invalid())
 		{
 			traceW(L"illegal FileName: %s", FileName);
 
-			return STATUS_INVALID_PARAMETER;
+			return STATUS_OBJECT_NAME_INVALID;
 		}
 
 		if (objKey.hasKey())
 		{
 			// "\bucket\dir" のパターン
 
-			//if (mCSDevice->headObject(CONT_CALLER ObjectKey{ objKey.bucket(), objKey.key() + L'/' }, &fileInfo))
 			if (mCSDevice->headObject(CONT_CALLER objKey.toDir(), &fileInfo))
 			{
 				// ディレクトリを採用

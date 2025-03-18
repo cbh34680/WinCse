@@ -162,7 +162,7 @@ bool AwsS3::headBucket(CALLER_ARG const std::wstring& bucketName)
 
     traceW(L"bucket: %s", bucketName.c_str());
 
-    if (!isInBucketFiltersW(bucketName))
+    if (!isInBucketFilters(bucketName))
     {
         // バケットフィルタに合致しない
         traceW(L"%s: is not in filters, skip", bucketName.c_str());
@@ -238,9 +238,9 @@ bool AwsS3::listBuckets(CALLER_ARG DirInfoListType* pDirInfoList /* nullable */,
 
         for (const auto& bucket : result.GetBuckets())
         {
-            const std::wstring bucketName{ MB2WC(bucket.GetName()) };
+            const auto bucketName{ MB2WC(bucket.GetName()) };
 
-            if (!isInBucketFiltersW(bucketName))
+            if (!isInBucketFilters(bucketName))
             {
                 // バケット名によるフィルタリング
 

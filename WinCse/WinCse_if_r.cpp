@@ -50,16 +50,6 @@ NTSTATUS WinCse::DoGetSecurityByName(
 
 	traceW(L"FileName: \"%s\"", FileName);
 
-	/*
-	{
-		std::wstring s{ FileName };
-		if (s.find(L"desktop") != std::wstring::npos)
-		{
-			int iii = 0;
-		}
-	}
-	*/
-
 	if (isFileNameIgnored(FileName))
 	{
 		// "desktop.ini" などは無視させる
@@ -86,7 +76,7 @@ NTSTATUS WinCse::DoGetSecurityByName(
 		if (!objKey.valid())
 		{
 			traceW(L"illegal FileName: \"%s\"", FileName);
-			return STATUS_INVALID_PARAMETER;
+			return STATUS_OBJECT_NAME_INVALID;
 		}
 
 		if (objKey.hasKey())
@@ -159,7 +149,7 @@ NTSTATUS WinCse::DoGetSecurityByName(
 		return STATUS_OBJECT_NAME_NOT_FOUND;
 	}
 
-	const HANDLE handle = isFile ? mFileRefHandle : mDirRefHandle;
+	const HANDLE handle = isFile ? mRefFile.handle() : mRefDir.handle();
 
 #if 0
 	std::wstring path;
@@ -185,9 +175,9 @@ NTSTATUS WinCse::DoGetFileInfo(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_IN
 	traceW(L"FileName: \"%s\"", FileContext->FileName);
 	PCWSTR FileName = FileContext->FileName;
 
-	FSP_FSCTL_FILE_INFO fileInfo;
-	NTSTATUS Result = FileNameToFileInfo(START_CALLER FileName, &fileInfo);
-	if (!NT_SUCCESS(Result))
+	FSP_FSCTL_FILE_INFO fileInfo{};
+	NTSTATUS ntstatus = FileNameToFileInfo(START_CALLER FileName, &fileInfo);
+	if (!NT_SUCCESS(ntstatus))
 	{
 		traceW(L"fault: FileNameToFileInfo");
 		goto exit;
@@ -195,11 +185,12 @@ NTSTATUS WinCse::DoGetFileInfo(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_IN
 
 	*FileInfo = fileInfo;
 
-	Result = STATUS_SUCCESS;
+	ntstatus = STATUS_SUCCESS;
 
 exit:
+	traceW(L"return NTSTATUS=%ld", ntstatus);
 
-	return Result;
+	return ntstatus;
 }
 
 NTSTATUS WinCse::DoGetSecurity(PTFS_FILE_CONTEXT* FileContext,
@@ -214,15 +205,14 @@ NTSTATUS WinCse::DoGetSecurity(PTFS_FILE_CONTEXT* FileContext,
 	traceW(L"FileAttributes: %u", FileContext->FileInfo.FileAttributes);
 
 	const bool isFile = !FA_IS_DIR(FileContext->FileInfo.FileAttributes);
+	traceW(L"isFile: %s", BOOL_CSTRW(isFile));
 
-	traceW(L"isFile: %s", isFile ? L"true" : L"false");
-
-	const HANDLE handle = isFile ? mFileRefHandle : mDirRefHandle;
+	const HANDLE handle = isFile ? mRefFile.handle() : mRefDir.handle();
 
 	return HandleToInfo(START_CALLER handle, nullptr, SecurityDescriptor, PSecurityDescriptorSize);
 }
 
-NTSTATUS WinCse::DoGetVolumeInfo(PCWSTR Path, FSP_FSCTL_VOLUME_INFO* VolumeInfo)
+void WinCse::DoGetVolumeInfo(PCWSTR Path, FSP_FSCTL_VOLUME_INFO* VolumeInfo)
 {
 	StatsIncr(DoGetVolumeInfo);
 
@@ -233,8 +223,6 @@ NTSTATUS WinCse::DoGetVolumeInfo(PCWSTR Path, FSP_FSCTL_VOLUME_INFO* VolumeInfo)
 	traceW(L"Path: %s", Path);
 	traceW(L"FreeSize: %llu", VolumeInfo->FreeSize);
 	traceW(L"TotalSize: %llu", VolumeInfo->TotalSize);
-
-	return STATUS_INVALID_DEVICE_REQUEST;
 }
 
 NTSTATUS WinCse::DoRead(PTFS_FILE_CONTEXT* FileContext,
@@ -250,8 +238,28 @@ NTSTATUS WinCse::DoRead(PTFS_FILE_CONTEXT* FileContext,
 	traceW(L"FileAttributes: %u", FileContext->FileInfo.FileAttributes);
 	traceW(L"Size=%llu Offset=%llu", FileContext->FileInfo.FileSize, Offset);
 
-	return mCSDevice->readObject(START_CALLER (IOpenContext*)FileContext->UParam,
+	// ファイルを作成する必要があるので、サイズ==0 でも readObject は呼び出す
+
+	bool ret = mCSDevice->readObject(START_CALLER (CSDeviceContext*)FileContext->UParam,
 		Buffer, Offset, Length, PBytesTransferred);
+
+	if (ret)
+	{
+		if (FileContext->FileInfo.FileSize == 0)
+		{
+			// エクスプローラーの機能でコピーしたときはここは通過しない
+			// おそらく、ファイルサイズとタイムスタンプの情報で勝手に作成してくれる
+
+			traceW(L"return EOF");
+			return STATUS_END_OF_FILE;
+		}
+		
+		traceW(L"return SUCCESS");
+		return STATUS_SUCCESS;
+	}
+
+	traceW(L"return ERROR");
+	return STATUS_IO_DEVICE_ERROR;
 }
 
 NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
@@ -305,7 +313,7 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 		{
 			traceW(L"illegal FileName: \"%s\"", FileName);
 
-			return STATUS_INVALID_PARAMETER;
+			return STATUS_OBJECT_NAME_INVALID;
 		}
 
 		// キーが空の場合)		bucket & ""     で検索

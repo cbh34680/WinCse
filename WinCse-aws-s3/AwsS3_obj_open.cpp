@@ -4,75 +4,131 @@
 using namespace WinCseLib;
 
 
-std::wstring OpenContext::getLocalPath() const
+CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
+    const UINT32 CreateOptions, const UINT32 GrantedAccess, const UINT32 argFileAttributes,
+    FSP_FSCTL_FILE_INFO* pFileInfo)
 {
-    return mCacheDataDir + L'\\' + EncodeFileNameToLocalNameW(getRemotePath());
-}
-
-bool OpenContext::openLocalFile(const DWORD argDesiredAccess, const DWORD argCreationDisposition)
-{
+    StatsIncr(create);
     NEW_LOG_BLOCK();
+    APP_ASSERT(argObjKey.hasKey());
 
-    // キャッシュ・ファイルを開き、HANDLE をコンテキストに保存
+    traceW(L"argObjKey=%s", argObjKey.c_str());
 
-    ULONG CreateFlags = FILE_FLAG_BACKUP_SEMANTICS;
-    if (mCreateOptions & FILE_DELETE_ON_CLOSE)
-        CreateFlags |= FILE_FLAG_DELETE_ON_CLOSE;
+    NTSTATUS ntstatus = STATUS_UNSUCCESSFUL;
+    HANDLE hFile = INVALID_HANDLE_VALUE;
+    FSP_FSCTL_FILE_INFO fileInfo{};
+    CreateContext* ctx = nullptr;
 
-    const DWORD dwDesiredAccess = mGrantedAccess | argDesiredAccess;
-
-    mLocalFile = ::CreateFileW(getLocalPath().c_str(),
-        dwDesiredAccess, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-        NULL, argCreationDisposition, CreateFlags, NULL);
-
-    if (mLocalFile == INVALID_HANDLE_VALUE)
+    if (CreateOptions & FILE_DIRECTORY_FILE)
     {
-        traceW(L"fault: CreateFileW");
-        return false;
+        // create s3 directory
+        const auto objKey{ argObjKey.toDir() };
+
+        if (!headObject(CONT_CALLER objKey, nullptr))
+        {
+            // 存在しなければ作成
+
+            Aws::S3::Model::PutObjectRequest request;
+            request.SetBucket(objKey.bucketA());
+            request.SetKey(objKey.keyA());
+
+            const auto outcome = mClient.ptr->PutObject(request);
+
+            if (!outcomeIsSuccess(outcome))
+            {
+                traceW(L"fault: PutObject");
+                goto exit;
+            }
+
+            // キャッシュ・メモリから削除
+            //
+            // 後続の処理で DoGetSecurityByName() が呼ばれるが、上記で作成したディレクトリが
+            // キャッシュに反映されていない状態で利用されてしまうことを回避するために
+            // 事前に削除しておき、改めてキャッシュを作成させる
+
+            const auto num = deleteCacheByObjKey(CONT_CALLER objKey);
+            traceW(L"cache delete num=%d", num);
+        }
+
+        // ディレクトリ参照用の情報を設定
+
+        ntstatus = GetFileInfoInternal(mRefDir.handle(), &fileInfo);
+        if (!NT_SUCCESS(ntstatus))
+        {
+            traceW(L"fault: GetFileInfoInternal");
+            goto exit;
+        }
+    }
+    else
+    {
+        UINT32 FileAttributes = argFileAttributes;
+        ULONG CreateFlags = 0;
+
+        const auto loclPath{ mCacheDataDir + L'\\' + EncodeFileNameToLocalNameW(argObjKey.str()) };
+        traceW(L"argObjKey=%s localPath=%s", argObjKey.c_str(), loclPath.c_str());
+
+        CreateFlags = FILE_FLAG_BACKUP_SEMANTICS;
+
+        if (CreateOptions & FILE_DELETE_ON_CLOSE)
+        {
+            CreateFlags |= FILE_FLAG_DELETE_ON_CLOSE;
+        }
+
+        FileAttributes &= ~FILE_ATTRIBUTE_DIRECTORY;
+
+        if (FileAttributes == 0)
+        {
+            FileAttributes = FILE_ATTRIBUTE_NORMAL;
+        }
+
+        hFile = ::CreateFileW
+        (
+            loclPath.c_str(),
+            GrantedAccess,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            NULL,
+            CREATE_ALWAYS,
+            CreateFlags | FileAttributes,
+            NULL
+        );
+
+        if (hFile == INVALID_HANDLE_VALUE)
+        {
+            traceW(L"fault: CreateFileW");
+            goto exit;
+        }
+
+        ntstatus = GetFileInfoInternal(hFile, &fileInfo);
+        if (!NT_SUCCESS(ntstatus))
+        {
+            traceW(L"fault: GetFileInfoInternal");
+            goto exit;
+        }
     }
 
-    StatsIncr(_CreateFile);
+    ctx = new CreateContext(mStats, mCacheDataDir, argObjKey, fileInfo);
+    APP_ASSERT(ctx);
 
-    return true;
-}
+    ctx->mLocalFile = hFile;
+    hFile = INVALID_HANDLE_VALUE;
 
-bool OpenContext::setLocalFileTime(UINT64 argCreationTime)
-{
-    NEW_LOG_BLOCK();
+    // success
 
-    APP_ASSERT(mLocalFile != INVALID_HANDLE_VALUE);
+    *pFileInfo = fileInfo;
 
-    FILETIME ft;
-    WinFileTime100nsToWinFile(argCreationTime, &ft);
-
-    FILETIME ftNow;
-    ::GetSystemTimeAsFileTime(&ftNow);
-
-    if (!::SetFileTime(mLocalFile, &ft, &ftNow, &ft))
+exit:
+    if (hFile != INVALID_HANDLE_VALUE)
     {
-        const auto lerr = ::GetLastError();
-        traceW(L"fault: SetFileTime lerr=%ld", lerr);
-
-        return false;
+        ::CloseHandle(hFile);
+        hFile = INVALID_HANDLE_VALUE;
     }
 
-    return true;
+    return ctx;
 }
 
-void OpenContext::closeLocalFile()
-{
-    if (mLocalFile != INVALID_HANDLE_VALUE)
-    {
-        StatsIncr(_CloseHandle_File);
-        ::CloseHandle(mLocalFile);
-
-        mLocalFile = INVALID_HANDLE_VALUE;
-    }
-}
-
-IOpenContext* AwsS3::open(CALLER_ARG const ObjectKey& argObjKey,
-    const FSP_FSCTL_FILE_INFO& FileInfo,
-    const UINT32 CreateOptions, const UINT32 GrantedAccess)
+CSDeviceContext* AwsS3::open(CALLER_ARG const ObjectKey& argObjKey,
+    const UINT32 CreateOptions, const UINT32 GrantedAccess,
+    const FSP_FSCTL_FILE_INFO& FileInfo)
 {
     StatsIncr(open);
 
@@ -88,15 +144,22 @@ IOpenContext* AwsS3::open(CALLER_ARG const ObjectKey& argObjKey,
     return ctx;
 }
 
-void AwsS3::close(CALLER_ARG WinCseLib::IOpenContext* argOpenContext)
+void AwsS3::close(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext)
 {
     StatsIncr(close);
     NEW_LOG_BLOCK();
 
-    OpenContext* ctx = dynamic_cast<OpenContext*>(argOpenContext);
-    APP_ASSERT(ctx);
+    OpenContext* op = dynamic_cast<OpenContext*>(argCSDeviceContext);
+    if (op)
+    {
+    }
 
-    delete ctx;
+    CreateContext* cp = dynamic_cast<CreateContext*>(argCSDeviceContext);
+    if (cp)
+    {
+    }
+
+    delete argCSDeviceContext;
 }
 
 // EOF

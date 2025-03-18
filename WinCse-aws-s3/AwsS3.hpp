@@ -85,8 +85,11 @@ private:
 	std::wstring mRegion;
 	FSP_FILE_SYSTEM* mFileSystem = nullptr;
 
-	bool mReadonlyFilesystem = false;
 	UINT32 mDefaultFileAttributes = 0;
+
+	// 属性参照用ファイル・ハンドル
+	WinCseLib::FileHandleRAII mRefFile;
+	WinCseLib::FileHandleRAII mRefDir;
 
 	// シャットダウン要否判定のためポインタにしている
 	std::unique_ptr<Aws::SDKOptions> mSDKOptions;
@@ -136,11 +139,11 @@ private:
 	bool shouldDownload(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		const FSP_FSCTL_FILE_INFO& fileInfo, const std::wstring& localPath, bool* pNeedDownload);
 
-	NTSTATUS readObject_Simple(CALLER_ARG WinCseLib::IOpenContext* argOpenContext,
+	bool readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred);
-	NTSTATUS readObject_Multipart(CALLER_ARG WinCseLib::IOpenContext* argOpenContext,
+	bool readObject_Multipart(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred);
-	bool doMultipartDownload(CALLER_ARG WinCseLib::IOpenContext* argOpenContext, const std::wstring& localPath);
+	bool doMultipartDownload(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext, const std::wstring& localPath);
 
 	void notifListener();
 
@@ -156,8 +159,7 @@ public:
 		const FileOutputMeta& argMeta);
 
 protected:
-	bool isInBucketFiltersW(const std::wstring& arg);
-	bool isInBucketFiltersA(const std::string& arg);
+	bool isInBucketFilters(const std::wstring& arg);
 
 public:
 	AwsS3(const std::wstring& argTempDir, const std::wstring& argIniSection,
@@ -185,17 +187,26 @@ public:
 	bool listObjects(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		DirInfoListType* pDirInfoList /* nullable */) override;
 
-	WinCseLib::IOpenContext* open(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
-		const FSP_FSCTL_FILE_INFO& FileInfo, const UINT32 CreateOptions, const UINT32 GrantedAccess) override;
+	WinCseLib::CSDeviceContext* create(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		const UINT32 CreateOptions, const UINT32 GrantedAccess, const UINT32 FileAttributes,
+		FSP_FSCTL_FILE_INFO* pFileInfo) override;
 
-	void close(CALLER_ARG WinCseLib::IOpenContext* argOpenContext) override;
+	WinCseLib::CSDeviceContext* open(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		const UINT32 CreateOptions, const UINT32 GrantedAccess, const FSP_FSCTL_FILE_INFO& FileInfo) override;
 
-	NTSTATUS readObject(CALLER_ARG WinCseLib::IOpenContext* argOpenContext,
+	void close(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext) override;
+
+	bool readObject(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred) override;
 
-	NTSTATUS remove(CALLER_ARG WinCseLib::IOpenContext* argOpenContext, BOOLEAN argDeleteFile) override;
+	bool writeObject(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
+		PVOID Buffer, UINT64 Offset, ULONG Length,
+		BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
+		PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO *FileInfo) override;
 
-	void cleanup(CALLER_ARG WinCseLib::IOpenContext* argOpenContext, ULONG argFlags) override;
+	bool remove(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext, BOOLEAN argDeleteFile) override;
+
+	void cleanup(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext, ULONG argFlags) override;
 
 private:
 	template<typename T>
@@ -229,15 +240,11 @@ private:
 // open() が呼ばれたときに UParam として PTFS_FILE_CONTEXT に保存する内部情報
 // close() で削除される
 //
-struct OpenContext : public WinCseLib::IOpenContext
+struct OpenContext : public WinCseLib::CSDeviceContext
 {
 	WINCSE_DEVICE_STATS* mStats;
-	const std::wstring mCacheDataDir;
-	WinCseLib::ObjectKey mObjKey;
-	FSP_FSCTL_FILE_INFO mFileInfo;
 	const UINT32 mCreateOptions;
 	const UINT32 mGrantedAccess;
-	HANDLE mLocalFile = INVALID_HANDLE_VALUE;
 
 	OpenContext(
 		WINCSE_DEVICE_STATS* argStats,
@@ -247,35 +254,29 @@ struct OpenContext : public WinCseLib::IOpenContext
 		const UINT32 argCreateOptions,
 		const UINT32 argGrantedAccess)
 		:
+		CSDeviceContext(argCacheDataDir, argObjKey, argFileInfo),
 		mStats(argStats),
-		mCacheDataDir(argCacheDataDir),
-		mFileInfo(argFileInfo),
 		mCreateOptions(argCreateOptions),
 		mGrantedAccess(argGrantedAccess)
 	{
-		if (FA_IS_DIR(mFileInfo.FileAttributes))
-		{
-			mObjKey = argObjKey.toDir();
-		}
-		else
-		{
-			mObjKey = argObjKey;
-		}
 	}
 
-	bool isDir() const { return FA_IS_DIR(mFileInfo.FileAttributes); }
-	bool isFile() const { return !isDir(); }
-	std::wstring getRemotePath() const { return mObjKey.str(); }
-
-	std::wstring getLocalPath() const;
-
 	bool openLocalFile(const DWORD argDesiredAccess, const DWORD argCreationDisposition);
-	bool setLocalFileTime(UINT64 argCreationTime);
-	void closeLocalFile();
+};
 
-	~OpenContext()
+struct CreateContext : public WinCseLib::CSDeviceContext
+{
+	WINCSE_DEVICE_STATS* mStats;
+
+	CreateContext(
+		WINCSE_DEVICE_STATS* argStats,
+		const std::wstring& argCacheDataDir,
+		const WinCseLib::ObjectKey& argObjKey,
+		const FSP_FSCTL_FILE_INFO& argFileInfo)
+		:
+		CSDeviceContext(argCacheDataDir, argObjKey, argFileInfo),
+		mStats(argStats)
 	{
-		closeLocalFile();
 	}
 };
 
