@@ -77,8 +77,8 @@ struct WINCSELIB_API ICSDriver : public ICSService
 	virtual NTSTATUS DoRename() { return STATUS_INVALID_DEVICE_REQUEST; }
 
 	virtual NTSTATUS DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttributes,
-		UINT64 CreationTime, UINT64 LastAccessTime, UINT64 LastWriteTime, UINT64 ChangeTime,
-		FSP_FSCTL_FILE_INFO *FileInfo) { return STATUS_INVALID_DEVICE_REQUEST; }
+		const UINT64 CreationTime, const UINT64 LastAccessTime, const UINT64 LastWriteTime,
+		const UINT64 ChangeTime, FSP_FSCTL_FILE_INFO *FileInfo) { return STATUS_INVALID_DEVICE_REQUEST; }
 
 	virtual NTSTATUS DoSetFileSize(PTFS_FILE_CONTEXT* FileContext,
 		UINT64 NewSize, BOOLEAN SetAllocationSize, FSP_FSCTL_FILE_INFO *FileInfo) { return STATUS_INVALID_DEVICE_REQUEST; }

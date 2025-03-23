@@ -15,7 +15,7 @@ int AwsS3::unlockDeleteCacheByObjKey(CALLER_ARG const WinCseLib::ObjectKey& argO
     NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.valid());
 
-    return gObjectCache.deleteByObjKey(CONT_CALLER argObjKey);
+    return gObjectCache.deleteByObjectKey(CONT_CALLER argObjKey);
 }
 
 bool AwsS3::unlockHeadObject(CALLER_ARG const ObjectKey& argObjKey, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
@@ -141,14 +141,15 @@ bool AwsS3::unlockListObjects(CALLER_ARG const ObjectKey& argObjKey,
     return true;
 }
 
+#define USE_FIND_PARENT     (0)
+
+#if USE_FIND_PARENT
 //
 // 表示用のキャッシュ (Purpose::Display) の中から、引数に合致する
 // ファイルの情報を取得する
 //
 DirInfoType AwsS3::unlockFindInParentOfDisplay(CALLER_ARG const ObjectKey& argObjKey)
 {
-    StatsIncr(_unlockFindInParentOfDisplay);
-
     NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.valid());
     APP_ASSERT(argObjKey.hasKey());
@@ -214,6 +215,7 @@ DirInfoType AwsS3::unlockFindInParentOfDisplay(CALLER_ARG const ObjectKey& argOb
 
     return *it;
 }
+#endif
 
 // -----------------------------------------------------------------------------------
 //
@@ -224,7 +226,6 @@ DirInfoType AwsS3::unlockFindInParentOfDisplay(CALLER_ARG const ObjectKey& argOb
 bool AwsS3::unlockListObjects_Display(CALLER_ARG
     const WinCseLib::ObjectKey& argObjKey, DirInfoListType* pDirInfoList /* nullable */)
 {
-    StatsIncr(_unlockListObjects_Display);
     APP_ASSERT(argObjKey.valid());
 
     return this->unlockListObjects(CONT_CALLER argObjKey, Purpose::Display, pDirInfoList);
@@ -233,7 +234,6 @@ bool AwsS3::unlockListObjects_Display(CALLER_ARG
 bool AwsS3::unlockHeadObject_File(CALLER_ARG
     const ObjectKey& argObjKey, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
 {
-    StatsIncr(_unlockHeadObject_File);
     APP_ASSERT(argObjKey.meansFile());
     NEW_LOG_BLOCK();
 
@@ -251,6 +251,7 @@ bool AwsS3::unlockHeadObject_File(CALLER_ARG
 
     traceW(L"unlockHeadObject: not found");
 
+#if USE_FIND_PARENT
     // 親ディレクトリから調べる
 
     const auto dirInfo{ unlockFindInParentOfDisplay(CONT_CALLER argObjKey) };
@@ -267,13 +268,13 @@ bool AwsS3::unlockHeadObject_File(CALLER_ARG
     }
 
     traceW(L"unlockFindInParentOfDisplay: not found");
+#endif
 
     return false;
 }
 
 DirInfoType AwsS3::unlockListObjects_Dir(CALLER_ARG const ObjectKey& argObjKey)
 {
-    StatsIncr(_unlockListObjects_Dir);
     APP_ASSERT(argObjKey.meansDir());
     NEW_LOG_BLOCK();
 
@@ -298,9 +299,13 @@ DirInfoType AwsS3::unlockListObjects_Dir(CALLER_ARG const ObjectKey& argObjKey)
 
     traceW(L"unlockListObjects: not found");
 
+#if USE_FIND_PARENT
     // 親ディレクトリから調べる
 
     return this->unlockFindInParentOfDisplay(CONT_CALLER argObjKey);
+#else
+    return nullptr;
+#endif
 }
 
 // -----------------------------------------------------------------------------------
@@ -308,97 +313,85 @@ DirInfoType AwsS3::unlockListObjects_Dir(CALLER_ARG const ObjectKey& argObjKey)
 // 外部から呼び出されるインターフェース
 //
 
+//
+// ここから下のメソッドは THREAD_SAFE マクロによる修飾が必要
+//
+static std::mutex gGuard;
+#define THREAD_SAFE() std::lock_guard<std::mutex> lock_(gGuard)
+
 // レポートの生成
 void AwsS3::reportObjectCache(CALLER_ARG FILE* fp)
 {
+    THREAD_SAFE();
     gObjectCache.report(CONT_CALLER fp);
 }
 
 // 古いキャッシュの削除
 void AwsS3::deleteOldObjects(CALLER_ARG std::chrono::system_clock::time_point threshold)
 {
+    THREAD_SAFE();
     gObjectCache.deleteOldRecords(CONT_CALLER threshold);
 }
 
-//
-// ここから下のメソッドは ShareStore による修飾が必要
-//
-struct Shared : public SharedBase { };
-static ShareStore<Shared> gSharedStore;
-
+void AwsS3::clearObjects(CALLER_ARG0)
+{
+    THREAD_SAFE();
+    const auto now{ std::chrono::system_clock::now() };
+    gObjectCache.deleteOldRecords(CONT_CALLER now);
+}
 
 bool AwsS3::headObject(CALLER_ARG const ObjectKey& argObjKey, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
 {
     StatsIncr(headObject);
+    THREAD_SAFE();
     NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.valid());
 
-    UnprotectedShare<Shared> unsafeShare(&gSharedStore, argObjKey.str());   // 名前への参照を登録
+    traceW(L"ObjectKey=%s", argObjKey.c_str());
+
+    // キーの最後の文字に "/" があるかどうかでファイル/ディレクトリを判断
+    //
+    if (argObjKey.meansDir())
     {
-        const auto safeShare{ unsafeShare.lock() };                         // 名前のロック
+        // ディレクトリの存在確認
 
-        bool ret = false;
+        // クラウドストレージではディレクトリの概念は存在しないので
+        // 本来は外部から listObjects() を実行して、ロジックで判断するが
+        // 意味的にわかりにくくなるので、ここで吸収する
 
-        traceW(L"ObjectKey=%s", argObjKey.c_str());
-
-        // キーの最後の文字に "/" があるかどうかでファイル/ディレクトリを判断
-        //
-        if (argObjKey.meansDir())
+        const auto dirInfo{ this->unlockListObjects_Dir(CONT_CALLER argObjKey) };
+        if (!dirInfo)
         {
-            // ディレクトリの存在確認
-
-            // クラウドストレージではディレクトリの概念は存在しないので
-            // 本来は外部から listObjects() を実行して、ロジックで判断するが
-            // 意味的にわかりにくくなるので、ここで吸収する
-
-            const auto dirInfo{ this->unlockListObjects_Dir(CONT_CALLER argObjKey) };
-            if (dirInfo)
-            {
-                if (pFileInfo)
-                {
-                    *pFileInfo = dirInfo->FileInfo;
-                }
-
-                ret = true;
-            }
-            else
-            {
-                traceW(L"fault: unlockListObjects");
-            }
-        }
-        else
-        {
-            // ファイルの存在確認
-
-            if (this->unlockHeadObject_File(CONT_CALLER argObjKey, pFileInfo))
-            {
-                ret = true;
-            }
-            else
-            {
-                traceW(L"fault: unlockHeadObject");
-                return false;
-            }
+            traceW(L"fault: unlockListObjects");
+            return false;
         }
 
-        return ret;
-                                                                            // 名前のロックを解除
-    }                                                                       // 名前への参照を解放
+        if (pFileInfo)
+        {
+            *pFileInfo = dirInfo->FileInfo;
+        }
+    }
+    else
+    {
+        // ファイルの存在確認
+
+        if (!this->unlockHeadObject_File(CONT_CALLER argObjKey, pFileInfo))
+        {
+            traceW(L"fault: unlockHeadObject");
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool AwsS3::listObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* pDirInfoList /* nullable */)
 {
     StatsIncr(listObjects);
+    THREAD_SAFE();
     APP_ASSERT(argObjKey.valid());
 
-    UnprotectedShare<Shared> unsafeShare(&gSharedStore, argObjKey.str());   // 名前への参照を登録
-    {
-        const auto safeShare{ unsafeShare.lock() };                         // 名前のロック
-
-        return this->unlockListObjects_Display(CONT_CALLER argObjKey, pDirInfoList);
-
-                                                                            // 名前のロックを解除
-    }                                                                       // 名前への参照を解放
+    return this->unlockListObjects_Display(CONT_CALLER argObjKey, pDirInfoList);
 }
 
 //
@@ -407,16 +400,10 @@ bool AwsS3::listObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* 
 
 int AwsS3::deleteCacheByObjKey(CALLER_ARG const ObjectKey& argObjKey)
 {
+    THREAD_SAFE();
     APP_ASSERT(argObjKey.valid());
 
-    UnprotectedShare<Shared> unsafeShare(&gSharedStore, argObjKey.str());   // 名前への参照を登録
-    {
-        const auto safeShare{ unsafeShare.lock() };                         // 名前のロック
-
-        return this->unlockDeleteCacheByObjKey(CONT_CALLER argObjKey);
-
-                                                                            // 名前のロックを解除
-    }                                                                       // 名前への参照を解放
+    return this->unlockDeleteCacheByObjKey(CONT_CALLER argObjKey);
 }
 
 // EOF

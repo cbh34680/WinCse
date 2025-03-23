@@ -107,13 +107,8 @@ int eraseCacheBy(const std::function<bool(const typename T::iterator&)>& shouldE
 // 以降は直接メンバ変数を操作するもの
 //
 
-static std::mutex gGuard;
-#define THREAD_SAFE() std::lock_guard<std::mutex> lock_(gGuard)
-
 void ObjectCache::report(CALLER_ARG FILE* fp)
 {
-    THREAD_SAFE();
-
     fwprintf(fp, L"GetPositive=%d" LN, mGetPositive);
     fwprintf(fp, L"SetPositive=%d" LN, mSetPositive);
     fwprintf(fp, L"UpdPositive=%d" LN, mUpdPositive);
@@ -166,7 +161,6 @@ void ObjectCache::report(CALLER_ARG FILE* fp)
 
 int ObjectCache::deleteOldRecords(CALLER_ARG std::chrono::system_clock::time_point threshold)
 {
-    THREAD_SAFE();
     NEW_LOG_BLOCK();
 
     const auto OldAccessTime = [&threshold](const auto& it)
@@ -182,9 +176,8 @@ int ObjectCache::deleteOldRecords(CALLER_ARG std::chrono::system_clock::time_poi
     return delPositive + delNegative;
 }
 
-int ObjectCache::deleteByObjKey(CALLER_ARG const ObjectKey& argObjKey)
+int ObjectCache::deleteByObjectKey(CALLER_ARG const ObjectKey& argObjKey)
 {
-    THREAD_SAFE();
     NEW_LOG_BLOCK();
 
     traceW(L"argObjKey=%s", argObjKey.c_str());
@@ -194,56 +187,19 @@ int ObjectCache::deleteByObjKey(CALLER_ARG const ObjectKey& argObjKey)
         return it->first.mObjKey == argObjKey;
     };
 
+    // 引数と一致するものをキャッシュから削除
+
     const int delPositive = eraseCacheBy(EqualObjKey, mPositive);
     const int delNegative = eraseCacheBy(EqualObjKey, mNegative);
 
     traceW(L"delete records: Positive=%d Negative=%d", delPositive, delNegative);
 
-#if 0
-    int delDisplay = 0;
-#else
     int delPositiveP = 0;
     int delNegativeP = 0;
-#endif
 
     const auto parentDirPtr{ argObjKey.toParentDir() };
     if (parentDirPtr)
     {
-#if 0
-        // 表示用キャッシュから親ディレクトリを探す
-
-        const auto& itParentDir{ mPositive.find(ObjectCacheKey{ *parentDirPtr, Purpose::Display }) };
-        if (itParentDir != mPositive.end())
-        {
-            // 親ディレクトリのキャッシュからファイル名が一致するものを削除
-
-            const auto searchName{ argObjKey.key().substr(itParentDir->first.mObjKey.key().length()) };
-
-            const auto EqualFileName = [&searchName](const auto& it)
-            {
-                if (wcscmp((*it)->FileNameBuf, L".") == 0 || wcscmp((*it)->FileNameBuf, L"..") == 0)
-                {
-                    return false;
-                }
-
-                std::wstring fn{ (*it)->FileNameBuf };
-
-                if (FA_IS_DIR((*it)->FileInfo.FileAttributes))
-                {
-                    // FSP_FSCTL_DIR_INFO.FileNameBuf にはディレクトリの場合でも
-                    // "/" で終端されていないので、比較名に "/" を付与する
-
-                    fn += L'/';
-                }
-
-                return searchName == fn;
-            };
-
-            delDisplay = eraseCacheBy(EqualFileName, itParentDir->second.mDirInfoList);
-            traceW(L"delete records: Display=%d", delDisplay);
-        }
-
-#else
         const auto& parentDir{ *parentDirPtr };
 
         const auto EqualParentDir = [&parentDir](const auto& it)
@@ -251,11 +207,12 @@ int ObjectCache::deleteByObjKey(CALLER_ARG const ObjectKey& argObjKey)
             return it->first.mObjKey == parentDir;
         };
 
+        // 引数の親ディレクトリをキャッシュから削除
+
         delPositiveP = eraseCacheBy(EqualParentDir, mPositive);
         delNegativeP = eraseCacheBy(EqualParentDir, mNegative);
 
         traceW(L"delete records: PositiveP=%d NegativeP=%d", delPositiveP, delNegativeP);
-#endif
     }
     else
     {
@@ -263,11 +220,7 @@ int ObjectCache::deleteByObjKey(CALLER_ARG const ObjectKey& argObjKey)
         // 親ディレクトリは存在しないので問題なし
     }
 
-#if 0
-    return delPositive + delNegative + delDisplay;
-#else
     return delPositive + delNegative + delPositiveP + delNegativeP;
-#endif
 }
 
 // ----------------------- Positive
@@ -275,7 +228,6 @@ int ObjectCache::deleteByObjKey(CALLER_ARG const ObjectKey& argObjKey)
 bool ObjectCache::getPositive(CALLER_ARG const ObjectKey& argObjKey,
     const Purpose argPurpose, DirInfoListType* pDirInfoList)
 {
-    THREAD_SAFE();
     APP_ASSERT(argObjKey.valid());
     APP_ASSERT(pDirInfoList);
 
@@ -300,7 +252,6 @@ bool ObjectCache::getPositive(CALLER_ARG const ObjectKey& argObjKey,
 void ObjectCache::setPositive(CALLER_ARG const ObjectKey& argObjKey,
     const Purpose argPurpose, DirInfoListType& dirInfoList)
 {
-    THREAD_SAFE();
     APP_ASSERT(argObjKey.valid());
     APP_ASSERT(!dirInfoList.empty());
 
@@ -358,7 +309,6 @@ void ObjectCache::setPositive(CALLER_ARG const ObjectKey& argObjKey,
 
 bool ObjectCache::isInNegative(CALLER_ARG const ObjectKey& argObjKey, const Purpose argPurpose)
 {
-    THREAD_SAFE();
     APP_ASSERT(argObjKey.valid());
 
     const ObjectCacheKey cacheKey{ argObjKey, argPurpose };
@@ -379,7 +329,6 @@ bool ObjectCache::isInNegative(CALLER_ARG const ObjectKey& argObjKey, const Purp
 
 void ObjectCache::addNegative(CALLER_ARG const WinCseLib::ObjectKey& argObjKey, const Purpose argPurpose)
 {
-    THREAD_SAFE();
     APP_ASSERT(argObjKey.valid());
 
     const ObjectCacheKey cacheKey{ argObjKey, argPurpose };

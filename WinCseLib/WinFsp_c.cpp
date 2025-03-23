@@ -414,9 +414,7 @@ static NTSTATUS Read(FSP_FILE_SYSTEM *FileSystem,
 
     if (!ReadFile(Handle, Buffer, Length, PBytesTransferred, &Overlapped))
     {
-        //return FspNtStatusFromWin32(GetLastError());
-        DWORD lerr = GetLastError();
-        return FspNtStatusFromWin32(lerr);
+        return FspNtStatusFromWin32(GetLastError());
     }
 
     return STATUS_SUCCESS;

@@ -10,7 +10,6 @@ VOID WinCse::DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Fla
 
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext);
-	//APP_ASSERT(FileName);
 
 	traceW(L"FileName: \"%s\"", FileName);
 	traceW(L"(FileContext)FileName: \"%s\"", FileContext->FileName);
@@ -27,31 +26,14 @@ NTSTATUS WinCse::DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOO
 	StatsIncr(DoSetDelete);
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext);
-	APP_ASSERT(FileName);
+	APP_ASSERT(!mReadonlyVolume);			// おそらくシェルで削除操作が止められている
 
 	traceW(L"FileName: \"%s\"", FileName);
 	traceW(L"(FileContext)FileName: \"%s\"", FileContext->FileName);
 	traceW(L"FileAttributes: %u", FileContext->FileInfo.FileAttributes);
 	traceW(L"deleteFile=%s", BOOL_CSTRW(argDeleteFile));
 
-	if (mReadonlyVolume)
-	{
-		// ここは通過しない
-		// おそらくシェルで削除操作が止められている
-
-		traceW(L"readonly volume");
-		return STATUS_INVALID_DEVICE_REQUEST;
-	}
-
-	bool ret = mCSDevice->remove(START_CALLER (CSDeviceContext*)FileContext->UParam, argDeleteFile);
-
-	if (!ret)
-	{
-		traceW(L"fault: remove");
-		return STATUS_CANNOT_DELETE;
-	}
-
-	return STATUS_SUCCESS;
+	return mCSDevice->remove(START_CALLER (CSDeviceContext*)FileContext->UParam, argDeleteFile);
 }
 
 NTSTATUS WinCse::DoFlush()
@@ -81,9 +63,9 @@ NTSTATUS WinCse::DoRename()
 	return STATUS_INVALID_DEVICE_REQUEST;
 }
 
-NTSTATUS WinCse::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttributes,
-	UINT64 CreationTime, UINT64 LastAccessTime, UINT64 LastWriteTime, UINT64 ChangeTime,
-	FSP_FSCTL_FILE_INFO *FileInfo)
+NTSTATUS WinCse::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, const UINT32 argFileAttributes,
+	const UINT64 argCreationTime, const UINT64 argLastAccessTime, const UINT64 argLastWriteTime,
+	const UINT64 argChangeTime, FSP_FSCTL_FILE_INFO *FileInfo)
 {
 	StatsIncr(DoSetBasicInfo);
 	NEW_LOG_BLOCK();
@@ -95,45 +77,49 @@ NTSTATUS WinCse::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttri
 	CSDeviceContext* ctx = (CSDeviceContext*)FileContext->UParam;
 	APP_ASSERT(ctx);
 
-	HANDLE Handle = INVALID_HANDLE_VALUE;
+	traceW(L"mObjKey=%s", ctx->mObjKey.c_str());
 
-	if (ctx->isFile())
+#if 0
+	UINT32 fileAttributes = argFileAttributes;
+	UINT64 creationTime = argCreationTime;
+	UINT64 lastAccessTime = argLastAccessTime;
+	UINT64 lastWriteTime = argLastWriteTime;
+	//UINT64 changeTime = argChangeTime;
+
+	auto Handle = ctx->mFile.handle();
+
+	FILE_BASIC_INFO BasicInfo{};
+
+	if (INVALID_FILE_ATTRIBUTES == fileAttributes)
 	{
-		traceW(L"mObjKey=%s", ctx->mObjKey.c_str());
-
-		Handle = ctx->mLocalFile.handle();
-
-		FILE_BASIC_INFO BasicInfo{};
-
-		if (INVALID_FILE_ATTRIBUTES == FileAttributes)
-		{
-			FileAttributes = 0;
-		}
-		else if (0 == FileAttributes)
-		{
-			FileAttributes = FILE_ATTRIBUTE_NORMAL;
-		}
-
-		BasicInfo.FileAttributes = FileAttributes;
-		BasicInfo.CreationTime.QuadPart = CreationTime;
-		BasicInfo.LastAccessTime.QuadPart = LastAccessTime;
-		BasicInfo.LastWriteTime.QuadPart = LastWriteTime;
-		//BasicInfo.ChangeTime = ChangeTime;
-
-		if (!::SetFileInformationByHandle(Handle,
-			FileBasicInfo, &BasicInfo, sizeof BasicInfo))
-		{
-			return FspNtStatusFromWin32(GetLastError());
-		}
+		fileAttributes = 0;
 	}
-	else
+	else if (0 == fileAttributes)
 	{
-		Handle = mRefDir.handle();
+		fileAttributes = FILE_ATTRIBUTE_NORMAL;
 	}
 
-	APP_ASSERT(Handle != INVALID_HANDLE_VALUE);
+	BasicInfo.FileAttributes = fileAttributes;
+	BasicInfo.CreationTime.QuadPart = creationTime;
+	BasicInfo.LastAccessTime.QuadPart = lastAccessTime;
+	BasicInfo.LastWriteTime.QuadPart = lastWriteTime;
+	//BasicInfo.ChangeTime = changeTime;
+
+	if (!::SetFileInformationByHandle(Handle,
+		FileBasicInfo, &BasicInfo, sizeof BasicInfo))
+	{
+		return FspNtStatusFromWin32(::GetLastError());
+	}
 
 	return GetFileInfoInternal(Handle, FileInfo);
+
+#else
+	// タイムスタンプの更新はしない
+
+	*FileInfo = ctx->mFileInfo;
+
+	return STATUS_SUCCESS;
+#endif
 }
 
 NTSTATUS WinCse::DoSetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize, BOOLEAN SetAllocationSize,
@@ -154,7 +140,7 @@ NTSTATUS WinCse::DoSetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize, B
 
 	traceW(L"mObjKey=%s", ctx->mObjKey.c_str());
 
-	auto Handle = ctx->mLocalFile.handle();
+	auto Handle = ctx->mFile.handle();
 
 	FILE_ALLOCATION_INFO AllocationInfo{};
 	FILE_END_OF_FILE_INFO EndOfFileInfo{};
@@ -177,7 +163,7 @@ NTSTATUS WinCse::DoSetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize, B
 		if (!::SetFileInformationByHandle(Handle,
 			FileAllocationInfo, &AllocationInfo, sizeof AllocationInfo))
 		{
-			return FspNtStatusFromWin32(GetLastError());
+			return FspNtStatusFromWin32(::GetLastError());
 		}
 	}
 	else
@@ -187,7 +173,7 @@ NTSTATUS WinCse::DoSetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize, B
 		if (!::SetFileInformationByHandle(Handle,
 			FileEndOfFileInfo, &EndOfFileInfo, sizeof EndOfFileInfo))
 		{
-			return FspNtStatusFromWin32(GetLastError());
+			return FspNtStatusFromWin32(::GetLastError());
 		}
 	}
 
@@ -226,16 +212,8 @@ NTSTATUS WinCse::DoWrite(PTFS_FILE_CONTEXT* FileContext, PVOID Buffer, UINT64 Of
 	traceW(L"FileAttributes: %u", FileContext->FileInfo.FileAttributes);
 	traceW(L"Size=%llu Offset=%llu", FileContext->FileInfo.FileSize, Offset);
 
-	bool ret = mCSDevice->writeObject(START_CALLER (CSDeviceContext*)FileContext->UParam,
+	return mCSDevice->writeObject(START_CALLER (CSDeviceContext*)FileContext->UParam,
 		Buffer, Offset, Length, WriteToEndOfFile, ConstrainedIo, PBytesTransferred, FileInfo);
-
-	if (!ret)
-	{
-		traceW(L"fault: writeObject");
-		return STATUS_IO_DEVICE_ERROR;
-	}
-
-	return STATUS_SUCCESS;
 }
 
 // EOF

@@ -41,6 +41,11 @@ std::wstring WinFileTime100nsToLocalTimeStringW(uint64_t ft100ns)
 	return UtcMilliToLocalTimeStringW(WinFileTime100nsToUtcMillis(ft100ns));
 }
 
+std::string WinFileTime100nsToLocalTimeStringA(uint64_t ft100ns)
+{
+	return WC2MB(UtcMilliToLocalTimeStringW(WinFileTime100nsToUtcMillis(ft100ns)));
+}
+
 // time_point を UTC のミリ秒に変換
 long long int TimePointToUtcMillis(const std::chrono::system_clock::time_point& tp)
 {
@@ -67,38 +72,11 @@ std::wstring TimePointToLocalTimeStringW(const std::chrono::system_clock::time_p
 	return UtcMilliToLocalTimeStringW(TimePointToUtcMillis(tp));
 }
 
-
-// パスから FILETIME の値を取得
-bool PathToWinFileTimes(const std::wstring& path, FILETIME* pFtCreate, FILETIME* pFtAccess, FILETIME* pFtWrite)
-{
-	FileHandleRAII hFile = ::CreateFileW
-	(
-		path.c_str(),
-		GENERIC_READ,
-		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-		NULL,
-		OPEN_EXISTING,
-		0,
-		NULL
-	);
-
-	if(hFile.invalid())
-	{
-		return false;
-	}
-
-	const BOOL ret = ::GetFileTime(hFile.handle(), pFtCreate, pFtAccess, pFtWrite);
-
-	hFile.close();
-
-	return ret;
-}
-
 // 現在の時刻を UTC のミリ秒で取得
 uint64_t GetCurrentUtcMillis()
 {
 	FILETIME ft;
-	GetSystemTimeAsFileTime(&ft);
+	::GetSystemTimeAsFileTime(&ft);
 
 	return WinFileTimeToUtcMillis(ft);
 }

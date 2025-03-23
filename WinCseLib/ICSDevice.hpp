@@ -18,21 +18,6 @@ typedef struct
 	long cleanup;
 	long remove;
 	long writeObject;
-	long setFileSize;
-	long setBasicInfo;
-
-	long _CreateFile;
-	long _CloseHandle_File;
-	long _CreateEvent;
-	long _CloseHandle_Event;
-
-	long _ReadSuccess;
-	long _ReadError;
-
-	long _unlockHeadObject_File;
-	long _unlockListObjects_Dir;
-	long _unlockListObjects_Display;
-	long _unlockFindInParentOfDisplay;
 }
 WINCSE_DEVICE_STATS;
 
@@ -53,7 +38,7 @@ private:
 	bool mMeansDir = false;
 	bool mMeansFile = false;
 
-	WINCSELIB_API void reset();
+	WINCSELIB_API void reset() noexcept;
 
 	WINCSELIB_API ObjectKey(const std::wstring& argWinPath);
 
@@ -98,6 +83,21 @@ public:
 	bool meansDir() const { return mMeansDir; }
 	bool meansFile() const { return mMeansFile; }
 
+	bool meansHidden() const
+	{
+		if (mHasKey)
+		{
+			// ".", ".." 以外で先頭が "." で始まっているものは隠しファイルの扱い
+
+			if (mKey != L"." && mKey != L".." && mKey[0] == L'.')
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	static ObjectKey fromWinPath(const std::wstring& argWinPath)
 	{
 		return ObjectKey(argWinPath);
@@ -109,7 +109,7 @@ struct CSDeviceContext
 	const std::wstring mCacheDataDir;
 	ObjectKey mObjKey;
 	const FSP_FSCTL_FILE_INFO mFileInfo;
-	FileHandleRAII mLocalFile;
+	FileHandle mFile;
 
 	WINCSELIB_API CSDeviceContext(
 		const std::wstring& argCacheDataDir,
@@ -117,24 +117,13 @@ struct CSDeviceContext
 		const FSP_FSCTL_FILE_INFO& argFileInfo);
 
 	WINCSELIB_API bool isDir() const;
-	WINCSELIB_API std::wstring getLocalPath() const;
-	WINCSELIB_API bool setLocalFileTime(UINT64 argCreationTime);
+	WINCSELIB_API std::wstring getFilePathW() const;
+	WINCSELIB_API std::string getFilePathA() const;
 
 	bool isFile() const { return !isDir(); }
 	std::wstring getRemotePath() const { return mObjKey.str(); }
 
-	void closeLocalFile()
-	{
-		if (mLocalFile.valid())
-		{
-			mLocalFile.close();
-		}
-	}
-
-	virtual ~CSDeviceContext()
-	{
-		closeLocalFile();
-	}
+	virtual ~CSDeviceContext() = default;
 };
 
 struct WINCSELIB_API ICSDevice : public ICSService
@@ -163,15 +152,15 @@ struct WINCSELIB_API ICSDevice : public ICSService
 
 	virtual void close(CALLER_ARG CSDeviceContext* argCSDeviceContext) = 0;
 
-	virtual bool readObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
+	virtual NTSTATUS readObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred) = 0;
 
-	virtual bool writeObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
+	virtual NTSTATUS writeObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length,
 		BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
 		PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO *FileInfo) = 0;
 
-	virtual bool remove(CALLER_ARG CSDeviceContext* argCSDeviceContext, BOOLEAN argDeleteFile) = 0;
+	virtual NTSTATUS remove(CALLER_ARG CSDeviceContext* argCSDeviceContext, BOOLEAN argDeleteFile) = 0;
 
 	virtual void cleanup(CALLER_ARG CSDeviceContext* argCSDeviceContext, ULONG argFlags) = 0;
 };

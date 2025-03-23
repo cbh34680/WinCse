@@ -13,7 +13,7 @@ private:
 	std::atomic<bool> mEndWorkerFlag = false;
 	std::deque<std::shared_ptr<WinCseLib::ITask>> mTasks;
 
-	WinCseLib::EventHandleRAII mEvent;
+	WinCseLib::EventHandle mEvent;
 
 protected:
 	void listenEvent(const int i);

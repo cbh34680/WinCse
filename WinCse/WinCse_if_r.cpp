@@ -151,16 +151,6 @@ NTSTATUS WinCse::DoGetSecurityByName(
 
 	const HANDLE handle = isFile ? mRefFile.handle() : mRefDir.handle();
 
-#if 0
-	std::wstring path;
-	HandleToPath(handle, path);
-	traceW(L"selected path is %s", path.c_str());
-
-	std::wstring sdstr;
-	PathToSDStr(path, sdstr);
-	traceW(L"sdstr is %s", sdstr.c_str());
-#endif
-
 	return HandleToInfo(START_CALLER handle, PFileAttributes, SecurityDescriptor, PSecurityDescriptorSize);
 }
 
@@ -169,28 +159,11 @@ NTSTATUS WinCse::DoGetFileInfo(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_IN
 	StatsIncr(DoGetFileInfo);
 
 	NEW_LOG_BLOCK();
-	APP_ASSERT(FileContext);
-	APP_ASSERT(FileInfo);
+	APP_ASSERT(FileContext && FileInfo);
 
 	traceW(L"FileName: \"%s\"", FileContext->FileName);
-	PCWSTR FileName = FileContext->FileName;
 
-	FSP_FSCTL_FILE_INFO fileInfo{};
-	NTSTATUS ntstatus = FileNameToFileInfo(START_CALLER FileName, &fileInfo);
-	if (!NT_SUCCESS(ntstatus))
-	{
-		traceW(L"fault: FileNameToFileInfo");
-		goto exit;
-	}
-
-	*FileInfo = fileInfo;
-
-	ntstatus = STATUS_SUCCESS;
-
-exit:
-	traceW(L"return NTSTATUS=%ld", ntstatus);
-
-	return ntstatus;
+	return FileNameToFileInfo(START_CALLER FileContext->FileName, FileInfo);
 }
 
 NTSTATUS WinCse::DoGetSecurity(PTFS_FILE_CONTEXT* FileContext,
@@ -199,7 +172,7 @@ NTSTATUS WinCse::DoGetSecurity(PTFS_FILE_CONTEXT* FileContext,
 	StatsIncr(DoGetSecurity);
 
 	NEW_LOG_BLOCK();
-	APP_ASSERT(FileContext);
+	APP_ASSERT(FileContext && SecurityDescriptor && PSecurityDescriptorSize);
 
 	traceW(L"FileName: \"%s\"", FileContext->FileName);
 	traceW(L"FileAttributes: %u", FileContext->FileInfo.FileAttributes);
@@ -232,34 +205,17 @@ NTSTATUS WinCse::DoRead(PTFS_FILE_CONTEXT* FileContext,
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext && Buffer && PBytesTransferred);
 	APP_ASSERT(!FA_IS_DIR(FileContext->FileInfo.FileAttributes));		// ファイルのみ
-	APP_ASSERT(Offset <= FileContext->FileInfo.FileSize);
 
 	traceW(L"FileName: \"%s\"", FileContext->FileName);
 	traceW(L"FileAttributes: %u", FileContext->FileInfo.FileAttributes);
 	traceW(L"Size=%llu Offset=%llu", FileContext->FileInfo.FileSize, Offset);
 
+	//APP_ASSERT(Offset <= FileContext->FileInfo.FileSize);
+
 	// ファイルを作成する必要があるので、サイズ==0 でも readObject は呼び出す
 
-	bool ret = mCSDevice->readObject(START_CALLER (CSDeviceContext*)FileContext->UParam,
+	return mCSDevice->readObject(START_CALLER (CSDeviceContext*)FileContext->UParam,
 		Buffer, Offset, Length, PBytesTransferred);
-
-	if (ret)
-	{
-		if (FileContext->FileInfo.FileSize == 0)
-		{
-			// エクスプローラーの機能でコピーしたときはここは通過しない
-			// おそらく、ファイルサイズとタイムスタンプの情報で勝手に作成してくれる
-
-			traceW(L"return EOF");
-			return STATUS_END_OF_FILE;
-		}
-		
-		traceW(L"return SUCCESS");
-		return STATUS_SUCCESS;
-	}
-
-	traceW(L"return ERROR");
-	return STATUS_IO_DEVICE_ERROR;
 }
 
 NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
@@ -268,7 +224,7 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 	StatsIncr(DoReadDirectory);
 
 	NEW_LOG_BLOCK();
-	APP_ASSERT(FileContext);
+	APP_ASSERT(FileContext && Buffer && PBytesTransferred);
 
 	traceW(L"FileName: \"%s\"", FileContext->FileName);
 

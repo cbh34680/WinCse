@@ -24,30 +24,53 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
         return nullptr;
     }
 
-    const auto& result = outcome.GetResult();
-
     auto dirInfo = makeDirInfo(argObjKey);
     APP_ASSERT(dirInfo);
 
-    const auto FileSize = result.GetContentLength();
+    const auto& result = outcome.GetResult();
+    const auto fileSize = result.GetContentLength();
     const auto lastModified = UtcMillisToWinFileTime100ns(result.GetLastModified().Millis());
 
-    UINT32 FileAttributes = mDefaultFileAttributes;
+    UINT64 creationTime = lastModified;
+    UINT64 lastAccessTime = lastModified;
+    UINT64 lastWriteTime = lastModified;
 
-    if (argObjKey.key() != L"." && argObjKey.key() != L".." && argObjKey.key()[0] == L'.')
+    const auto& metadata = result.GetMetadata();
+
+    if (metadata.find("wincse-creation-time") != metadata.end())
     {
-        // ".", ".." 以外で先頭が "." で始まっているものは隠しファイルの扱い
-
-        traceW(L"set hidden");
-        FileAttributes |= FILE_ATTRIBUTE_HIDDEN;
+        creationTime = std::stoull(metadata.at("wincse-creation-time"));
     }
 
-    dirInfo->FileInfo.FileAttributes = FileAttributes;
-    dirInfo->FileInfo.FileSize = FileSize;
-    dirInfo->FileInfo.AllocationSize = (FileSize + ALLOCATION_UNIT - 1) / ALLOCATION_UNIT * ALLOCATION_UNIT;
-    dirInfo->FileInfo.CreationTime = lastModified;
-    dirInfo->FileInfo.LastAccessTime = lastModified;
-    dirInfo->FileInfo.LastWriteTime = lastModified;
+    if (metadata.find("wincse-last-access-time") != metadata.end())
+    {
+        lastAccessTime = std::stoull(metadata.at("wincse-last-access-time"));
+    }
+
+    if (metadata.find("wincse-last-write-time") != metadata.end())
+    {
+        lastWriteTime = std::stoull(metadata.at("wincse-last-write-time"));
+    }
+
+    UINT32 fileAttributes = mDefaultFileAttributes;
+
+    if (argObjKey.meansHidden())
+    {
+        // 隠しファイル
+        fileAttributes |= FILE_ATTRIBUTE_HIDDEN;
+    }
+
+    if (fileAttributes == 0)
+    {
+        fileAttributes = FILE_ATTRIBUTE_NORMAL;
+    }
+
+    dirInfo->FileInfo.FileAttributes = fileAttributes;
+    dirInfo->FileInfo.FileSize = fileSize;
+    dirInfo->FileInfo.AllocationSize = (fileSize + ALLOCATION_UNIT - 1) / ALLOCATION_UNIT * ALLOCATION_UNIT;
+    dirInfo->FileInfo.CreationTime = creationTime;
+    dirInfo->FileInfo.LastAccessTime = lastAccessTime;
+    dirInfo->FileInfo.LastWriteTime = lastWriteTime;
     dirInfo->FileInfo.ChangeTime = lastModified;
 
     //dirInfo->FileInfo.IndexNumber = HashString(argObjKey.bucket() + L'/' + argObjKey.key());
@@ -163,7 +186,7 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
         {
             // タイムスタンプが採取できなければ参照ディレクトリのものを採用
 
-            commonPrefixTime = mWorkDirTime;
+            commonPrefixTime = mWorkDirCTime;
         }
 
         // ディレクトリの収集
@@ -301,6 +324,11 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
             }
 
             dirInfo->FileInfo.FileAttributes |= FileAttributes;
+
+            if (dirInfo->FileInfo.FileAttributes == 0)
+            {
+                dirInfo->FileInfo.FileAttributes = FILE_ATTRIBUTE_NORMAL;
+            }
 
             const auto lastModified = UtcMillisToWinFileTime100ns(it.GetLastModified().Millis());
 

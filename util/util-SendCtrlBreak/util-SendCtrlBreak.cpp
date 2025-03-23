@@ -12,7 +12,7 @@
 
 static void ReAttachConout()
 {
-    AllocConsole();
+    ::AllocConsole();
     FILE* fp = nullptr;
     freopen_s(&fp, "CONOUT$", "w", stdout);
 }
@@ -44,32 +44,32 @@ int main(int argc, char** argv)
         goto exit;
     }
 
-    hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, processId);
+    hProcess = ::OpenProcess(PROCESS_TERMINATE, FALSE, processId);
     if (hProcess == NULL) {
-        std::cerr << "fault: OpenProcess: " << GetLastError() << std::endl;
+        std::cerr << "fault: OpenProcess: " << ::GetLastError() << std::endl;
         goto exit;
     }
 
     // 最初に現在のコンソールをデタッチしないと他のプロセスにアタッチできない
-    if (!FreeConsole())
+    if (!::FreeConsole())
     {
-        std::cerr << "fault: FreeConsole: " << GetLastError() << std::endl;
+        std::cerr << "fault: FreeConsole: " << ::GetLastError() << std::endl;
         goto exit;
     }
 
     // コンソールをアタッチ
-    if (!AttachConsole(processId))
+    if (!::AttachConsole(processId))
     {
-        const auto err = GetLastError();
+        const auto err = ::GetLastError();
         ReAttachConout();
         std::cerr << "fault: AttachConsole: " << err << std::endl;
         goto exit;
     }
 
     // Ctrl+Break シグナルを送信
-    if (!SetConsoleCtrlHandler(NULL, TRUE))
+    if (!::SetConsoleCtrlHandler(NULL, TRUE))
     {
-        const auto err = GetLastError();
+        const auto err = ::GetLastError();
         ReAttachConout();
         std::cerr << "fault: SetConsoleCtrlHandler: " << err << std::endl;
         goto exit;
@@ -91,7 +91,7 @@ int main(int argc, char** argv)
 exit:
     if (hProcess)
     {
-        CloseHandle(hProcess);
+        ::CloseHandle(hProcess);
     }
 
     return ret;

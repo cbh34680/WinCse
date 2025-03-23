@@ -20,104 +20,85 @@ extern "C"
         IWorker* argDelayedWorker, IWorker* argIdleWorker);
 }
 
-static int app_main(int argc, wchar_t** argv)
+static void test1_1(ICSDevice* cs)
 {
-    std::wstring tmpDir;
-    app_tempdir(&tmpDir);
-
-    if (CreateLogger(tmpDir.c_str(), argv[1], L"aws-s3"))
+    DirInfoListType buckets;
+    if (cs->listBuckets(START_CALLER &buckets, {}))
     {
-        NoopWorker wk1;
-        NoopWorker wk2;
-
-        ICSDevice* cs = (ICSDevice*)NewCSDevice(tmpDir.c_str(), L"default", &wk1, &wk2);
-
-        FSP_FSCTL_VOLUME_PARAMS vp{ };
-
-        cs->PreCreateFilesystem(argv[2], &vp);
-
-        DirInfoListType buckets;
-        if (cs->listBuckets(START_CALLER &buckets, {}))
+        for (const auto& bucket: buckets)
         {
-            for (const auto& bucket: buckets)
+            const auto bucketName{ bucket->FileNameBuf };
+
+            DirInfoListType objs;
+
+            if (!cs->listObjects(START_CALLER ObjectKey{ bucketName, L"" }, &objs))
             {
-                const auto bucketName{ bucket->FileNameBuf };
+                continue;
+            }
 
-                DirInfoListType objs;
-
-                if (!cs->listObjects(START_CALLER ObjectKey{ bucketName, L"" }, &objs))
+            for (const auto& obj: objs)
+            {
+                if (FA_IS_DIR(obj->FileInfo.FileAttributes))
                 {
                     continue;
                 }
 
-                for (const auto& obj: objs)
+                if (obj->FileInfo.FileSize >= (FILESIZE_1BU * 1024 * 1024))
                 {
-                    if (FA_IS_DIR(obj->FileInfo.FileAttributes))
-                    {
-                        continue;
-                    }
-
-                    if (obj->FileInfo.FileSize >= 1024ULL * 1024)
-                    {
-                        // !!!
-                        continue;
-                    }
-
-                    FSP_FSCTL_FILE_INFO fileInfo{};
-
-                    if (!cs->headObject(START_CALLER ObjectKey{ bucketName, obj->FileNameBuf }, &fileInfo))
-                    {
-                        continue;
-                    }
-
-                    UINT32 CreateOptions = FILE_FLAG_POSIX_SEMANTICS | FILE_ATTRIBUTE_NORMAL;
-                    UINT32 GrantedAccess = GENERIC_READ;
-
-                    ObjectKey objKey{ bucketName, obj->FileNameBuf };
-
-                    CSDeviceContext* ctx = cs->open(START_CALLER objKey, CreateOptions, GrantedAccess, fileInfo);
-                    if (!ctx)
-                    {
-                        continue;
-                    }
-
-                    bool next = true;
-
-                    char buffer[512] = {};
-                    UINT64 offset = 0ULL;
-                    ULONG numread = 0UL;
-                    ULONG total = 0UL;
-
-                    do
-                    {
-                        offset += numread;
-                        total += numread;
-
-                        numread = 0;
-                        next = cs->readObject(START_CALLER ctx, buffer, offset, sizeof(buffer), &numread);
-
-                        // !!
-                        break;
-
-                        std::cout.write(buffer, numread);
-                    }
-                    while (next);
-
-                    std::cout << std::endl;
-
-                    std::cout << "total: " << total << std::endl;
-
-                    cs->close(START_CALLER ctx);
+                    // !!!
+                    continue;
                 }
+
+                FSP_FSCTL_FILE_INFO fileInfo{};
+
+                if (!cs->headObject(START_CALLER ObjectKey{ bucketName, obj->FileNameBuf }, &fileInfo))
+                {
+                    continue;
+                }
+
+                UINT32 CreateOptions = FILE_ATTRIBUTE_NORMAL;
+                UINT32 GrantedAccess = GENERIC_READ;
+
+                ObjectKey objKey{ bucketName, obj->FileNameBuf };
+                std::wcout << L"objKey=" << objKey.c_str() << std::endl;
+
+                CSDeviceContext* ctx = cs->open(START_CALLER objKey, CreateOptions, GrantedAccess, fileInfo);
+                if (!ctx)
+                {
+                    continue;
+                }
+
+                NTSTATUS ntstatus = STATUS_UNSUCCESSFUL;
+
+                char buffer[512] = {};
+                UINT64 offset = 0ULL;
+                ULONG numread = 0UL;
+                ULONG total = 0UL;
+
+                do
+                {
+                    offset += numread;
+                    total += numread;
+
+                    numread = 0;
+
+                    // readObject_Simple() ‚Å‚µ‚©“®‚©‚È‚¢
+                    ntstatus = cs->readObject(START_CALLER ctx, buffer, offset, sizeof(buffer), &numread);
+
+                    std::cout.write(buffer, numread);
+                }
+                while (NT_SUCCESS(ntstatus));
+
+                std::cout << std::endl;
+
+                std::cout << "total: " << total << std::endl;
+
+                cs->close(START_CALLER ctx);
+
+                break;
             }
         }
-
-        delete cs;
     }
-
-    DeleteLogger();
-
-    return 0;
 }
 
 int test1(int argc, wchar_t** argv)
@@ -144,7 +125,26 @@ int test1(int argc, wchar_t** argv)
 
     //OpenEvent(EVENT_ALL_ACCESS, FALSE, L"Global\\WinCse\\test");
 
-    app_main(argc, argv);
+    std::wstring tmpDir;
+    app_tempdir(&tmpDir);
+
+    if (CreateLogger(tmpDir.c_str(), argv[1], L"aws-s3"))
+    {
+        NoopWorker wk1;
+        NoopWorker wk2;
+
+        ICSDevice* cs = (ICSDevice*)NewCSDevice(tmpDir.c_str(), L"default", &wk1, &wk2);
+
+        FSP_FSCTL_VOLUME_PARAMS vp{ };
+
+        cs->PreCreateFilesystem(argv[2], &vp);
+
+        test1_1(cs);
+
+        delete cs;
+    }
+
+    DeleteLogger();
 
 #ifdef _DEBUG
     ::_CrtDumpMemoryLeaks();

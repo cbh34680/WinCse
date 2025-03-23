@@ -213,7 +213,7 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
         mRefFile = ::CreateFileW
         (
             confPath.c_str(),
-            GENERIC_READ,
+            FILE_READ_ATTRIBUTES | READ_CONTROL,
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,		// 共有モード
             NULL,														// セキュリティ属性
             OPEN_EXISTING,
@@ -230,12 +230,12 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
         mRefDir = ::CreateFileW
         (
             argWorkDir,
-            GENERIC_READ,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-            NULL,
+            FILE_READ_ATTRIBUTES | READ_CONTROL,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,     // 共有モード
+            NULL,                                                       // セキュリティ属性
             OPEN_EXISTING,
             FILE_FLAG_BACKUP_SEMANTICS,
-            0
+            NULL                                                        // テンプレートなし
         );
 
         if (mRefDir.invalid())
@@ -295,7 +295,7 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
             return false;
         }
 
-        mWorkDirTime = STCTimeToWinFileTimeW(workDir);
+        mWorkDirCTime = STCTimeToWinFileTimeW(workDir);
         mWorkDir = workDir;
         mCacheDataDir = cacheDataDir;
         mCacheReportDir = cacheReportDir;

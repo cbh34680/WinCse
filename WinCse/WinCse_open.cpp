@@ -6,6 +6,137 @@
 using namespace WinCseLib;
 
 
+NTSTATUS WinCse::DoCreate(const wchar_t* FileName,
+	UINT32 CreateOptions, UINT32 GrantedAccess, UINT32 FileAttributes,
+	PSECURITY_DESCRIPTOR SecurityDescriptor, UINT64 AllocationSize,
+	PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo)
+{
+	StatsIncr(DoCreate);
+	NEW_LOG_BLOCK();
+	APP_ASSERT(FileName);
+	APP_ASSERT(FileName[0] == L'\\');
+	APP_ASSERT(!mReadonlyVolume);		// おそらくシェルで削除操作が止められている
+
+	traceW(L"FileName: \"%s\"", FileName);
+	traceW(L"CreateOptions=%u, GrantedAccess=%u, FileAttributes=%u, SecurityDescriptor=%p, AllocationSize=%llu, PFileContext=%p, FileInfo=%p",
+		CreateOptions, GrantedAccess, FileAttributes, SecurityDescriptor, AllocationSize, PFileContext, FileInfo);
+
+	const ObjectKey objKey{ ObjectKey::fromWinPath(FileName) };
+	NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
+	PTFS_FILE_CONTEXT* FileContext = nullptr;
+	FSP_FSCTL_FILE_INFO fileInfo{};
+
+	if (isFileNameIgnored(FileName))
+	{
+		ntstatus = STATUS_OBJECT_NAME_INVALID;
+		goto exit;
+	}
+
+	if (!objKey.valid())
+	{
+		traceW(L"illegal FileName: \"%s\"", FileName);
+		ntstatus = STATUS_OBJECT_NAME_INVALID;
+		goto exit;
+	}
+
+	traceW(L"objKey=%s", objKey.str().c_str());
+
+	if (!mCSDevice->headBucket(START_CALLER objKey.bucket()))
+	{
+		// "\\" に新規作成しようとしたとき
+		//
+		// 意味的にバケットの作成になるので、拒否
+
+		traceW(L"fault: headBucket");
+		goto exit;
+
+		//return STATUS_ACCESS_DENIED;				// 理想的なメッセージだが、何度も呼び出される
+		//return STATUS_INVALID_PARAMETER;			// 変なメッセージになる
+		//return STATUS_NOT_IMPLEMENTED;			// 無効な MS-DOS ファンクション (何度も呼び出されてしまう)
+	}
+
+	if (objKey.meansFile())
+	{
+		if (mCSDevice->headObject(START_CALLER objKey.toDir(), nullptr))
+		{
+			// ファイル名と同じディレクトリが存在するとき
+			traceW(L"fault: already exists same name dir");
+
+			ntstatus = STATUS_OBJECT_NAME_COLLISION;
+			goto exit;
+		}
+	}
+
+	//
+	FileContext = (PTFS_FILE_CONTEXT*)calloc(1, sizeof(*FileContext));
+	if (0 == FileContext)
+	{
+		ntstatus = STATUS_INSUFFICIENT_RESOURCES;
+		goto exit;
+	}
+
+	FileContext->FileName = _wcsdup(FileName);
+	if (!FileContext->FileName)
+	{
+		traceW(L"fault: _wcsdup");
+		ntstatus = STATUS_INSUFFICIENT_RESOURCES;
+		goto exit;
+	}
+
+	if (objKey.hasKey())
+	{
+		// クラウド・ストレージのコンテキストを UParam に保存させる
+
+		StatsIncr(_CallCreate);
+
+		CSDeviceContext* ctx = mCSDevice->create(START_CALLER objKey,
+			CreateOptions, GrantedAccess, FileAttributes, &fileInfo);
+
+		if (!ctx)
+		{
+			traceW(L"fault: create");
+			ntstatus = STATUS_DEVICE_NOT_READY;
+			goto exit;
+		}
+
+		FileContext->UParam = ctx;
+	}
+	else
+	{
+		// "\\bucket" に対する create --> ディレクトリ
+
+		ntstatus = GetFileInfoInternal(mRefDir.handle(), &fileInfo);
+		if (!NT_SUCCESS(ntstatus))
+		{
+			traceW(L"fault: GetFileInfoInternal");
+			goto exit;
+		}
+	}
+
+	FileContext->FileInfo = fileInfo;
+
+	// ゴミ回収対象に登録
+	mResourceSweeper.add(FileContext);
+
+	*PFileContext = FileContext;
+	FileContext = nullptr;
+
+	*FileInfo = fileInfo;
+
+	ntstatus = STATUS_SUCCESS;
+
+exit:
+	if (FileContext)
+	{
+		free(FileContext->FileName);
+	}
+	free(FileContext);
+
+	traceW(L"return NTSTATUS=%ld", ntstatus);
+
+	return ntstatus;
+}
+
 NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
 	PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo)
 {
@@ -84,7 +215,7 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 
 			if (mMaxFileSize > 0)
 			{
-				if (fileInfo.FileSize > 1024ULL * 1024 * mMaxFileSize)
+				if (fileInfo.FileSize > (FILESIZE_1BU * 1024 * 1024 * mMaxFileSize))
 				{
 					ntstatus = STATUS_DEVICE_NOT_READY;
 					traceW(L"%llu: When a file size exceeds the maximum size that can be opened.", fileInfo.FileSize);
@@ -100,7 +231,7 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 		CSDeviceContext* ctx = mCSDevice->open(START_CALLER objKey, CreateOptions, GrantedAccess, fileInfo);
 		if (!ctx)
 		{
-			traceW(L"fault: openFile");
+			traceW(L"fault: open");
 			ntstatus = STATUS_DEVICE_NOT_READY;
 			goto exit;
 		}
@@ -111,7 +242,7 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 	FileContext->FileInfo = fileInfo;
 
 	// ゴミ回収対象に登録
-	mResourceRAII.add(FileContext);
+	mResourceSweeper.add(FileContext);
 
 	*PFileContext = FileContext;
 	FileContext = nullptr;
@@ -159,66 +290,11 @@ NTSTATUS WinCse::DoClose(PTFS_FILE_CONTEXT* FileContext)
 	FspFileSystemDeleteDirectoryBuffer(&FileContext->DirBuffer);
 
 	// ゴミ回収対象から削除
-	mResourceRAII.del(FileContext);
+	mResourceSweeper.remove(FileContext);
 
 	free(FileContext);
 
 	return STATUS_SUCCESS;
-}
-
-//
-// エクスプローラーを開いたまま切断すると WinFsp の Close が実行されない (為だと思う)
-// ので、DoOpen が呼ばれて DoClose が呼ばれていないものは、アプリケーション終了時に
-// 強制的に DoClose を呼び出す
-// 
-// 放置しても問題はないが、デバッグ時にメモリリークとして報告されてしまい
-// 本来の意味でのメモリリークと混在してしまうため
-//
-WinCse::ResourceRAII::~ResourceRAII()
-{
-	NEW_LOG_BLOCK();
-
-	// DoClose で mOpenAddrs.erase() をするのでコピーが必要
-
-	auto copy{ mOpenAddrs };
-
-	for (auto& FileContext: copy)
-	{
-		::_InterlockedIncrement(&(mThat->mStats->_ForceClose));
-
-		traceW(L"force close address=%p", FileContext);
-
-		mThat->DoClose(FileContext);
-	}
-}
-
-//
-// ここから下のメソッドは THREAD_SAFE マクロによる修飾が必要
-//
-static std::mutex gGuard;
-#define THREAD_SAFE() std::lock_guard<std::mutex> lock_(gGuard)
-
-void WinCse::ResourceRAII::add(PTFS_FILE_CONTEXT* FileContext)
-{
-	THREAD_SAFE();
-	NEW_LOG_BLOCK();
-	APP_ASSERT(mOpenAddrs.find(FileContext) == mOpenAddrs.end());
-
-	traceW(L"add address=%p", FileContext);
-
-	mOpenAddrs.insert(FileContext);
-}
-
-void WinCse::ResourceRAII::del(PTFS_FILE_CONTEXT* FileContext)
-{
-	THREAD_SAFE();
-	NEW_LOG_BLOCK();
-	auto it{ mOpenAddrs.find(FileContext) };
-	APP_ASSERT(it != mOpenAddrs.end());
-
-	traceW(L"remove address=%p", FileContext);
-
-	mOpenAddrs.erase(FileContext);
 }
 
 // EOF

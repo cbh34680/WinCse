@@ -108,7 +108,7 @@ bool WinCse::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PAR
 		mRefFile = ::CreateFileW
 		(
 			confPath.c_str(),
-			GENERIC_READ,
+			FILE_READ_ATTRIBUTES | READ_CONTROL,
 			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,		// 共有モード
 			NULL,														// セキュリティ属性
 			OPEN_EXISTING,
@@ -125,12 +125,12 @@ bool WinCse::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PAR
 		mRefDir = ::CreateFileW
 		(
 			argWorkDir,
-			GENERIC_READ,
+			FILE_READ_ATTRIBUTES | READ_CONTROL,
 			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
 			NULL,
 			OPEN_EXISTING,
 			FILE_FLAG_BACKUP_SEMANTICS,
-			0
+			NULL
 		);
 
 		if (mRefDir.invalid())

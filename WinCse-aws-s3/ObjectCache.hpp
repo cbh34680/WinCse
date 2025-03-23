@@ -138,7 +138,7 @@ public:
 
 	int deleteOldRecords(CALLER_ARG std::chrono::system_clock::time_point threshold);
 
-	int deleteByObjKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
+	int deleteByObjectKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
 };
 
 // EOF

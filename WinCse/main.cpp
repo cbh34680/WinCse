@@ -460,13 +460,13 @@ static void writeStats(
             fprintf(fp, "\t" "GetFileInfoInternal: %ld\n", libStats->GetFileInfoInternal);
             fprintf(fp, "\t" "GetSecurity: %ld\n", libStats->GetSecurity);
             fprintf(fp, "\t" "GetVolumeInfo: %ld\n", libStats->GetVolumeInfo);
+            fprintf(fp, "\t" "Create: %ld\n", libStats->Create);
             fprintf(fp, "\t" "Open: %ld\n", libStats->Open);
             fprintf(fp, "\t" "Cleanup: %ld\n", libStats->Cleanup);
             fprintf(fp, "\t" "Close: %ld\n", libStats->Close);
-            fprintf(fp, "\t" "ReadDirectory: %ld\n", libStats->ReadDirectory);
             fprintf(fp, "\t" "Read: %ld\n", libStats->Read);
             fprintf(fp, "\t" "Write: %ld\n", libStats->Write);
-            fprintf(fp, "\t" "Create: %ld\n", libStats->Create);
+            fprintf(fp, "\t" "ReadDirectory: %ld\n", libStats->ReadDirectory);
             fprintf(fp, "\t" "Flush: %ld\n", libStats->Flush);
             fprintf(fp, "\t" "Overwrite: %ld\n", libStats->Overwrite);
             fprintf(fp, "\t" "Rename: %ld\n", libStats->Rename);
@@ -485,13 +485,13 @@ static void writeStats(
             fprintf(fp, "\t" "DoGetFileInfo: %ld\n", appStats->DoGetFileInfo);
             fprintf(fp, "\t" "DoGetSecurity: %ld\n", appStats->DoGetSecurity);
             fprintf(fp, "\t" "DoGetVolumeInfo: %ld\n", appStats->DoGetVolumeInfo);
+            fprintf(fp, "\t" "DoCreate: %ld\n", appStats->DoCreate);
             fprintf(fp, "\t" "DoOpen: %ld\n", appStats->DoOpen);
             fprintf(fp, "\t" "DoCleanup: %ld\n", appStats->DoCleanup);
             fprintf(fp, "\t" "DoClose: %ld\n", appStats->DoClose);
-            fprintf(fp, "\t" "DoReadDirectory: %ld\n", appStats->DoReadDirectory);
             fprintf(fp, "\t" "DoRead: %ld\n", appStats->DoRead);
             fprintf(fp, "\t" "DoWrite: %ld\n", appStats->DoWrite);
-            fprintf(fp, "\t" "DoCreate: %ld\n", appStats->DoCreate);
+            fprintf(fp, "\t" "DoReadDirectory: %ld\n", appStats->DoReadDirectory);
             fprintf(fp, "\t" "DoFlush: %ld\n", appStats->DoFlush);
             fprintf(fp, "\t" "DoOverwrite: %ld\n", appStats->DoOverwrite);
             fprintf(fp, "\t" "DoRename: %ld\n", appStats->DoRename);
@@ -501,6 +501,7 @@ static void writeStats(
             fprintf(fp, "\t" "DoSetPath: %ld\n", appStats->DoSetPath);
             fprintf(fp, "\t" "DoSetSecurity: %ld\n", appStats->DoSetSecurity);
 
+            fprintf(fp, "\t" "_CallCreate: %ld\n", appStats->_CallCreate);
             fprintf(fp, "\t" "_CallOpen: %ld\n", appStats->_CallOpen);
             fprintf(fp, "\t" "_CallClose: %ld\n", appStats->_CallClose);
             fprintf(fp, "\t" "_ForceClose: %ld\n", appStats->_ForceClose);
@@ -518,18 +519,9 @@ static void writeStats(
             fprintf(fp, "\t" "cleanup: %ld\n", devStats->cleanup);
             fprintf(fp, "\t" "close: %ld\n", devStats->close);
             fprintf(fp, "\t" "readObject: %ld\n", devStats->readObject);
-            fprintf(fp, "\t" "remove: %ld\n", devStats->remove);
             fprintf(fp, "\t" "writeObject: %ld\n", devStats->writeObject);
-            fprintf(fp, "\t" "setFileSize: %ld\n", devStats->setFileSize);
+            fprintf(fp, "\t" "remove: %ld\n", devStats->remove);
 
-            fprintf(fp, "\t" "_CreateEvent: %ld\n", devStats->_CreateEvent);
-            fprintf(fp, "\t" "_CloseHandle_Event: %ld\n", devStats->_CloseHandle_Event);
-            fprintf(fp, "\t" "_CreateFile: %ld\n", devStats->_CreateFile);
-            fprintf(fp, "\t" "_CloseHandle_File: %ld\n", devStats->_CloseHandle_File);
-            fprintf(fp, "\t" "_unlockFindInParentOfDisplay: %ld\n", devStats->_unlockFindInParentOfDisplay);
-            fprintf(fp, "\t" "_unlockHeadObject_File: %ld\n", devStats->_unlockHeadObject_File);
-            fprintf(fp, "\t" "_unlockListObjects_Dir: %ld\n", devStats->_unlockListObjects_Dir);
-            fprintf(fp, "\t" "_unlockListObjects_Display: %ld\n", devStats->_unlockListObjects_Display);
             fputs("\n", fp);
 
             fclose(fp);

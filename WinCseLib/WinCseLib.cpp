@@ -51,7 +51,7 @@ void AbnormalEnd(const char* file, const int line, const char* func, const int s
 	ssCause << "); ";
 	ssCause << func;
 	ssCause << std::endl;
-	ssCause << "GetLastError()=";
+	ssCause << "LastError=";
 	ssCause << ::GetLastError();
 	ssCause << std::endl;
 	ssCause << std::endl;
@@ -262,7 +262,7 @@ bool GetIniStringA(const std::string& confPath, const char* argSection, const ch
 //
 // ObjectKey
 //
-void ObjectKey::reset()
+void ObjectKey::reset() noexcept
 {
 	mHasBucket = !mBucket.empty();
 	mHasKey = !mKey.empty();
@@ -441,6 +441,8 @@ CSDeviceContext::CSDeviceContext(
 {
 	if (FA_IS_DIR(mFileInfo.FileAttributes))
 	{
+		// ディレクトリの場合は '/' を付与する
+
 		mObjKey = argObjKey.toDir();
 	}
 	else
@@ -454,32 +456,59 @@ bool CSDeviceContext::isDir() const
 	return FA_IS_DIR(mFileInfo.FileAttributes);
 }
 
-std::wstring CSDeviceContext::getLocalPath() const
+std::wstring CSDeviceContext::getFilePathW() const
 {
 	return mCacheDataDir + L'\\' + EncodeFileNameToLocalNameW(getRemotePath());
 }
 
-bool CSDeviceContext::setLocalFileTime(UINT64 argCreationTime)
+std::string CSDeviceContext::getFilePathA() const
 {
-	NEW_LOG_BLOCK();
+	return WC2MB(getFilePathW());
+}
 
-	APP_ASSERT(mLocalFile.valid());
+//
+// FileHandle
+//
+bool FileHandle::setFileTime(UINT64 argCreationTime, UINT64 argLastWriteTime)
+{
+	APP_ASSERT(valid());
 
-	FILETIME ft;
-	WinFileTime100nsToWinFile(argCreationTime, &ft);
+	FILETIME ftCreation;
+	WinFileTime100nsToWinFile(argCreationTime, &ftCreation);
+
+	FILETIME ftLastWrite;
+	WinFileTime100nsToWinFile(argLastWriteTime, &ftLastWrite);
 
 	FILETIME ftNow;
 	::GetSystemTimeAsFileTime(&ftNow);
 
-	if (!::SetFileTime(mLocalFile.handle(), &ft, &ftNow, &ft))
+	if (!::SetFileTime(mHandle, &ftCreation, &ftNow, &ftLastWrite))
 	{
-		const auto lerr = ::GetLastError();
-		traceW(L"fault: SetFileTime lerr=%ld", lerr);
-
 		return false;
 	}
 
 	return true;
+}
+
+LONGLONG FileHandle::getFileSize()
+{
+	APP_ASSERT(valid());
+
+	LARGE_INTEGER fileSize;
+
+	if (!::GetFileSizeEx(mHandle, &fileSize))
+	{
+		return -1LL;
+	}
+
+	return fileSize.QuadPart;
+}
+
+BOOL FileHandle::flushFileBuffers()
+{
+	APP_ASSERT(valid());
+
+	return ::FlushFileBuffers(mHandle);
 }
 
 //

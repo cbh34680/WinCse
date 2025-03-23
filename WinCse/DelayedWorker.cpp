@@ -60,8 +60,10 @@ bool DelayedWorker::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileS
 		ss << i;
 
 		auto h = thr.native_handle();
-		::SetThreadDescription(h, ss.str().c_str());
+		NTSTATUS ntstatus = ::SetThreadDescription(h, ss.str().c_str());
 		//::SetThreadPriority(h, THREAD_PRIORITY_BELOW_NORMAL);
+
+		APP_ASSERT(NT_SUCCESS(ntstatus));
 	}
 
 	return true;
@@ -98,7 +100,7 @@ void DelayedWorker::OnSvcStop()
 	mTaskQueue.clear();
 }
 
-void DelayedWorker::listenEvent(const int i)
+void DelayedWorker::listenEvent(const int argThreadIndex)
 {
 	NEW_LOG_BLOCK();
 
@@ -106,12 +108,12 @@ void DelayedWorker::listenEvent(const int i)
 	{
 		try
 		{
-			traceW(L"(%d): wait for signal ...", i);
+			traceW(L"(%d): wait for signal ...", argThreadIndex);
 			const auto reason = ::WaitForSingleObject(mEvent.handle(), INFINITE);
 
 			if (mEndWorkerFlag)
 			{
-				traceW(L"(%d): receive end worker request", i);
+				traceW(L"(%d): receive end worker request", argThreadIndex);
 				break;
 			}
 
@@ -125,12 +127,12 @@ void DelayedWorker::listenEvent(const int i)
 				}
 				case WAIT_OBJECT_0:
 				{
-					traceW(L"(%d): wait for signal: catch signal", i);
+					traceW(L"(%d): wait for signal: catch signal", argThreadIndex);
 					break;
 				}
 				default:
 				{
-					traceW(L"(%d): wait for signal: error code=%ld, continue", i, reason);
+					traceW(L"(%d): wait for signal: error code=%ld, continue", argThreadIndex, reason);
 					throw std::runtime_error("illegal route");
 
 					break;
@@ -143,13 +145,13 @@ void DelayedWorker::listenEvent(const int i)
 				auto task{ dequeueTask() };
 				if (!task)
 				{
-					traceW(L"(%d): no more oneshot-tasks", i);
+					traceW(L"(%d): no more oneshot-tasks", argThreadIndex);
 					break;
 				}
 
-				traceW(L"(%d): run oneshot task ...", i);
+				traceW(L"(%d): run oneshot task ...", argThreadIndex);
 				task->run(std::wstring(task->mCaller) + L"->" + __FUNCTIONW__);
-				traceW(L"(%d): run oneshot task done", i);
+				traceW(L"(%d): run oneshot task done", argThreadIndex);
 
 				// 処理するごとに他のスレッドに回す
 				//::SwitchToThread();
@@ -157,16 +159,31 @@ void DelayedWorker::listenEvent(const int i)
 		}
 		catch (const std::exception& err)
 		{
-			traceA("(%d): what: %s", i, err.what());
+			traceA("(%d): what: %s", argThreadIndex, err.what());
 			break;
 		}
 		catch (...)
 		{
-			traceA("(%d): unknown error, continue", i);
+			traceA("(%d): unknown error, continue", argThreadIndex);
 		}
 	}
 
-	traceW(L"(%d): exit event loop", i);
+
+	// 残ったタスクはキャンセルして破棄
+
+	while (1)
+	{
+		auto task{ dequeueTask() };
+		if (!task)
+		{
+			traceW(L"(%d): no more oneshot-tasks", argThreadIndex);
+			break;
+		}
+
+		task->cancelled(std::wstring(task->mCaller) + L"->" + __FUNCTIONW__);
+	}
+
+	traceW(L"(%d): exit event loop", argThreadIndex);
 }
 
 //
@@ -210,6 +227,18 @@ bool DelayedWorker::addTask(CALLER_ARG WinCseLib::ITask* argTask, WinCseLib::Pri
 	NEW_LOG_BLOCK();
 	APP_ASSERT(argTask)
 
+	if (mEndWorkerFlag)
+	{
+		// 念のため、ワーカー・スレッド停止後のリクエストは破棄
+		// --> 基本的にはありえない
+
+		argTask->cancelled(CONT_CALLER0);
+
+		delete argTask;
+
+		return false;
+	}
+
 	bool added = false;
 
 #if ENABLE_TASK
@@ -233,7 +262,7 @@ bool DelayedWorker::addTask(CALLER_ARG WinCseLib::ITask* argTask, WinCseLib::Pri
 		{
 			const auto argTaskName{ argTask->synonymString() };
 
-			// キャンセル可能の時には synonym は設定されるべき
+			// 無視可能の時には synonym は設定されるべき
 			APP_ASSERT(!argTaskName.empty());
 
 			// 無視可能
@@ -283,11 +312,15 @@ bool DelayedWorker::addTask(CALLER_ARG WinCseLib::ITask* argTask, WinCseLib::Pri
 	}
 	else
 	{
+		argTask->cancelled(CONT_CALLER0);
+
 		delete argTask;
 	}
 
 #else
 	// ワーカー処理が無効な場合は、タスクのリクエストを無視
+	argTask->cancelled();
+
 	delete argTask;
 
 #endif

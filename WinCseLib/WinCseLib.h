@@ -30,100 +30,64 @@
 typedef std::shared_ptr<FSP_FSCTL_DIR_INFO> DirInfoType;
 typedef std::list<DirInfoType> DirInfoListType;
 
-#define CALLER_ARG0			const std::wstring& caller_
-#define CALLER_ARG			CALLER_ARG0,
+#define CALLER_ARG0		const std::wstring& caller_
+#define CALLER_ARG		CALLER_ARG0,
+
+#define START_CALLER0   std::wstring(__FUNCTIONW__)
+#define START_CALLER	START_CALLER0,
+
+#define CALL_FROM()		(caller_)
+#define CALL_CHAIN()	(CALL_FROM() + L"->" + __FUNCTIONW__)
+#define CONT_CALLER0	CALL_CHAIN()
+#define CONT_CALLER		CONT_CALLER0,
 
 namespace WinCseLib {
 
-#if 0
-class FileHandleRAII
-{
-	HANDLE mHandle;
+const int64_t FILESIZE_1B = 1LL;
+const uint64_t FILESIZE_1BU = 1ULL;
 
-public:
-	HANDLE handle() const { return mHandle; }
-
-	bool invalid() const { return mHandle == INVALID_HANDLE_VALUE; }
-	bool valid() const { return !invalid(); }
-
-	FileHandleRAII() : mHandle(INVALID_HANDLE_VALUE) { }
-	FileHandleRAII(HANDLE argHandle) : mHandle(argHandle) { }
-
-	FileHandleRAII& operator=(HANDLE argHandle)
-	{
-		close();
-		mHandle = argHandle;
-
-		return *this;
-	}
-
-	void close()
-	{
-		if (mHandle != INVALID_HANDLE_VALUE)
-		{
-			::CloseHandle(mHandle);
-			mHandle = INVALID_HANDLE_VALUE;
-		}
-	}
-
-	~FileHandleRAII() { close(); }
-};
-
-class EventHandleRAII
-{
-	HANDLE mHandle;
-
-public:
-	HANDLE handle() const { return mHandle; }
-
-	bool invalid() const { return !mHandle; }
-	bool valid() const { return mHandle; }
-
-	EventHandleRAII() : mHandle(NULL) { }
-	EventHandleRAII(HANDLE argHandle) : mHandle(argHandle) { }
-
-	EventHandleRAII& operator=(HANDLE argHandle)
-	{
-		close();
-		mHandle = argHandle;
-
-		return *this;
-	}
-
-	void close()
-	{
-		if (mHandle)
-		{
-			::CloseHandle(mHandle);
-			mHandle = NULL;
-		}
-	}
-
-	~EventHandleRAII() { close(); }
-};
-
-#else
 template<HANDLE InvalidHandleValue>
 class HandleRAII
 {
+protected:
 	HANDLE mHandle;
 
-protected:
+public:
 	HandleRAII() : mHandle(InvalidHandleValue) { }
 	HandleRAII(HANDLE argHandle) : mHandle(argHandle) { }
 
-	void assign(HANDLE argHandle)
+	HandleRAII(HandleRAII&& other) noexcept : mHandle(other.mHandle)
+	{
+		other.mHandle = InvalidHandleValue;
+	}
+
+	HandleRAII& operator=(HandleRAII& other) noexcept = delete;
+
+	HandleRAII& operator=(HandleRAII&& other) noexcept
+	{
+		if (this != &other)
+		{
+			close();
+			mHandle = other.mHandle;
+			other.mHandle = InvalidHandleValue;
+		}
+
+		return *this;
+	}
+
+	HandleRAII& operator=(HANDLE argHandle) noexcept
 	{
 		close();
 		mHandle = argHandle;
+
+		return *this;
 	}
 
-public:
-	HANDLE handle() const { return mHandle; }
-	bool invalid() const { return mHandle == InvalidHandleValue; }
-	bool valid() const { return !invalid(); }
+	HANDLE handle() const noexcept { return mHandle; }
+	bool invalid() const noexcept { return mHandle == InvalidHandleValue; }
+	bool valid() const noexcept { return !invalid(); }
 
-	void close()
+	void close() noexcept
 	{
 		if (mHandle != InvalidHandleValue)
 		{
@@ -135,46 +99,21 @@ public:
 	virtual ~HandleRAII() { close(); }
 };
 
-//
-// コンストラクタやデストラクタ内で仮想関数を呼び出すと、仮想関数は派生クラスではなく
-// 基底クラスのバージョンで解決されてしまうので、初期値をコンストラクタで渡す
-// 
-// --> 値によるテンプレートに変更
-//
-
-//
-// 基底クラス (HandleRAII) に operator=() を準備しても、派生クラス (FileHandleRAII) に
-// コピーコンストラクタがあると、一時オブジェクトの生成とコピーコンストラクタの呼び出しが行われる
-// このため、派生クラスに operator=() を用意した
-//
-
-class FileHandleRAII : public HandleRAII<INVALID_HANDLE_VALUE>
+class FileHandle : public HandleRAII<INVALID_HANDLE_VALUE>
 {
 public:
-	FileHandleRAII() {}
-	FileHandleRAII(HANDLE argHandle) : HandleRAII(argHandle) { }
+	using HandleRAII<INVALID_HANDLE_VALUE>::HandleRAII;
 
-	FileHandleRAII& operator=(HANDLE argHandle)
-	{
-		assign(argHandle);
-		return *this;
-	}
+	WINCSELIB_API bool setFileTime(UINT64 argCreationTime, UINT64 argLastWriteTime);
+	WINCSELIB_API LONGLONG getFileSize();
+	WINCSELIB_API BOOL flushFileBuffers();
 };
 
-class EventHandleRAII : public HandleRAII<(HANDLE)NULL>
+class EventHandle : public HandleRAII<(HANDLE)NULL>
 {
 public:
-	EventHandleRAII() {}
-	EventHandleRAII(HANDLE argHandle) : HandleRAII(argHandle) { }
-
-	EventHandleRAII& operator=(HANDLE argHandle)
-	{
-		assign(argHandle);
-		return *this;
-	}
+	using HandleRAII<(HANDLE)NULL>::HandleRAII;
 };
-
-#endif
 
 }
 
@@ -192,8 +131,9 @@ namespace WinCseLib {
 //
 // グローバル関数
 //
-WINCSELIB_API bool PathToFileInfo(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo);
-WINCSELIB_API bool TouchIfNotExists(const std::wstring& arg);
+WINCSELIB_API bool HandleToFileInfo(HANDLE argHandle, FSP_FSCTL_FILE_INFO* pFileInfo);
+WINCSELIB_API bool PathToFileInfoW(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo);
+WINCSELIB_API bool PathToFileInfoA(const std::string& path, FSP_FSCTL_FILE_INFO* pFileInfo);
 WINCSELIB_API bool MkdirIfNotExists(const std::wstring& dir);
 
 WINCSELIB_API std::string Base64EncodeA(const std::string& data);
@@ -206,8 +146,8 @@ WINCSELIB_API std::string DecodeLocalNameToFileNameA(const std::string& str);
 WINCSELIB_API std::wstring EncodeFileNameToLocalNameW(const std::wstring& str);
 WINCSELIB_API std::wstring DecodeLocalNameToFileNameW(const std::wstring& str);
 
-WINCSELIB_API bool HandleToPath(HANDLE Handle, std::wstring& wstr);
-WINCSELIB_API bool PathToSDStr(const std::wstring& path, std::wstring& sdstr);;
+//WINCSELIB_API bool HandleToPath(HANDLE Handle, std::wstring& wstr);
+//WINCSELIB_API bool PathToSDStr(const std::wstring& path, std::wstring& sdstr);;
 
 WINCSELIB_API uint64_t UtcMillisToWinFileTime100ns(uint64_t utcMilliseconds);
 WINCSELIB_API uint64_t WinFileTime100nsToUtcMillis(uint64_t fileTime100ns);
@@ -226,6 +166,7 @@ WINCSELIB_API std::wstring TimePointToLocalTimeStringW(const std::chrono::system
 
 WINCSELIB_API std::wstring UtcMilliToLocalTimeStringW(uint64_t milliseconds);
 WINCSELIB_API std::wstring WinFileTime100nsToLocalTimeStringW(uint64_t fileTime100ns);
+WINCSELIB_API std::string WinFileTime100nsToLocalTimeStringA(uint64_t ft100ns);
 
 WINCSELIB_API uint64_t STCTimeToUTCMilliSecW(const std::wstring& path);
 WINCSELIB_API uint64_t STCTimeToWinFileTimeW(const std::wstring& path);
@@ -283,107 +224,19 @@ public:
 	static int getCount();
 };
 
-template<typename T> class UnprotectedShare;
-template<typename T> class ProtectedShare;
-
-class SharedBase
+//
+// GetLastError() 値の保存
+//
+class LastErrorBackup
 {
-	std::mutex mMutex;
-	int mRefCount = 0;
-
-	template<typename T> friend class UnprotectedShare;
-	template<typename T> friend class ProtectedShare;
-};
-
-template<typename T>
-struct ShareStore
-{
-	std::mutex mMapGuard;
-	std::unordered_map<std::wstring, std::unique_ptr<T>> mMap;
-};
-
-template<typename T>
-class ProtectedShare
-{
-	T* mV;
-
-	template<typename T> friend class UnprotectedShare;
-
-	ProtectedShare(T* argV) : mV(argV)
-	{
-		mV->mMutex.lock();
-	}
+	DWORD mLastError;
 
 public:
-	~ProtectedShare()
+	LastErrorBackup() : mLastError(::GetLastError()) { }
+
+	~LastErrorBackup()
 	{
-		unlock();
-	}
-
-	void unlock()
-	{
-		if (mV)
-		{
-#pragma warning(suppress: 26110)
-			mV->mMutex.unlock();
-			mV = nullptr;
-		}
-	}
-
-	T* operator->() {
-		return mV;
-	}
-
-	const T* operator->() const {
-		return mV;
-	}
-};
-
-template<typename T>
-class UnprotectedShare
-{
-	ShareStore<T>* mStore;
-	const std::wstring mName;
-	T* mV = nullptr;
-
-public:
-	template<typename... Args>
-	UnprotectedShare(ShareStore<T>* argStore, const std::wstring& argName, Args... args)
-		: mStore(argStore), mName(argName)
-	{
-		std::lock_guard<std::mutex> _(mStore->mMapGuard);
-
-		auto it{ mStore->mMap.find(mName) };
-		if (it == mStore->mMap.end())
-		{
-			it = mStore->mMap.emplace(mName, std::make_unique<T>(args...)).first;
-		}
-
-		it->second->mRefCount++;
-
-		static_assert(std::is_base_of<SharedBase, T>::value, "T must be derived from SharedBase");
-
-		mV = dynamic_cast<T*>(it->second.get());
-		_ASSERT(mV);
-	}
-
-	~UnprotectedShare()
-	{
-		std::lock_guard<std::mutex> _(mStore->mMapGuard);
-
-		auto it{ mStore->mMap.find(mName) };
-
-		it->second->mRefCount--;
-
-		if (it->second->mRefCount == 0)
-		{
-			mStore->mMap.erase(it);
-		}
-	}
-
-	ProtectedShare<T> lock()
-	{
-		return ProtectedShare<T>(this->mV);
+		::SetLastError(mLastError);
 	}
 };
 
@@ -427,14 +280,6 @@ WINCSELIB_API int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINFSP_I
 //
 // マクロ定義
 //
-#define START_CALLER0   std::wstring(__FUNCTIONW__)
-#define START_CALLER	START_CALLER0,
-
-#define CALL_FROM()		(caller_)
-#define CALL_CHAIN()	(CALL_FROM() + L"->" + __FUNCTIONW__)
-#define CONT_CALLER0	CALL_CHAIN()
-#define CONT_CALLER		CONT_CALLER0,
-
 #define NEW_LOG_BLOCK() \
 	::SetLastError(ERROR_SUCCESS); \
 	WinCseLib::LogBlock logBlock_(__FILEW__, __LINE__, __FUNCTIONW__)
@@ -455,6 +300,7 @@ WINCSELIB_API int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINFSP_I
 
 #define FA_IS_DIR(fa)		((fa) & FILE_ATTRIBUTE_DIRECTORY)
 
-#define BOOL_CSTRW(b)	((b) ? L"true" : L"false")
+#define BOOL_CSTRW(b)		((b) ? L"true" : L"false")
+#define BOOL_CSTRA(b)		((b) ? "true" : "false")
 
 // EOF

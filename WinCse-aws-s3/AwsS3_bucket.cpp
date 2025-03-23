@@ -66,6 +66,11 @@ static std::mutex gGuard;
 BucketCache gBucketCache;
 #define THREAD_SAFE() std::lock_guard<std::mutex> lock_(gGuard)
 
+void AwsS3::clearBuckets(CALLER_ARG0)
+{
+    THREAD_SAFE();
+    gBucketCache.clear(CONT_CALLER0);
+}
 
 void AwsS3::reloadBukcetsIfNeed(CALLER_ARG0)
 {

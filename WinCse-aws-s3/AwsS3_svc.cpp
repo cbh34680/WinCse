@@ -6,9 +6,9 @@ using namespace WinCseLib;
 
 struct ListBucketsTask : public ITask
 {
-    AwsS3* mS3;
+    AwsS3* mAwsS3;
 
-    ListBucketsTask(AwsS3* that) : mS3(that) { }
+    ListBucketsTask(AwsS3* argAwsS3) : mAwsS3(argAwsS3) { }
 
     std::wstring synonymString()
     {
@@ -21,15 +21,15 @@ struct ListBucketsTask : public ITask
 
         traceW(L"call ListBuckets");
 
-        mS3->listBuckets(CONT_CALLER nullptr, {});
+        mAwsS3->listBuckets(CONT_CALLER nullptr, {});
     }
 };
 
 struct IdleTask : public ITask
 {
-    AwsS3* mS3;
+    AwsS3* mAwsS3;
 
-    IdleTask(AwsS3* that) : mS3(that) { }
+    IdleTask(AwsS3* argAwsS3) : mAwsS3(argAwsS3) { }
 
     void run(CALLER_ARG0) override
     {
@@ -37,7 +37,7 @@ struct IdleTask : public ITask
 
         traceW(L"on Idle");
 
-        mS3->OnIdleTime(CONT_CALLER0);
+        mAwsS3->OnIdleTime(CONT_CALLER0);
     }
 };
 
@@ -237,6 +237,12 @@ void AwsS3::notifListener()
                 FILE* fp = nullptr;
                 if (_wfopen_s(&fp, path.c_str(), L"wt") == 0)
                 {
+                    DWORD handleCount = 0;
+                    if (GetProcessHandleCount(GetCurrentProcess(), &handleCount))
+                    {
+                        fwprintf(fp, L"ProcessHandle=%lu\n", handleCount);
+                    }
+
                     fwprintf(fp, L"ClientPtr.RefCount=%d\n", mClient.ptr.getRefCount());
 
                     fwprintf(fp, L"[BucketCache]\n");
@@ -254,8 +260,9 @@ void AwsS3::notifListener()
 
             case 1:
             {
-                const auto now{ std::chrono::system_clock::now() };
-                this->deleteOldObjects(START_CALLER now);
+                //const auto now{ std::chrono::system_clock::now() };
+                //this->deleteOldObjects(START_CALLER now);
+                clearObjects(START_CALLER0);
 
                 break;
             }

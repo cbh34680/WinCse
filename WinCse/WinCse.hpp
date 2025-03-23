@@ -25,25 +25,27 @@ private:
 	std::wstring mWorkDir;
 
 	// 属性参照用ファイル・ハンドル
-	WinCseLib::FileHandleRAII mRefFile;
-	WinCseLib::FileHandleRAII mRefDir;
+	WinCseLib::FileHandle mRefFile;
+	WinCseLib::FileHandle mRefDir;
 
 	NTSTATUS FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCTL_FILE_INFO* pFileInfo);
-	NTSTATUS HandleToInfo(CALLER_ARG HANDLE handle, PUINT32 PFileAttributes, PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize);
 
-	struct ResourceRAII
+	NTSTATUS HandleToInfo(CALLER_ARG HANDLE handle, PUINT32 PFileAttributes /* nullable */,
+		PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize /* nullable */);
+
+	struct ResourceSweeper
 	{
 		WinCse* mThat;
 
-		ResourceRAII(WinCse* argThat) : mThat(argThat) { }
+		ResourceSweeper(WinCse* argThat) : mThat(argThat) { }
 
 		std::set<PTFS_FILE_CONTEXT*> mOpenAddrs;
 		void add(PTFS_FILE_CONTEXT* FileContext);
-		void del(PTFS_FILE_CONTEXT* FileContext);
+		void remove(PTFS_FILE_CONTEXT* FileContext);
 
-		~ResourceRAII();
+		~ResourceSweeper();
 	}
-	mResourceRAII;
+	mResourceSweeper;
 
 protected:
 	bool isFileNameIgnored(const std::wstring& FileName);

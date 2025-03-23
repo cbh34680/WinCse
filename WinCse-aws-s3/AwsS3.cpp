@@ -30,6 +30,10 @@ AwsS3::~AwsS3()
 
     this->OnSvcStop();
 
+    // 必要ないが、デバッグ時のメモリ・リーク調査の邪魔になるので
+    clearBuckets(START_CALLER0);
+    clearObjects(START_CALLER0);
+
     mRefFile.close();
     mRefDir.close();
 }
@@ -49,20 +53,20 @@ bool AwsS3::isInBucketFilters(const std::wstring& arg)
     return it != mBucketFilters.end();
 }
 
-DirInfoType AwsS3::makeDirInfo_dir(const WinCseLib::ObjectKey& argObjKey, const UINT64 argFileTime)
+DirInfoType AwsS3::makeDirInfo_attr(const WinCseLib::ObjectKey& argObjKey, const UINT64 argFileTime, const UINT32 argFileAttributes)
 {
     auto dirInfo = makeDirInfo(argObjKey);
     APP_ASSERT(dirInfo);
 
-    UINT32 FileAttributes = FILE_ATTRIBUTE_DIRECTORY | mDefaultFileAttributes;
+    UINT32 fileAttributes = argFileAttributes | mDefaultFileAttributes;
 
-    if (argObjKey.key() != L"." && argObjKey.key() != L".." && argObjKey.key()[0] == L'.')
+    if (argObjKey.meansHidden())
     {
         // 隠しファイル
-        FileAttributes |= FILE_ATTRIBUTE_HIDDEN;
+        fileAttributes |= FILE_ATTRIBUTE_HIDDEN;
     }
 
-    dirInfo->FileInfo.FileAttributes = FileAttributes;
+    dirInfo->FileInfo.FileAttributes = fileAttributes;
 
     dirInfo->FileInfo.CreationTime = argFileTime;
     dirInfo->FileInfo.LastAccessTime = argFileTime;
@@ -72,20 +76,22 @@ DirInfoType AwsS3::makeDirInfo_dir(const WinCseLib::ObjectKey& argObjKey, const 
     return dirInfo;
 }
 
-//
-// ClientPtr
-//
-Aws::S3::S3Client* ClientPtr::operator->() noexcept
+DirInfoType AwsS3::makeDirInfo_byName(const WinCseLib::ObjectKey& argObjKey, const UINT64 argFileTime)
 {
-    mRefCount++;
+    APP_ASSERT(argObjKey.valid());
 
-    return std::unique_ptr<Aws::S3::S3Client>::operator->();
+    return makeDirInfo_attr(argObjKey, argFileTime, argObjKey.meansFile() ? FILE_ATTRIBUTE_NORMAL : FILE_ATTRIBUTE_DIRECTORY);
+}
+
+DirInfoType AwsS3::makeDirInfo_dir(const WinCseLib::ObjectKey& argObjKey, const UINT64 argFileTime)
+{
+    return makeDirInfo_attr(argObjKey, argFileTime, FILE_ATTRIBUTE_DIRECTORY);
 }
 
 //
-// FileOutputMeta
+// FileOutputParams
 //
-std::wstring FileOutputMeta::str() const
+std::wstring FileOutputParams::str() const
 {
     std::wstring sCreationDisposition;
 
@@ -111,8 +117,6 @@ std::wstring FileOutputMeta::str() const
     ss << mLength;
     ss << L" mSpecifyRange=";
     ss << BOOL_CSTRW(mSpecifyRange);
-    ss << L" mSetFileTime=";
-    ss << BOOL_CSTRW(mSetFileTime);
 
     return ss.str();
 }
@@ -120,42 +124,6 @@ std::wstring FileOutputMeta::str() const
 //
 // OpenContext
 //
-bool OpenContext::openLocalFile(const DWORD argDesiredAccess, const DWORD argCreationDisposition)
-{
-    NEW_LOG_BLOCK();
-    APP_ASSERT(mLocalFile.invalid());
 
-    // キャッシュ・ファイルを開き、HANDLE をコンテキストに保存
-
-    ULONG CreateFlags = FILE_FLAG_BACKUP_SEMANTICS;
-
-    if (mCreateOptions & FILE_DELETE_ON_CLOSE)
-    {
-        CreateFlags |= FILE_FLAG_DELETE_ON_CLOSE;
-    }
-
-    const DWORD dwDesiredAccess = mGrantedAccess | argDesiredAccess;
-
-    mLocalFile = ::CreateFileW
-    (
-        getLocalPath().c_str(),
-        dwDesiredAccess,
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-        NULL,
-        argCreationDisposition,
-        CreateFlags,
-        NULL
-    );
-
-    if (mLocalFile.invalid())
-    {
-        traceW(L"fault: CreateFileW");
-        return false;
-    }
-
-    StatsIncr(_CreateFile);
-
-    return true;
-}
 
 // EOF

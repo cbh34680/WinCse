@@ -22,12 +22,12 @@ bool WinCse::isFileNameIgnored(const std::wstring& arg)
 //
 // passthrough.c から拝借
 //
-NTSTATUS WinCse::HandleToInfo(CALLER_ARG HANDLE hFile, PUINT32 PFileAttributes,
-	PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize)
+NTSTATUS WinCse::HandleToInfo(CALLER_ARG HANDLE hFile, PUINT32 PFileAttributes /* nullable */,
+	PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize /* nullable */)
 {
 	NEW_LOG_BLOCK();
 
-	FILE_ATTRIBUTE_TAG_INFO AttributeTagInfo = {};
+	FILE_ATTRIBUTE_TAG_INFO AttributeTagInfo{};
 	DWORD SecurityDescriptorSizeNeeded = 0;
 
 	if (0 != PFileAttributes)
@@ -76,10 +76,16 @@ NTSTATUS WinCse::FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCT
 	if (wcscmp(FileName, L"\\") == 0)
 	{
 		// "\" へのアクセスは参照用ディレクトリの情報を提供
+
 		isDir = true;
 		traceW(L"detect directory(1)");
 
-		GetFileInfoInternal(this->mRefDir.handle(), &fileInfo);
+		NTSTATUS ntstatus = GetFileInfoInternal(this->mRefDir.handle(), &fileInfo);
+		if (!NT_SUCCESS(ntstatus))
+		{
+			traceW(L"fault: GetFileInfoInternal");
+			return ntstatus;
+		}
 	}
 	else
 	{

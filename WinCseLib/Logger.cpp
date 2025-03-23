@@ -79,6 +79,8 @@ bool Logger::internalInit(const std::wstring& argTempDir, const std::wstring& ar
 
 void Logger::traceW_impl(const int indent, const wchar_t* fullPath, const int line, const wchar_t* func, const wchar_t* format, ...)
 {
+	LastErrorBackup _backup;
+
 #ifdef _RELEASE
 	if (!mTraceLogEnabled)
 		return;
@@ -131,6 +133,8 @@ void Logger::traceW_impl(const int indent, const wchar_t* fullPath, const int li
 
 void Logger::traceA_impl(const int indent, const char* fullPath, const int line, const char* func, const char* format, ...)
 {
+	LastErrorBackup _backup;
+
 #ifdef _RELEASE
 	if (!mTraceLogEnabled)
 		return;
@@ -232,7 +236,6 @@ void Logger::traceW_write(const SYSTEMTIME* st, const wchar_t* buf) const
 			mTLFile.imbue(std::locale("", LC_ALL));
 
 			mTLFile.open(path, std::ios_base::app);
-			::SetLastError(ERROR_SUCCESS);
 
 			if (!mTLFile)
 			{

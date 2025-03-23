@@ -7,72 +7,59 @@
 
 namespace WinCseLib {
 
-bool PathToFileInfo(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo)
+bool HandleToFileInfo(HANDLE argHandle, FSP_FSCTL_FILE_INFO* pFileInfo)
 {
-	//FILETIME ftCreate, ftAccess, ftWrite;
-	//LARGE_INTEGER fileSize;
-	BOOL ret = FALSE;
-	NTSTATUS ntstatus = STATUS_UNSUCCESSFUL;
+	NTSTATUS ntstatus = GetFileInfoInternal(argHandle, pFileInfo);
 
-	FileHandleRAII hFile = ::CreateFileW
+	return NT_SUCCESS(ntstatus) ? true : false;
+}
+
+bool PathToFileInfoW(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo)
+{
+	FileHandle hFile = ::CreateFileW
 	(
 		path.c_str(),
-		GENERIC_READ,
+		FILE_READ_ATTRIBUTES,
 		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
 		NULL,
 		OPEN_EXISTING,
-		0,
+		FILE_FLAG_BACKUP_SEMANTICS,
 		NULL
 	);
 
 	if(hFile.invalid())
 	{
-		goto exit;
-	}
-
-	ntstatus = GetFileInfoInternal(hFile.handle(), pFileInfo);
-	if (!NT_SUCCESS(ntstatus))
-	{
-		goto exit;
-	}
-
-	ret = true;
-
-exit:
-	hFile.close();
-
-	return ret;
-}
-
-bool TouchIfNotExists(const std::wstring& arg)
-{
-	if (!std::filesystem::exists(arg))
-	{
-		// 空ファイルの作成
-		std::wofstream ofs(arg);
-		if (!ofs)
-		{
-			return false;
-		}
-
-		ofs.close();
-	}
-
-	if (std::filesystem::exists(arg))
-	{
-		// ファイルではない
-		if (!std::filesystem::is_regular_file(arg))
-		{
-			return false;
-		}
-	}
-	else
-	{
-		// 存在しない
 		return false;
 	}
 
-	return true;
+	return HandleToFileInfo(hFile.handle(), pFileInfo);
+}
+
+bool PathToFileInfoA(const std::string& path, FSP_FSCTL_FILE_INFO* pFileInfo)
+{
+	return PathToFileInfoW(MB2WC(path), pFileInfo);
+}
+
+// パスから FILETIME の値を取得
+bool PathToWinFileTimes(const std::wstring& path, FILETIME* pFtCreate, FILETIME* pFtAccess, FILETIME* pFtWrite)
+{
+	FileHandle hFile = ::CreateFileW
+	(
+		path.c_str(),
+		FILE_READ_ATTRIBUTES,
+		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+		NULL,
+		OPEN_EXISTING,
+		FILE_FLAG_BACKUP_SEMANTICS,
+		NULL
+	);
+
+	if(hFile.invalid())
+	{
+		return false;
+	}
+
+	return ::GetFileTime(hFile.handle(), pFtCreate, pFtAccess, pFtWrite);
 }
 
 bool MkdirIfNotExists(const std::wstring& arg)
@@ -94,22 +81,7 @@ bool MkdirIfNotExists(const std::wstring& arg)
 	}
 
 	// 書き込みテスト
-#if 0
-	const auto tmpfile{ _wtempnam(arg.c_str(), L"wtest") };
-	APP_ASSERT(tmpfile);
 
-	std::ofstream ofs(tmpfile);
-	if (!ofs)
-	{
-		return false;
-	}
-	ofs.close();
-
-	std::error_code ec;
-	std::filesystem::remove(tmpfile, ec);
-	free(tmpfile);
-
-#else
 	WCHAR tmpfile[MAX_PATH];
 	if (!::GetTempFileName(arg.c_str(), L"tst", 0, tmpfile))
 	{
@@ -125,7 +97,6 @@ bool MkdirIfNotExists(const std::wstring& arg)
 
 	std::error_code ec;
 	std::filesystem::remove(tmpfile, ec);
-#endif
 
 	return true;
 }
@@ -149,6 +120,19 @@ std::wstring DecodeLocalNameToFileNameW(const std::wstring& str)
 {
 	return MB2WC(Base64DecodeA(URLDecodeA(WC2MB(str))));
 }
+
+#if 0
+/*
+* example
+* 
+	std::wstring path;
+	HandleToPath(handle, path);
+	traceW(L"selected path is %s", path.c_str());
+
+	std::wstring sdstr;
+	PathToSDStr(path, sdstr);
+	traceW(L"sdstr is %s", sdstr.c_str());
+*/
 
 // ファイル・ハンドルからファイル・パスに変換
 bool HandleToPath(HANDLE Handle, std::wstring& ref)
@@ -242,7 +226,7 @@ static LPWSTR PathToSDStr_(LPCWSTR Path)
 
 	LPWSTR pStringSD = nullptr;
 
-	FileHandleRAII hFile = ::CreateFileW
+	FileHandle hFile = ::CreateFileW
 	(
 		Path,
 		FILE_READ_ATTRIBUTES | READ_CONTROL,
@@ -276,6 +260,7 @@ bool PathToSDStr(const std::wstring& path, std::wstring& sdstr)
 
 	return true;
 }
+#endif
 
 } // WinCseLib
 

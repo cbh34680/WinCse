@@ -13,11 +13,9 @@ using namespace WinCseLib;
 //      それ以外    CreateFile 後に SetFilePointerEx が実行される
 //
 static int64_t outputObjectResultToFile(CALLER_ARG
-    const Aws::S3::Model::GetObjectResult& argResult, const FileOutputMeta& argMeta)
+    const Aws::S3::Model::GetObjectResult& argResult, const FileOutputParams& argOutputParams)
 {
     NEW_LOG_BLOCK();
-
-    int64_t ret = -1LL;
 
     // 入力データ
     const auto pbuf = argResult.GetBody().rdbuf();
@@ -25,19 +23,19 @@ static int64_t outputObjectResultToFile(CALLER_ARG
 
     std::vector<char> vbuffer(1024 * 64);
 
-    traceW(argMeta.str().c_str());
+    traceW(argOutputParams.str().c_str());
 
     // result の内容をファイルに出力する
 
     auto remainingTotal = inputSize;
 
-    FileHandleRAII hFile = ::CreateFileW
+    FileHandle hFile = ::CreateFileW
     (
-        argMeta.mPath.c_str(),
+        argOutputParams.mPath.c_str(),
         GENERIC_WRITE,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         NULL,
-        argMeta.mCreationDisposition,
+        argOutputParams.mCreationDisposition,
         FILE_ATTRIBUTE_NORMAL,
         NULL
     );
@@ -46,19 +44,21 @@ static int64_t outputObjectResultToFile(CALLER_ARG
     {
         const auto lerr = ::GetLastError();
         traceW(L"fault: CreateFileW lerr=%ld", lerr);
-        goto exit;
+
+        return -1LL;
     }
 
-    if (argMeta.mSpecifyRange)
+    if (argOutputParams.mSpecifyRange)
     {
         LARGE_INTEGER li{};
-        li.QuadPart = argMeta.mOffset;
+        li.QuadPart = argOutputParams.mOffset;
 
         if (::SetFilePointerEx(hFile.handle(), li, NULL, FILE_BEGIN) == 0)
         {
             const auto lerr = ::GetLastError();
             traceW(L"fault: SetFilePointerEx lerr=%ld", lerr);
-            goto exit;
+
+            return -1LL;
         }
     }
 
@@ -71,7 +71,8 @@ static int64_t outputObjectResultToFile(CALLER_ARG
         if (bytesRead <= 0)
         {
             traceW(L"fault: Read error");
-            goto exit;
+
+            return -1LL;
         }
 
         traceW(L"%lld bytes read", bytesRead);
@@ -90,7 +91,8 @@ static int64_t outputObjectResultToFile(CALLER_ARG
             {
                 const auto lerr = ::GetLastError();
                 traceW(L"fault: WriteFile lerr=%ld", lerr);
-                goto exit;
+
+                return -1LL;
             }
 
             traceW(L"%lld bytes written", bytesWritten);
@@ -102,34 +104,9 @@ static int64_t outputObjectResultToFile(CALLER_ARG
         remainingTotal -= bytesRead;
     }
 
-    if (argMeta.mSetFileTime)
-    {
-        // タイムスタンプを更新
+    traceW(L"return %lld", inputSize);
 
-        const auto lastModified = argResult.GetLastModified().Millis();
-
-        FILETIME ft;
-        UtcMillisToWinFileTime(lastModified, &ft);
-
-        FILETIME ftNow;
-        ::GetSystemTimeAsFileTime(&ftNow);
-
-        if (!::SetFileTime(hFile.handle(), &ft, &ftNow, &ft))
-        {
-            const auto lerr = ::GetLastError();
-            traceW(L"fault: SetFileTime lerr=%ld", lerr);
-            return false;
-        }
-    }
-
-    ret = inputSize;
-
-exit:
-    hFile.close();
-
-    traceW(L"return %lld", ret);
-
-    return ret;
+    return inputSize;
 }
 
 //
@@ -141,23 +118,23 @@ exit:
 //      それ以外    CreateFile 後に SetFilePointerEx が実行される
 //
 int64_t AwsS3::prepareLocalCacheFile(CALLER_ARG
-    const ObjectKey& argObjKey, const FileOutputMeta& argMeta)
+    const ObjectKey& argObjKey, const FileOutputParams& argOutputParams)
 {
     NEW_LOG_BLOCK();
 
-    traceW(L"argObjKey=%s meta=%s", argObjKey.c_str(), argMeta.str().c_str());
+    traceW(L"argObjKey=%s meta=%s", argObjKey.c_str(), argOutputParams.str().c_str());
 
     std::stringstream ss;
 
-    if (argMeta.mSpecifyRange)
+    if (argOutputParams.mSpecifyRange)
     {
         // オフセットの指定があるときは既存ファイルへの
         // 部分書き込みなので Length も指定されるべきである
 
         ss << "bytes=";
-        ss << argMeta.mOffset;
+        ss << argOutputParams.mOffset;
         ss << '-';
-        ss << argMeta.getOffsetEnd();
+        ss << argOutputParams.getOffsetEnd();
     }
 
     const std::string range{ ss.str() };
@@ -186,7 +163,7 @@ int64_t AwsS3::prepareLocalCacheFile(CALLER_ARG
 
     // result の内容をファイルに出力する
 
-    const auto bytesWritten = outputObjectResultToFile(CONT_CALLER result, argMeta);
+    const auto bytesWritten = outputObjectResultToFile(CONT_CALLER result, argOutputParams);
 
     if (bytesWritten < 0)
     {
@@ -203,84 +180,197 @@ int64_t AwsS3::prepareLocalCacheFile(CALLER_ARG
     return bytesWritten;
 }
 
-bool AwsS3::shouldDownload(CALLER_ARG const ObjectKey& argObjKey,
-    const FSP_FSCTL_FILE_INFO& remote, const std::wstring& localPath, bool* pNeedDownload)
+bool AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
+    const FSP_FSCTL_FILE_INFO& remoteInfo, const std::wstring& localPath,
+    bool* pNeedDownload)
 {
+    //
+    // リモートのファイル属性をローカルのキャッシュ・ファイルに反映する
+    // ダウンロードが必要な場合は pNeedDownload により通知
+    //
     NEW_LOG_BLOCK();
     APP_ASSERT(pNeedDownload);
 
     traceW(L"argObjKey=%s localPath=%s", argObjKey.c_str(), localPath.c_str());
+    traceW(L"remoteInfo FileSize=%llu LastWriteTime=%llu", remoteInfo.FileSize, remoteInfo.LastWriteTime);
+    traceW(L"localInfo CreationTime=%llu LastWriteTime=%llu", remoteInfo.CreationTime, remoteInfo.LastWriteTime);
 
-    bool ret = false;
+    FSP_FSCTL_FILE_INFO localInfo{};
+
+    // 
+    // * パターン
+    //      全て同じ場合は何もしない
+    //      異なっているものがある場合は以下の表に従う
+    // 
+    //                                      +-----------------------------------------+
+    //				                        | リモート                                |
+    //                                      +---------------------+-------------------+
+    //				                        | サイズ==0	          | サイズ>0          |
+    // ------------+------------+-----------+---------------------+-------------------+
+    //	ローカル   | 存在する   | サイズ==0 | 更新日時を同期      | ダウンロード      |
+    //             |            +-----------+---------------------+-------------------+
+    //			   |            | サイズ>0  | 切り詰め            | ダウンロード      |
+    //             +------------+-----------+---------------------+-------------------+
+    //		       | 存在しない	|	        | 空ファイル作成      | ダウンロード      |
+    // ------------+------------+-----------+---------------------+-------------------+
+    //
+    bool syncTime = false;
+    bool truncateFile = false;
     bool needDownload = false;
 
-    FSP_FSCTL_FILE_INFO local{};
+    FileHandle hFile = ::CreateFileW
+    (
+        localPath.c_str(),
+        FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
 
-    if (std::filesystem::exists(localPath))
+    auto lerr = ::GetLastError();
+
+    if (hFile.valid())
     {
-        // キャッシュ・ファイルが存在する
+        traceW(L"exists: local");
 
-        if (!std::filesystem::is_regular_file(localPath))
+        // ローカル・ファイルが存在する
+
+        if (!HandleToFileInfo(hFile.handle(), &localInfo))
         {
-            traceW(L"fault: is_regular_file");
-            goto exit;
+            traceW(L"fault: HandleToFileInfo");
+            return false;
         }
 
-        // ローカル・キャッシュの属性情報を取得
+        traceW(L"localInfo FileSize=%llu LastWriteTime=%llu", localInfo.FileSize, localInfo.LastWriteTime);
+        traceW(L"localInfo CreationTime=%llu LastWriteTime=%llu", localInfo.CreationTime, localInfo.LastWriteTime);
 
-        if (!PathToFileInfo(localPath, &local))
+        if (remoteInfo.FileSize == localInfo.FileSize &&
+            localInfo.LastWriteTime == remoteInfo.LastWriteTime)
         {
-            traceW(L"fault: PathToFileInfo");
-            goto exit;
+            // --> 全て同じなので処理不要
+
+            traceW(L"same file, skip");
         }
-
-        traceW(L"LOCAL: size=%llu create=%s write=%s access=%s",
-            local.FileSize,
-            WinFileTime100nsToLocalTimeStringW(local.CreationTime).c_str(),
-            WinFileTime100nsToLocalTimeStringW(local.LastWriteTime).c_str(),
-            WinFileTime100nsToLocalTimeStringW(local.LastAccessTime).c_str()
-        );
-
-        traceW(L"REMOTE: size=%llu create=%s",
-            remote.FileSize,
-            WinFileTime100nsToLocalTimeStringW(remote.CreationTime).c_str());
-
-        // ローカル・ファイルの更新日時と比較
-
-        // TODO:
-        // 
-        // !!! 注意 !!! 更新系の処理が入ったときには改めて考え直す必要がある
-        //
-        if (remote.CreationTime > local.CreationTime)
+        else
         {
-            // リモート・ファイルが更新されているので再取得
+            if (remoteInfo.FileSize == 0)
+            {
+                if (localInfo.FileSize == 0)
+                {
+                    // ローカル == 0 : リモート == 0
+                    // --> 更新日時を同期
 
-            traceW(L"remote file changed");
-            needDownload = true;
-        }
+                    syncTime = true;
+                }
+                else
+                {
+                    // ローカル > 0 : リモート == 0
+                    // --> 切り詰め
 
-        //
-        // 以前のキャッシュ作成時にエラーとなっていたら取り直しが必要
-        //
-        if (remote.FileSize != local.FileSize)
-        {
-            traceW(L"filesize unmatch remote=%llu local=%llu", remote.FileSize, local.FileSize);
-            needDownload = true;
+                    truncateFile = true;
+                }
+            }
+            else
+            {
+                // リモート > 0
+                // --> ダウンロード
+
+                needDownload = true;
+            }
         }
     }
     else
     {
-        // キャッシュ・ファイルが存在しない
+        if (lerr != ERROR_FILE_NOT_FOUND)
+        {
+            // 想定しないエラー
 
-        traceW(L"no cache file");
-        needDownload = true;
+            traceW(L"fault: CreateFileW lerr=%lu", lerr);
+            return false;
+        }
+
+        traceW(L"not exists: local");
+
+        // ローカル・ファイルが存在しない
+
+        if (remoteInfo.FileSize == 0)
+        {
+            // --> 空ファイル作成
+
+            truncateFile = true;
+        }
+        else
+        {
+            // --> ダウンロード
+
+            needDownload = true;
+        }
     }
 
-    ret = true;
+    traceW(L"syncRemoteTime = %s", BOOL_CSTRW(syncTime));
+    traceW(L"truncateLocal = %s", BOOL_CSTRW(truncateFile));
+    traceW(L"needDownload = %s", BOOL_CSTRW(needDownload));
+
+    if (syncTime && truncateFile)
+    {
+        APP_ASSERT(0);
+    }
+
+    if (syncTime || truncateFile)
+    {
+        APP_ASSERT(!needDownload);
+
+        hFile = ::CreateFileW
+        (
+            localPath.c_str(),
+            GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            NULL,
+            truncateFile ? CREATE_ALWAYS : OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            NULL
+        );
+
+        if (hFile.invalid())
+        {
+            lerr = ::GetLastError();
+            traceW(L"fault: CreateFileW lerr=%lu", lerr);
+
+            return false;
+        }
+
+        // 更新日時を同期
+
+        traceW(L"setFileTime");
+
+        if (!hFile.setFileTime(remoteInfo.CreationTime, remoteInfo.LastWriteTime))
+        {
+            lerr = ::GetLastError();
+            traceW(L"fault: setFileTime lerr=%lu", lerr);
+
+            return false;
+        }
+
+        if (!HandleToFileInfo(hFile.handle(), &localInfo))
+        {
+            traceW(L"fault: HandleToFileInfo");
+            return false;
+        }
+    }
+
+    if (!needDownload)
+    {
+        // ダウンロードが不要な場合は、ローカルにファイルが存在する状態になっているはず
+
+        APP_ASSERT(hFile.valid());
+        APP_ASSERT(localInfo.CreationTime);
+    }
+
     *pNeedDownload = needDownload;
 
-exit:
-    return ret;
+    return true;
 }
 
 // EOF

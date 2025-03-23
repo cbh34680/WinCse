@@ -482,13 +482,26 @@ void test11()
     std::cout << (b4 ? "true" : "false") << std::endl;
     std::cout << (b5 ? "true" : "false") << std::endl;
 
+    auto orig = ObjectKey{ L"bucket", L"key" };
+    auto dest = std::move(orig);
+
+    std::wcout << orig.c_str() << std::endl;
+    std::wcout << dest.c_str() << std::endl;
+
     std::cout << "done." << std::endl;
 }
 
 void test12_worker(bool del)
 {
-    HANDLE h = CreateFileW(L"test12.tmp", GENERIC_WRITE | DELETE, FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
-        OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE h = ::CreateFileW
+    (
+        L"test12.tmp",
+        GENERIC_WRITE | DELETE, FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        NULL,
+        OPEN_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
 
     Sleep(1000);
 
@@ -505,7 +518,7 @@ void test12_worker(bool del)
         const auto rc = SetFileInformationByHandle(h,
             FileDispositionInfo, &DispositionInfo, sizeof DispositionInfo);
 
-        const auto lerr = GetLastError();
+        const auto lerr = ::GetLastError();
 
         std::cout << "delete=" << rc << " lerr=" << lerr << endl;
     }
@@ -514,7 +527,7 @@ void test12_worker(bool del)
         char buf[] = "abcde";
         DWORD wn;
         const auto rc = WriteFile(h, buf, sizeof(buf), &wn, NULL);
-        const auto lerr = GetLastError();
+        const auto lerr = ::GetLastError();
 
         FlushFileBuffers(h);
 
@@ -539,51 +552,6 @@ void test12()
     t2.join();
 
     cout << "done." << endl;
-}
-
-struct Shared_Simple : public SharedBase { };
-
-struct Shared_Multipart : public SharedBase
-{
-    Shared_Multipart(int i)
-    {
-        std::wcout << L"construct i=" << i << std::endl;
-    }
-};
-
-struct ShareStore<Shared_Simple> gSimpleDB;
-struct ShareStore<Shared_Multipart> gMultipartDB;
-
-void test13_worker(int id, const std::wstring& key, int sec)
-{
-    UnprotectedShare<Shared_Simple> unlockLocal(&gSimpleDB, key);
-
-    {
-        const auto lockedLocal{ unlockLocal.lock() };
-
-        std::wcerr << key << L" id=" << id << L" sleep(" << sec << L") in ..." << std::endl;
-        ::Sleep(1000 * sec);
-        std::wcerr << key << L" id=" << id << L" sleep(" << sec << L") out" << std::endl;
-    }
-}
-
-void test13()
-{
-    std::thread t1(test13_worker, 1, L"file1.txt", 10);
-    std::thread t2(test13_worker, 2, L"file1.txt", 10);
-    std::thread t3(test13_worker, 3, L"file2.txt", 0);
-    std::thread t4(test13_worker, 4, L"file2.txt", 0);
-    std::thread t5(test13_worker, 5, L"file3.txt", 2);
-    std::thread t6(test13_worker, 6, L"file3.txt", 2);
-
-    t1.join();
-    t2.join();
-    t3.join();
-    t4.join();
-    t5.join();
-    t6.join();
-
-    std::wcout << L"done." << std::endl;
 }
 
 class Klass
@@ -616,6 +584,11 @@ public:
     {
         std::cout << myInt() << std::endl;
     }
+
+    virtual void foo()
+    {
+        std::cout << "Test15Base::foo" << std::endl;
+    }
 };
 
 class Test15 : public Test15Base
@@ -625,12 +598,157 @@ public:
     {
         return 15;
     }
+
+    void foo() override
+    {
+        Test15Base::foo();
+
+        std::cout << "Test15::foo" << std::endl;
+    }
 };
 
 void test15()
 {
     Test15 o;
     o.printInt();
+    o.foo();
+
+    std::cout << "done." << std::endl;
+}
+
+void test16_b(FileHandle v)
+{
+    int iii = 0;
+
+    std::cout << "v1=" << BOOL_CSTRA(v.valid()) << std::endl;
+}
+
+void test16()
+{
+    HANDLE h = ::CreateFile(LR"(C:\Windows\System32\drivers\etc\hosts)", GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL);
+
+    FileHandle a;
+    std::cout << "a1=" << BOOL_CSTRA(a.valid()) << std::endl;
+    a = h;
+    std::cout << "a2=" << BOOL_CSTRA(a.valid()) << std::endl;
+
+    test16_b(std::move(a));
+    std::cout << "a3=" << BOOL_CSTRA(a.valid()) << std::endl;
+
+    FileHandle b = ::CreateFile(LR"(C:\Windows\System32\drivers\etc\hosts)", GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL);
+    std::cout << "b1=" << BOOL_CSTRA(b.valid()) << std::endl;
+
+    FileHandle c;
+    std::cout << "c1=" << BOOL_CSTRA(c.valid()) << std::endl;
+
+    c = std::move(b);
+    std::cout << "b2=" << BOOL_CSTRA(b.valid()) << std::endl;
+    std::cout << "c2=" << BOOL_CSTRA(c.valid()) << std::endl;
+
+    std::cout << "done." << std::endl;
+}
+
+void test16_2()
+{
+    FileHandle a = ::CreateFile(LR"(C:\Windows\System32\drivers\etc\hosts)", GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL);
+
+    a = ::CreateFile(LR"(C:\Windows\System32\drivers\etc\services)", GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL);
+
+    HANDLE n = INVALID_HANDLE_VALUE;
+    a = n;
+
+    std::cout << "done." << std::endl;
+}
+
+void test17()
+{
+    FILETIME ft1, ft2, ft3;
+
+    bool b1 = PathToWinFileTimes(LR"(C:\Windows)", &ft1, &ft2, &ft3); 
+    bool b2 = PathToWinFileTimes(LR"(C:\Windows\System32\drivers\etc\hosts)", &ft1, &ft2, &ft3);
+
+    bool b3 = PathToWinFileTimes(LR"(C:\Windows)", &ft1, &ft2, &ft3); 
+    bool b4 = PathToWinFileTimes(LR"(C:\Windows\System32\drivers\etc\hosts)", &ft1, &ft2, &ft3);
+
+    FSP_FSCTL_FILE_INFO fi;
+
+    bool b5 = PathToFileInfoW(LR"(C:\NotFound)", &fi);
+    bool b6 = PathToFileInfoW(LR"(C:\NotFound\System32\drivers\etc\hosts)", &fi);
+
+    bool b7 = PathToFileInfoW(LR"(C:\NotFound)", &fi);
+    bool b8 = PathToFileInfoW(LR"(C:\NotFound\System32\drivers\etc\hosts)", &fi);
+
+    std::cout << BOOL_CSTRA(b1) << std::endl;
+    std::cout << BOOL_CSTRA(b2) << std::endl;
+    std::cout << BOOL_CSTRA(b3) << std::endl;
+    std::cout << BOOL_CSTRA(b4) << std::endl;
+    std::cout << BOOL_CSTRA(b5) << std::endl;
+    std::cout << BOOL_CSTRA(b6) << std::endl;
+    std::cout << BOOL_CSTRA(b7) << std::endl;
+    std::cout << BOOL_CSTRA(b8) << std::endl;
+
+    std::cout << "done." << std::endl;
+}
+
+void test18()
+{
+    DWORD a = FILE_ATTRIBUTE_NORMAL | FILE_ATTRIBUTE_DIRECTORY;
+    std::cout << a << std::endl;
+
+    a &= ~FILE_ATTRIBUTE_NORMAL;
+    std::cout << a << std::endl;
+
+    a &= ~FILE_ATTRIBUTE_NORMAL;
+    std::cout << a << std::endl;
+
+    std::cout << "done." << std::endl;
+}
+
+void test19()
+{
+    HANDLE hFile = ::CreateFileW(
+        LR"(C:\Windows)",
+        FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
+
+    if (hFile == INVALID_HANDLE_VALUE)
+    {
+        std::cout << ::GetLastError() << std::endl;
+    }
+    else
+    {
+        std::cout << "win file" << std::endl;
+
+        ::CloseHandle(hFile);
+    }
+
+    HANDLE hDir = ::CreateFileW(
+        LR"(C:\Windows)",
+        FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        NULL,
+        OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS,
+        NULL
+    );
+
+    if (hDir == INVALID_HANDLE_VALUE)
+    {
+        std::cout << ::GetLastError() << std::endl;
+    }
+    else
+    {
+        std::cout << "win dir" << std::endl;
+
+        ::CloseHandle(hDir);
+    }
+
+    std::cout << "done." << std::endl;
 }
 
 int main()
@@ -658,7 +776,12 @@ int main()
     //test12();
     //test13();
     //test14();
-    test15();
+    //test15();
+    test16();
+    test16_2();
+    //test17();
+    //test18();
+    //test19();
 
     return EXIT_SUCCESS;
 }

@@ -62,8 +62,10 @@ bool IdleWorker::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSyst
 		ss << i;
 
 		auto h = thr.native_handle();
-		::SetThreadDescription(h, ss.str().c_str());
+		NTSTATUS ntstatus = ::SetThreadDescription(h, ss.str().c_str());
 		//::SetThreadPriority(h, THREAD_PRIORITY_LOWEST);
+
+		APP_ASSERT(NT_SUCCESS(ntstatus));
 	}
 
 	return true;
@@ -315,6 +317,8 @@ bool IdleWorker::addTask(CALLER_ARG WinCseLib::ITask* argTask, WinCseLib::Priori
 
 #else
 	// ワーカー処理が無効な場合は、タスクのリクエストを無視
+	argTask->cancelled(CONT_CALLER0);
+
 	delete argTask;
 
 	return false;

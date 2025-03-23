@@ -17,24 +17,22 @@
 
 #include <regex>
 #include "Purpose.h"
+#include "Protect.hpp"
 
-struct FileOutputMeta
+struct FileOutputParams
 {
 	std::wstring mPath;
 	DWORD mCreationDisposition;
 	bool mSpecifyRange;
 	UINT64 mOffset;
 	ULONG mLength;
-	bool mSetFileTime;
 
-	FileOutputMeta(
+	FileOutputParams(
 		std::wstring argPath, DWORD argCreationDisposition,
-		bool argSpecifyRange, UINT64 argOffset,
-		ULONG argLength, bool argSetFileTime)
+		bool argSpecifyRange, UINT64 argOffset, ULONG argLength)
 		:
 		mPath(argPath), mCreationDisposition(argCreationDisposition),
-		mSpecifyRange(argSpecifyRange), mOffset(argOffset),
-		mLength(argLength), mSetFileTime(argSetFileTime)
+		mSpecifyRange(argSpecifyRange), mOffset(argOffset), mLength(argLength)
 	{
 	}
 
@@ -51,15 +49,25 @@ class ClientPtr : public std::unique_ptr<Aws::S3::S3Client>
 {
 	// 本来は std::atomic<int> だが、ただの参照値なので厳密でなくても OK
 	// operator=() の実装を省略 :-)
+	//std::atomic<int> mRefCount = 0;
 	int mRefCount = 0;
 
 public:
+#if 0
 	ClientPtr() = default;
 
 	ClientPtr(Aws::S3::S3Client* client)
 		: std::unique_ptr<Aws::S3::S3Client>(client) { }
+#else
+	using std::unique_ptr<Aws::S3::S3Client>::unique_ptr;
+#endif
 
-	Aws::S3::S3Client* operator->() noexcept;
+	Aws::S3::S3Client* operator->() noexcept
+	{
+		mRefCount++;
+
+		return std::unique_ptr<Aws::S3::S3Client>::operator->();
+	}
 
 	int getRefCount() const { return mRefCount; }
 };
@@ -79,7 +87,7 @@ private:
 	std::wstring mCacheDataDir;
 	std::wstring mCacheReportDir;
 
-	UINT64 mWorkDirTime = 0;
+	UINT64 mWorkDirCTime = 0;
 	int mMaxBuckets = -1;
 	int mMaxObjects = -1;
 	std::wstring mRegion;
@@ -88,8 +96,11 @@ private:
 	UINT32 mDefaultFileAttributes = 0;
 
 	// 属性参照用ファイル・ハンドル
-	WinCseLib::FileHandleRAII mRefFile;
-	WinCseLib::FileHandleRAII mRefDir;
+	WinCseLib::FileHandle mRefFile;
+	WinCseLib::FileHandle mRefDir;
+
+	struct CreateFileShared : public SharedBase { };
+	ShareStore<CreateFileShared> mGuardCreateFile;
 
 	// シャットダウン要否判定のためポインタにしている
 	std::unique_ptr<Aws::SDKOptions> mSDKOptions;
@@ -103,11 +114,14 @@ private:
 
 	std::vector<std::wregex> mBucketFilters;
 
+	void clearBuckets(CALLER_ARG0);
 	void reloadBukcetsIfNeed(CALLER_ARG0);
 	void reportBucketCache(CALLER_ARG FILE* fp);
 
 	void deleteOldObjects(CALLER_ARG
 		std::chrono::system_clock::time_point threshold);
+
+	void clearObjects(CALLER_ARG0);
 
 	void reportObjectCache(CALLER_ARG FILE* fp);
 
@@ -136,30 +150,31 @@ private:
 	bool unlockListObjects_Display(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		DirInfoListType* pDirInfoList /* nullable */);
 
-	bool shouldDownload(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
-		const FSP_FSCTL_FILE_INFO& fileInfo, const std::wstring& localPath, bool* pNeedDownload);
+	bool syncFileAttributes(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		const FSP_FSCTL_FILE_INFO& fileInfo, const std::wstring& localPath,
+		bool* pNeedDownload);
 
-	bool readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
+	NTSTATUS readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred);
-	bool readObject_Multipart(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
+
+	NTSTATUS readObject_Multipart(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred);
+
 	bool doMultipartDownload(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext, const std::wstring& localPath);
 
 	void notifListener();
 
-	// cleanup() で利用
 	int deleteCacheByObjKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
 
+	bool isInBucketFilters(const std::wstring& arg);
+
 public:
-	// Worker から呼び出されるため override ではないが public のメソッド
+	// 外部から呼び出されるため override ではないが public のメソッド
 
 	void OnIdleTime(CALLER_ARG0);
 
 	int64_t prepareLocalCacheFile(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
-		const FileOutputMeta& argMeta);
-
-protected:
-	bool isInBucketFilters(const std::wstring& arg);
+		const FileOutputParams& argOutputParams);
 
 public:
 	AwsS3(const std::wstring& argTempDir, const std::wstring& argIniSection,
@@ -187,6 +202,9 @@ public:
 	bool listObjects(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		DirInfoListType* pDirInfoList /* nullable */) override;
 
+	bool putObject(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		const char* sourceFile, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */);
+
 	WinCseLib::CSDeviceContext* create(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		const UINT32 CreateOptions, const UINT32 GrantedAccess, const UINT32 FileAttributes,
 		FSP_FSCTL_FILE_INFO* pFileInfo) override;
@@ -196,15 +214,15 @@ public:
 
 	void close(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext) override;
 
-	bool readObject(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
+	NTSTATUS readObject(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred) override;
 
-	bool writeObject(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
+	NTSTATUS writeObject(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length,
 		BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
 		PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO *FileInfo) override;
 
-	bool remove(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext, BOOLEAN argDeleteFile) override;
+	NTSTATUS remove(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext, BOOLEAN argDeleteFile) override;
 
 	void cleanup(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext, ULONG argFlags) override;
 
@@ -232,7 +250,9 @@ private:
 		return suc;
 	}
 
-	// ディレクトリに特化
+	// ファイル/ディレクトリに特化
+	DirInfoType makeDirInfo_attr(const WinCseLib::ObjectKey& argObjKey, const UINT64 argFileTime, const UINT32 argFileAttributes);
+	DirInfoType makeDirInfo_byName(const WinCseLib::ObjectKey& argObjKey, const UINT64 argFileTime);
 	DirInfoType makeDirInfo_dir(const WinCseLib::ObjectKey& argObjKey, const UINT64 argFileTime);
 };
 
@@ -242,12 +262,10 @@ private:
 //
 struct OpenContext : public WinCseLib::CSDeviceContext
 {
-	WINCSE_DEVICE_STATS* mStats;
 	const UINT32 mCreateOptions;
 	const UINT32 mGrantedAccess;
 
 	OpenContext(
-		WINCSE_DEVICE_STATS* argStats,
 		const std::wstring& argCacheDataDir,
 		const WinCseLib::ObjectKey& argObjKey,
 		const FSP_FSCTL_FILE_INFO& argFileInfo,
@@ -255,29 +273,15 @@ struct OpenContext : public WinCseLib::CSDeviceContext
 		const UINT32 argGrantedAccess)
 		:
 		CSDeviceContext(argCacheDataDir, argObjKey, argFileInfo),
-		mStats(argStats),
 		mCreateOptions(argCreateOptions),
 		mGrantedAccess(argGrantedAccess)
 	{
 	}
-
-	bool openLocalFile(const DWORD argDesiredAccess, const DWORD argCreationDisposition);
 };
 
-struct CreateContext : public WinCseLib::CSDeviceContext
+struct CreateContext : public OpenContext
 {
-	WINCSE_DEVICE_STATS* mStats;
-
-	CreateContext(
-		WINCSE_DEVICE_STATS* argStats,
-		const std::wstring& argCacheDataDir,
-		const WinCseLib::ObjectKey& argObjKey,
-		const FSP_FSCTL_FILE_INFO& argFileInfo)
-		:
-		CSDeviceContext(argCacheDataDir, argObjKey, argFileInfo),
-		mStats(argStats)
-	{
-	}
+	using OpenContext::OpenContext;
 };
 
 #ifdef WINCSEAWSS3_EXPORTS
@@ -293,11 +297,7 @@ extern "C"
 		WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker);
 }
 
-#define StatsIncr(name)					::InterlockedIncrement(& (this->mStats->name))
-
-#define StatsIncrBool(b, sname, ename) \
-	if (b) ::InterlockedIncrement(& (this->mStats->sname)); \
-	else   ::InterlockedIncrement(& (this->mStats->ename))
+#define StatsIncr(name)				::InterlockedIncrement(& (this->mStats->name))
 
 #define AWS_DEFAULT_REGION			Aws::Region::US_EAST_1
 

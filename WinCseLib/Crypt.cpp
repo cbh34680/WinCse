@@ -100,6 +100,7 @@ bool GetCryptKeyFromRegistry(std::string* pKeyStr)
     {
         goto exit;
     }
+
     if (dataSize > sizeof(data))
     {
         goto exit;
@@ -111,6 +112,11 @@ bool GetCryptKeyFromRegistry(std::string* pKeyStr)
 
     // 値のデータを取得
     result = ::RegQueryValueExW(hKey, L"MachineGuid", NULL, &dataType, data, &dataSize);
+    if (!NT_SUCCESS(result))
+    {
+        goto exit;
+    }
+
     if (dataSize > sizeof(data))
     {
         goto exit;
@@ -134,7 +140,6 @@ exit:
 
     return ret;
 }
-
 
 } // namespace WinCseLib
 
