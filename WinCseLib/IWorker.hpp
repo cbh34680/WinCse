@@ -13,17 +13,16 @@ enum class CanIgnoreDuplicates
 
 enum class Priority
 {
+	None,
 	High,
 	Middle,
 	Low,
 };
 
-
 struct IWorker;
 
 struct WINCSELIB_API ITask
 {
-	Priority mPriority = Priority::Low;
 	uint64_t mAddTime = 0ULL;
 	wchar_t* mCaller = nullptr;
 
@@ -32,7 +31,9 @@ struct WINCSELIB_API ITask
 		delete mCaller;
 	}
 
-	virtual std::wstring synonymString() { return std::wstring{}; }
+	virtual CanIgnoreDuplicates getCanIgnoreDuplicates() const noexcept { return CanIgnoreDuplicates::None; }
+	virtual Priority getPriority() const noexcept { return Priority::None; }
+	virtual std::wstring synonymString() const noexcept { return std::wstring{}; }
 
 	virtual void run(CALLER_ARG0) = 0;
 	virtual void cancelled(CALLER_ARG0) { }
@@ -42,13 +43,20 @@ struct WINCSELIB_API IWorker : public ICSService
 {
 	virtual ~IWorker() = default;
 
-	virtual bool addTask(CALLER_ARG ITask* pTask, Priority priority, CanIgnoreDuplicates ignState)
+	virtual bool addTask(CALLER_ARG ITask* pTask)
 	{
 		pTask->cancelled(CONT_CALLER0);
 		delete pTask;
 		return false;
 	}
 };
+
+typedef struct
+{
+	const wchar_t* name;
+	IWorker* worker;
+}
+NamedWorker;
 
 } // namespace WinCseLib
 

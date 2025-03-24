@@ -8,11 +8,11 @@ using namespace WinCseLib;
 
 WinCse::WinCse(WINCSE_DRIVER_STATS* argStats,
 	const std::wstring& argTempDir, const std::wstring& argIniSection,
-	IWorker* argDelayedWorker, IWorker* argIdleWorker, ICSDevice* argCSDevice)
+	NamedWorker argWorkers[], ICSDevice* argCSDevice)
 	:
 	mStats(argStats),
 	mTempDir(argTempDir), mIniSection(argIniSection),
-	mDelayedWorker(argDelayedWorker), mIdleWorker(argIdleWorker), mCSDevice(argCSDevice),
+	mCSDevice(argCSDevice),
 	mMaxFileSize(-1),
 	mResourceSweeper(this),
 	mIgnoredFileNamePatterns{ LR"(\b(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif)|\.DS_Store)$)", std::regex_constants::icase }
@@ -21,9 +21,9 @@ WinCse::WinCse(WINCSE_DRIVER_STATS* argStats,
 
 	APP_ASSERT(std::filesystem::exists(argTempDir));
 	APP_ASSERT(std::filesystem::is_directory(argTempDir));
-	APP_ASSERT(argDelayedWorker);
-	APP_ASSERT(argIdleWorker);
 	APP_ASSERT(argCSDevice);
+
+	NamedWorkersToMap(argWorkers, &mWorkers);
 }
 
 WinCse::~WinCse()

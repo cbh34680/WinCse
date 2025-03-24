@@ -194,11 +194,11 @@ static std::mutex gGuard;
 
 bool taskComparator(const std::unique_ptr<ITask>& a, const std::unique_ptr<ITask>& b)
 {
-	if (a->mPriority < b->mPriority)
+	if (a->getPriority() < b->getPriority())
 	{
 		return true;
 	}
-	else if (a->mPriority > b->mPriority)
+	else if (a->getPriority() > b->getPriority())
 	{
 		return false;
 	}
@@ -221,7 +221,7 @@ bool taskComparator(const std::unique_ptr<ITask>& a, const std::unique_ptr<ITask
 	return false;
 }
 
-bool DelayedWorker::addTask(CALLER_ARG WinCseLib::ITask* argTask, WinCseLib::Priority priority, WinCseLib::CanIgnoreDuplicates ignState)
+bool DelayedWorker::addTask(CALLER_ARG WinCseLib::ITask* argTask)
 {
 	THREAD_SAFE();
 	NEW_LOG_BLOCK();
@@ -242,69 +242,51 @@ bool DelayedWorker::addTask(CALLER_ARG WinCseLib::ITask* argTask, WinCseLib::Pri
 	bool added = false;
 
 #if ENABLE_TASK
-	argTask->mPriority = priority;
 	argTask->mAddTime = GetCurrentUtcMillis();
 	argTask->mCaller = _wcsdup(CALL_CHAIN().c_str());
 
-	if (priority == Priority::High)
+	if (argTask->getCanIgnoreDuplicates() == CanIgnoreDuplicates::Yes)
 	{
-		// 優先する場合は先頭に追加
+		const auto argTaskName{ argTask->synonymString() };
 
-		mTaskQueue.emplace_front(argTask);
+		// 無視可能の時には synonym は設定されるべき
+		APP_ASSERT(!argTaskName.empty());
 
-		added = true;
-	}
-	else
-	{
-		// 通常は後方に追加
-		
-		if (ignState == CanIgnoreDuplicates::Yes)
+		// 無視可能
+		const auto it = std::find_if(mTaskQueue.begin(), mTaskQueue.end(), [&argTaskName](const auto& task)
 		{
-			const auto argTaskName{ argTask->synonymString() };
+			// キューから同じシノニムを探す
+			return task->synonymString() == argTaskName;
+		});
 
-			// 無視可能の時には synonym は設定されるべき
-			APP_ASSERT(!argTaskName.empty());
-
-			// 無視可能
-			const auto it = std::find_if(mTaskQueue.begin(), mTaskQueue.end(), [&argTaskName](const auto& task)
-			{
-				// キューから同じシノニムを探す
-				return task->synonymString() == argTaskName;
-			});
-
-			if (it == mTaskQueue.end())
-			{
-				// 同等のものが存在しない
-				added = true;
-			}
-			else
-			{
-				traceW(L"[%s]: task ignored", argTaskName.c_str());
-
-				mTaskSkipCount++;
-			}
+		if (it == mTaskQueue.end())
+		{
+			// 同等のものが存在しない
+			added = true;
 		}
 		else
 		{
-			// 無視できない
-			added = true;
-		}
+			traceW(L"[%s]: task ignored", argTaskName.c_str());
 
-		if (added)
-		{
-			// 後方に追加
-
-			mTaskQueue.emplace_back(argTask);
+			mTaskSkipCount++;
 		}
+	}
+	else
+	{
+		// 無視できない
+		added = true;
 	}
 
 	if (added)
 	{
-#if 1
+		mTaskQueue.emplace_back(argTask);
+	}
+
+	if (added)
+	{
 		// Priority, AddTime の順にソート
 
 		std::sort(mTaskQueue.begin(), mTaskQueue.end(), taskComparator);
-#endif
 
 		// WaitForSingleObject() に通知
 		const auto b = ::SetEvent(mEvent.handle());

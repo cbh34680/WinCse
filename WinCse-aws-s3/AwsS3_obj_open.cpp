@@ -4,6 +4,7 @@
 
 using namespace WinCseLib;
 
+
 bool AwsS3::putObject(CALLER_ARG const ObjectKey& argObjKey,
     const char* sourceFile, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
 {
@@ -64,7 +65,7 @@ bool AwsS3::putObject(CALLER_ARG const ObjectKey& argObjKey,
     request.AddMetadata("wincse-last-access-time-debug", WinFileTime100nsToLocalTimeStringA(fileInfo.LastAccessTime).c_str());
     request.AddMetadata("wincse-last-write-time-debug", WinFileTime100nsToLocalTimeStringA(fileInfo.LastWriteTime).c_str());
 
-    const auto outcome = mClient.ptr->PutObject(request);
+    const auto outcome = mClient->PutObject(request);
 
     if (!outcomeIsSuccess(outcome))
     {
@@ -78,7 +79,7 @@ bool AwsS3::putObject(CALLER_ARG const ObjectKey& argObjKey,
     // キャッシュに反映されていない状態で利用されてしまうことを回避するために
     // 事前に削除しておき、改めてキャッシュを作成させる
 
-    const auto num = deleteCacheByObjKey(CONT_CALLER argObjKey);
+    const auto num = deleteCacheByObjectKey(CONT_CALLER argObjKey);
     traceW(L"cache delete num=%d", num);
 
     if (pFileInfo)
@@ -91,7 +92,7 @@ bool AwsS3::putObject(CALLER_ARG const ObjectKey& argObjKey,
 
 CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
     const UINT32 CreateOptions, const UINT32 GrantedAccess, const UINT32 argFileAttributes,
-    FSP_FSCTL_FILE_INFO* pFileInfo)
+    PSECURITY_DESCRIPTOR SecurityDescriptor, FSP_FSCTL_FILE_INFO* pFileInfo)
 {
     StatsIncr(create);
     NEW_LOG_BLOCK();
@@ -145,7 +146,12 @@ CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
             traceW(L"localPath=%s", localPath.c_str());
 
             UINT32 FileAttributes = argFileAttributes;
+            SECURITY_ATTRIBUTES SecurityAttributes{};
             ULONG CreateFlags = 0;
+
+            SecurityAttributes.nLength = sizeof SecurityAttributes;
+            SecurityAttributes.lpSecurityDescriptor = SecurityDescriptor;
+            SecurityAttributes.bInheritHandle = FALSE;
 
             //CreateFlags = FILE_FLAG_BACKUP_SEMANTICS;             // ディレクトリは操作しないので不要
 
@@ -170,7 +176,7 @@ CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
                 FileAttributes = FILE_ATTRIBUTE_NORMAL;
 
             hFile = ::CreateFileW(localPath.c_str(),
-                GrantedAccess, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,//&SecurityAttributes,
+                GrantedAccess, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, &SecurityAttributes,
                 CREATE_ALWAYS, CreateFlags | FileAttributes, 0);
             if (hFile == INVALID_HANDLE_VALUE)
             {
@@ -181,7 +187,7 @@ CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
             }
         }
 
-        CreateContext* ctx = new CreateContext(mCacheDataDir, argObjKey, fileInfo, CreateOptions, GrantedAccess);
+        OpenContext* ctx = new OpenContext(mCacheDataDir, argObjKey, fileInfo, CreateOptions, GrantedAccess);
         APP_ASSERT(ctx);
 
         if (hFile == INVALID_HANDLE_VALUE)
@@ -232,64 +238,90 @@ CSDeviceContext* AwsS3::open(CALLER_ARG const ObjectKey& argObjKey,
     return ctx;
 }
 
+void AwsS3::cleanup(CALLER_ARG WinCseLib::CSDeviceContext* ctx, ULONG Flags)
+{
+    StatsIncr(cleanup);
+    NEW_LOG_BLOCK();
+    APP_ASSERT(ctx);
+
+    traceW(L"mObjKey=%s", ctx->mObjKey.c_str());
+
+    if (Flags & FspCleanupDelete)
+    {
+        // setDelete() により削除フラグを設定されたファイルと、
+        // CreateFile() 時に FILE_FLAG_DELETE_ON_CLOSE の属性が与えられたファイル
+        // がクローズされるときにここを通過する
+
+        Aws::S3::Model::DeleteObjectRequest request;
+        request.SetBucket(ctx->mObjKey.bucketA());
+        request.SetKey(ctx->mObjKey.keyA());
+        const auto outcome = mClient->DeleteObject(request);
+
+        if (!outcomeIsSuccess(outcome))
+        {
+            traceW(L"fault: DeleteObject");
+        }
+
+        // キャッシュ・メモリから削除
+
+        const auto num = deleteCacheByObjectKey(CONT_CALLER ctx->mObjKey);
+        traceW(L"cache delete num=%d", num);
+
+        // WinFsp の Cleanup() で CloseHandle() しているので、同様の処理を行う
+
+        ctx->mFile.close();
+    }
+}
+
 void AwsS3::close(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext)
 {
     StatsIncr(close);
     NEW_LOG_BLOCK();
 
-    if (argCSDeviceContext)
+    OpenContext* ctx = dynamic_cast<OpenContext*>(argCSDeviceContext);
+    APP_ASSERT(ctx);
+
+    traceW(L"close mObjKey=%s path=%s", ctx->mObjKey.c_str(), ctx->getFilePathW().c_str());
+
+    if (ctx->mFile.valid() && ctx->mWrite)
     {
-        CreateContext* ctx = dynamic_cast<CreateContext*>(argCSDeviceContext);
-        if (ctx)
+        APP_ASSERT(ctx->mObjKey.meansFile());
+
+        const auto fileSize = ctx->mFile.getFileSize();
+
+        traceW(L"fileSize=%lld", fileSize);
+
+        if (fileSize == 0)
         {
-            if (ctx->mFile.valid())
+            // nothing
+        }
+        else
+        {
+            ctx->mFile.close();
+
+            const auto remotePath{ ctx->getRemotePath() };
+
+            UnprotectedShare<CreateFileShared> unsafeShare(&mGuardCreateFile, remotePath);  // 名前への参照を登録
             {
-                APP_ASSERT(ctx->mObjKey.meansFile());
+                const auto safeShare{ unsafeShare.lock() };                                 // 名前のロック
 
-                // エクスプローラーの新規作成から遷移したときの特別対応
-                //
-                // excel では作成時にデータを書き込み、直後に読み込まれるため
-                // リモートの情報とローカルのキャッシュの状態を一致させる必要がある
-                // 
-                // 但し、コピー操作も同様にここを通過するため、サイズの制限を設け
-                // 一定サイズ以内の場合は即時同期し、それ以外は遅延書き込みとする
-                //
-                // --> 数百MB のサイズのファイルがコピーされてきたときにアップロードに時間がかかってしまうことを懸念
-
-                const auto fileSize = ctx->mFile.getFileSize();
-
-                if (fileSize == 0)
+                if (fileSize < FILESIZE_1GiB * 5)
                 {
-                    // nothing
+                    if (!putObject(CONT_CALLER ctx->mObjKey, ctx->getFilePathA().c_str(), nullptr))
+                    {
+                        traceW(L"fault: putObject");
+                    }
                 }
                 else
                 {
-                    const auto remotePath{ ctx->getRemotePath() };
-
-                    UnprotectedShare<CreateFileShared> unsafeShare(&mGuardCreateFile, remotePath);  // 名前への参照を登録
-                    {
-                        const auto safeShare{ unsafeShare.lock() };                                 // 名前のロック
-
-                        if (fileSize <= (FILESIZE_1B * 1024 * 1024))
-                        {
-                            // 1MB 以内なら即時アップロードする
-
-                            ctx->mFile.close();
-
-                            if (!putObject(CONT_CALLER ctx->mObjKey, ctx->getFilePathA().c_str(), nullptr))
-                            {
-                                traceW(L"fault: putObject");
-                            }
-                        }
-                    }
+                    traceW(L"fault: too big");
                 }
 
-                traceW(L"close mObjKey=%s path=%s", ctx->mObjKey.c_str(), ctx->getFilePathW().c_str());
-            }
+            }   // 名前のロックを解除 (safeShare の生存期間)
         }
     }
 
-    delete argCSDeviceContext;
+    delete ctx;
 }
 
     // EOF

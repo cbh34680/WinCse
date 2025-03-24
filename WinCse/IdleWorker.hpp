@@ -27,7 +27,7 @@ public:
 	bool OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
 	void OnSvcStop() override;
 
-	bool addTask(CALLER_ARG WinCseLib::ITask* argTask, WinCseLib::Priority priority, WinCseLib::CanIgnoreDuplicates ignState) override;
+	bool addTask(CALLER_ARG WinCseLib::ITask* argTask) override;
 };
 
 // EOF

@@ -53,14 +53,7 @@ class ClientPtr : public std::unique_ptr<Aws::S3::S3Client>
 	int mRefCount = 0;
 
 public:
-#if 0
-	ClientPtr() = default;
-
-	ClientPtr(Aws::S3::S3Client* client)
-		: std::unique_ptr<Aws::S3::S3Client>(client) { }
-#else
 	using std::unique_ptr<Aws::S3::S3Client>::unique_ptr;
-#endif
 
 	Aws::S3::S3Client* operator->() noexcept
 	{
@@ -77,9 +70,6 @@ class AwsS3 : public WinCseLib::ICSDevice
 private:
 	WINCSE_DEVICE_STATS* mStats = nullptr;
 	WINCSE_DEVICE_STATS mStats_{};
-
-	WinCseLib::IWorker* mDelayedWorker;
-	WinCseLib::IWorker* mIdleWorker;
 
 	const std::wstring mTempDir;
 	const std::wstring mIniSection;
@@ -99,74 +89,75 @@ private:
 	WinCseLib::FileHandle mRefFile;
 	WinCseLib::FileHandle mRefDir;
 
+	// ファイル生成時の排他制御
 	struct CreateFileShared : public SharedBase { };
 	ShareStore<CreateFileShared> mGuardCreateFile;
 
-	// シャットダウン要否判定のためポインタにしている
+	// シャットダウン要否判定のためポインタ
 	std::unique_ptr<Aws::SDKOptions> mSDKOptions;
 
 	// S3 クライアント
-	struct
+	ClientPtr mClient;
+
+	// Worker 取得
+	std::unordered_map<std::wstring, WinCseLib::IWorker*> mWorkers;
+
+	WinCseLib::IWorker* getWorker(const std::wstring& argName)
 	{
-		ClientPtr ptr;
+		return mWorkers.at(argName);
 	}
-	mClient;
-
-	std::vector<std::wregex> mBucketFilters;
-
-	void clearBuckets(CALLER_ARG0);
-	void reloadBukcetsIfNeed(CALLER_ARG0);
-	void reportBucketCache(CALLER_ARG FILE* fp);
-
-	void deleteOldObjects(CALLER_ARG
-		std::chrono::system_clock::time_point threshold);
-
-	void clearObjects(CALLER_ARG0);
-
-	void reportObjectCache(CALLER_ARG FILE* fp);
-
-	std::wstring unlockGetBucketRegion(CALLER_ARG const std::wstring& bucketName);
-
-	DirInfoType apicallHeadObject(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
-
-	bool apicallListObjectsV2(CALLER_ARG const Purpose purpose,
-		const WinCseLib::ObjectKey& argObjKey, DirInfoListType* pDirInfoList);
-
-	int unlockDeleteCacheByObjKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
-
-	bool unlockHeadObject(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
-		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */);
-
-	bool unlockHeadObject_File(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
-		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */);
-
-	bool unlockListObjects(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
-		const Purpose purpose, DirInfoListType* pDirInfoList /* nullable */);
-
-	DirInfoType unlockListObjects_Dir(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
-
-	DirInfoType unlockFindInParentOfDisplay(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
-
-	bool unlockListObjects_Display(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
-		DirInfoListType* pDirInfoList /* nullable */);
-
-	bool syncFileAttributes(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
-		const FSP_FSCTL_FILE_INFO& fileInfo, const std::wstring& localPath,
-		bool* pNeedDownload);
-
-	NTSTATUS readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
-		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred);
-
-	NTSTATUS readObject_Multipart(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
-		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred);
-
-	bool doMultipartDownload(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext, const std::wstring& localPath);
 
 	void notifListener();
 
-	int deleteCacheByObjKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
-
+	// バケット名フィルタ
+	std::vector<std::wregex> mBucketFilters;
 	bool isInBucketFilters(const std::wstring& arg);
+
+	// バケット操作関連
+	void clearBuckets(CALLER_ARG0);
+	void reloadBukcetsIfNeed(CALLER_ARG0);
+	void reportBucketCache(CALLER_ARG FILE* fp);
+	std::wstring unlockGetBucketRegion(CALLER_ARG const std::wstring& bucketName);
+
+	// オブジェクト操作関連
+	void reportObjectCache(CALLER_ARG FILE* fp);
+	void deleteOldObjects(CALLER_ARG std::chrono::system_clock::time_point threshold);
+	void clearObjects(CALLER_ARG0);
+	int deleteCacheByObjectKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
+
+	//
+	void unlockReportObjectCache(CALLER_ARG FILE* fp);
+	void unlockDeleteOldObjects(CALLER_ARG std::chrono::system_clock::time_point threshold);
+	void unlockClearObjects(CALLER_ARG0);
+	int unlockDeleteCacheByObjectKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
+
+	// AWS SDK API を実行
+	DirInfoType apicallHeadObject(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
+	bool apicallListObjectsV2(CALLER_ARG const Purpose purpose,
+		const WinCseLib::ObjectKey& argObjKey, DirInfoListType* pDirInfoList);
+
+	//
+	bool unlockHeadObject(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */);
+	bool unlockListObjects(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		const Purpose purpose, DirInfoListType* pDirInfoList /* nullable */);
+
+	// unlockHeadObject, unlockListObjects へのつなぎ
+	bool unlockHeadObject_File(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */);
+	DirInfoType unlockListObjects_Dir(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
+	DirInfoType unlockFindInParentOfDisplay(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
+	bool unlockListObjects_Display(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		DirInfoListType* pDirInfoList /* nullable */);
+
+	// Read 関連
+	bool syncFileAttributes(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		const FSP_FSCTL_FILE_INFO& fileInfo, const std::wstring& localPath, bool* pNeedDownload);
+	NTSTATUS readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
+		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred);
+	NTSTATUS readObject_Multipart(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
+		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred);
+	bool doMultipartDownload(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext, const std::wstring& localPath);
 
 public:
 	// 外部から呼び出されるため override ではないが public のメソッド
@@ -178,7 +169,7 @@ public:
 
 public:
 	AwsS3(const std::wstring& argTempDir, const std::wstring& argIniSection,
-		WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker);
+		WinCseLib::NamedWorker argWorkers[]);
 
 	~AwsS3();
 
@@ -207,7 +198,7 @@ public:
 
 	WinCseLib::CSDeviceContext* create(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		const UINT32 CreateOptions, const UINT32 GrantedAccess, const UINT32 FileAttributes,
-		FSP_FSCTL_FILE_INFO* pFileInfo) override;
+		PSECURITY_DESCRIPTOR SecurityDescriptor, FSP_FSCTL_FILE_INFO* pFileInfo) override;
 
 	WinCseLib::CSDeviceContext* open(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		const UINT32 CreateOptions, const UINT32 GrantedAccess, const FSP_FSCTL_FILE_INFO& FileInfo) override;
@@ -217,44 +208,39 @@ public:
 	NTSTATUS readObject(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred) override;
 
-	NTSTATUS writeObject(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
-		PVOID Buffer, UINT64 Offset, ULONG Length,
-		BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
-		PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO *FileInfo) override;
+	void cleanup(CALLER_ARG WinCseLib::CSDeviceContext* ctx, ULONG Flags) override;
 
-	NTSTATUS remove(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext, BOOLEAN argDeleteFile) override;
-
-	void cleanup(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext, ULONG argFlags) override;
+	HANDLE HandleFromContext(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext) override;
 
 private:
-	template<typename T>
-	bool outcomeIsSuccess(const T& outcome)
-	{
-		NEW_LOG_BLOCK();
-
-		const bool suc = outcome.IsSuccess();
-
-		traceA("outcome.IsSuccess()=%s: %s", suc ? "true" : "false", typeid(outcome).name());
-
-		if (!suc)
-		{
-			const auto& err{ outcome.GetError() };
-			const char* mesg{ err.GetMessage().c_str() };
-			const auto code{ err.GetResponseCode() };
-			const auto type{ err.GetErrorType() };
-			const char* name{ err.GetExceptionName().c_str() };
-
-			traceA("error: type=%d, code=%d, name=%s, message=%s", type, code, name, mesg);
-		}
-
-		return suc;
-	}
-
 	// ファイル/ディレクトリに特化
 	DirInfoType makeDirInfo_attr(const WinCseLib::ObjectKey& argObjKey, const UINT64 argFileTime, const UINT32 argFileAttributes);
 	DirInfoType makeDirInfo_byName(const WinCseLib::ObjectKey& argObjKey, const UINT64 argFileTime);
 	DirInfoType makeDirInfo_dir(const WinCseLib::ObjectKey& argObjKey, const UINT64 argFileTime);
 };
+
+template<typename T>
+bool outcomeIsSuccess(const T& outcome)
+{
+	NEW_LOG_BLOCK();
+
+	const bool suc = outcome.IsSuccess();
+
+	traceA("outcome.IsSuccess()=%s: %s", suc ? "true" : "false", typeid(outcome).name());
+
+	if (!suc)
+	{
+		const auto& err{ outcome.GetError() };
+		const char* mesg{ err.GetMessage().c_str() };
+		const auto code{ err.GetResponseCode() };
+		const auto type{ err.GetErrorType() };
+		const char* name{ err.GetExceptionName().c_str() };
+
+		traceA("error: type=%d, code=%d, name=%s, message=%s", type, code, name, mesg);
+	}
+
+	return suc;
+}
 
 //
 // open() が呼ばれたときに UParam として PTFS_FILE_CONTEXT に保存する内部情報
@@ -277,11 +263,8 @@ struct OpenContext : public WinCseLib::CSDeviceContext
 		mGrantedAccess(argGrantedAccess)
 	{
 	}
-};
 
-struct CreateContext : public OpenContext
-{
-	using OpenContext::OpenContext;
+	NTSTATUS openFileHandle(CALLER_ARG const DWORD argDesiredAccess, const DWORD argCreationDisposition);
 };
 
 #ifdef WINCSEAWSS3_EXPORTS
@@ -294,7 +277,7 @@ extern "C"
 {
 	AWSS3_API WinCseLib::ICSDevice* NewCSDevice(
 		const wchar_t* argTempDir, const wchar_t* argIniSection,
-		WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker);
+		WinCseLib::NamedWorker argWorkers[]);
 }
 
 #define StatsIncr(name)				::InterlockedIncrement(& (this->mStats->name))

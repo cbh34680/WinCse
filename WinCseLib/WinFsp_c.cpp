@@ -314,7 +314,8 @@ static NTSTATUS Overwrite(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(Overwrite);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoOverwrite();
+    return CSDriver()->DoOverwrite((PTFS_FILE_CONTEXT*)FileContext,
+        FileAttributes, ReplaceFileAttributes, AllocationSize, FileInfo);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -464,7 +465,7 @@ static NTSTATUS Flush(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(Flush);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoFlush();
+    return CSDriver()->DoFlush((PTFS_FILE_CONTEXT*)FileContext, FileInfo);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -584,7 +585,7 @@ static NTSTATUS Rename(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(Rename);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoRename();
+    return CSDriver()->DoRename((PTFS_FILE_CONTEXT*)FileContext, FileName, NewFileName, ReplaceIfExists);
 
 #else
     PTFS* Ptfs = (PTFS*)FileSystem->UserContext;
@@ -637,7 +638,7 @@ static NTSTATUS SetSecurity(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(SetSecurity);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoSetSecurity();
+    return CSDriver()->DoSetSecurity((PTFS_FILE_CONTEXT*)FileContext, SecurityInformation, ModificationDescriptor);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);

@@ -283,12 +283,12 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
         }
 
         APP_ASSERT(client);
-        mClient.ptr = ClientPtr(client);
+        mClient = ClientPtr(client);
 
         //
         // Ú‘±ŽŽŒ±
         //
-        const auto outcome = mClient.ptr->ListBuckets();
+        const auto outcome = mClient->ListBuckets();
         if (!outcomeIsSuccess(outcome))
         {
             traceW(L"fault: test ListBuckets");

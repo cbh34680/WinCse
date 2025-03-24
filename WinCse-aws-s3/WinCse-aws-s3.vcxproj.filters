@@ -48,13 +48,10 @@
     <ClCompile Include="AwsS3_obj_r_multipart.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="AwsS3_obj_r_download.cpp">
-      <Filter>ソース ファイル</Filter>
-    </ClCompile>
     <ClCompile Include="AwsS3_obj_open.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="AwsS3_obj_rw.cpp">
+    <ClCompile Include="AwsS3_obj_read.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
   </ItemGroup>

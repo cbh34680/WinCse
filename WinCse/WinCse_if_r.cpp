@@ -5,18 +5,19 @@
 
 using namespace WinCseLib;
 
-#undef traceA
-
 
 struct ListObjectsTask : public ITask
 {
+	CanIgnoreDuplicates getCanIgnoreDuplicates() const noexcept override { return CanIgnoreDuplicates::Yes; }
+	Priority getPriority() const noexcept override { return Priority::Low; }
+
 	ICSDevice* mCSDevice;
 	const ObjectKey mObjectKey;
 
 	ListObjectsTask(ICSDevice* arg, const ObjectKey& argObjKey) :
 		mCSDevice(arg), mObjectKey(argObjKey) { }
 
-	std::wstring synonymString()
+	std::wstring synonymString() const noexcept override
 	{
 		std::wstringstream ss;
 		ss << L"ListObjectsTask; ";
@@ -36,7 +37,6 @@ struct ListObjectsTask : public ITask
 		mCSDevice->listObjects(CONT_CALLER mObjectKey, nullptr);
 	}
 };
-
 
 NTSTATUS WinCse::DoGetSecurityByName(
 	const wchar_t* FileName, PUINT32 PFileAttributes,
@@ -93,12 +93,10 @@ NTSTATUS WinCse::DoGetSecurityByName(
 				// ディレクトリ内のオブジェクトを先読みし、キャッシュを作成しておく
 				// 優先度は低く、無視できる
 
-				mDelayedWorker->addTask
+				getWorker(L"delayed")->addTask
 				(
 					START_CALLER
-					new ListObjectsTask{ mCSDevice, objKey.toDir() },
-					Priority::Low,
-					CanIgnoreDuplicates::Yes
+					new ListObjectsTask{ mCSDevice, objKey.toDir() }
 				);
 			}
 			else
@@ -128,16 +126,14 @@ NTSTATUS WinCse::DoGetSecurityByName(
 				// ディレクトリ内のオブジェクトを先読みし、キャッシュを作成しておく
 				// 優先度は低く、無視できる
 
-				mDelayedWorker->addTask
+				getWorker(L"delayed")->addTask
 				(
 					START_CALLER
 					new ListObjectsTask
 					{
 						mCSDevice,
 						ObjectKey{ objKey.bucket(), L"" }
-					},
-					Priority::Low,
-					CanIgnoreDuplicates::Yes
+					}
 				);
 			}
 		}

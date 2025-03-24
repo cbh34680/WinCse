@@ -15,10 +15,11 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
     request.SetBucket(argObjKey.bucketA());
     request.SetKey(argObjKey.keyA());
 
-    const auto outcome = mClient.ptr->HeadObject(request);
+    const auto outcome = mClient->HeadObject(request);
     if (!outcomeIsSuccess(outcome))
     {
         // HeadObject の実行時エラー、またはオブジェクトが見つからない
+
         traceW(L"fault: HeadObject");
 
         return nullptr;
@@ -57,6 +58,7 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
     if (argObjKey.meansHidden())
     {
         // 隠しファイル
+
         fileAttributes |= FILE_ATTRIBUTE_HIDDEN;
     }
 
@@ -158,7 +160,7 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
             request.SetContinuationToken(continuationToken);
         }
 
-        const auto outcome = mClient.ptr->ListObjectsV2(request);
+        const auto outcome = mClient->ListObjectsV2(request);
         if (!outcomeIsSuccess(outcome))
         {
             traceW(L"fault: ListObjectsV2");
@@ -290,6 +292,7 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
 
             {
                 // 大文字小文字を同一視した上で、同じ名前があったら無視する
+
                 std::wstring keyUpper{ ToUpper(key) };
 
                 if (std::find(already.begin(), already.end(), keyUpper) != already.end())

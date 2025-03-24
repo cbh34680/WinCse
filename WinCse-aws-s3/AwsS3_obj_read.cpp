@@ -1,9 +1,26 @@
 #include "AwsS3.hpp"
-#include <filesystem>
 
 
 using namespace WinCseLib;
 
+
+//
+// WinFsp の Read() により呼び出され、Offset から Lengh のファイル・データを返却する
+// ここでは最初に呼び出されたときに s3 からファイルをダウンロードしてキャッシュとした上で
+// そのファイルをオープンし、その後は HANDLE を使いまわす
+//
+NTSTATUS AwsS3::readObject(CALLER_ARG WinCseLib::CSDeviceContext* ctx,
+    PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred)
+{
+    StatsIncr(readObject);
+    NEW_LOG_BLOCK();
+
+    APP_ASSERT(ctx);
+    APP_ASSERT(ctx->isFile());
+
+    //return readObject_Simple(CONT_CALLER ctx, Buffer, Offset, Length, PBytesTransferred);
+    return readObject_Multipart(CONT_CALLER ctx, Buffer, Offset, Length, PBytesTransferred);
+}
 
 //
 // GetObject() で取得した内容をファイルに出力
@@ -152,7 +169,7 @@ int64_t AwsS3::prepareLocalCacheFile(CALLER_ARG
         request.SetRange(range);
     }
 
-    const auto outcome = mClient.ptr->GetObject(request);
+    const auto outcome = mClient->GetObject(request);
     if (!outcomeIsSuccess(outcome))
     {
         traceW(L"fault: GetObject");

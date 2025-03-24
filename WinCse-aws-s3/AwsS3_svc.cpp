@@ -6,11 +6,14 @@ using namespace WinCseLib;
 
 struct ListBucketsTask : public ITask
 {
+    CanIgnoreDuplicates getCanIgnoreDuplicates() const noexcept override { return CanIgnoreDuplicates::Yes; }
+    Priority getPriority() const noexcept override { return Priority::Low; }
+
     AwsS3* mAwsS3;
 
     ListBucketsTask(AwsS3* argAwsS3) : mAwsS3(argAwsS3) { }
 
-    std::wstring synonymString()
+    std::wstring synonymString() const noexcept override
     {
         return L"ListBucketsTask";
     }
@@ -68,11 +71,10 @@ bool AwsS3::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 
     // バケット一覧の先読み
     // 無視できて優先度は低い
-    mDelayedWorker->addTask(START_CALLER new ListBucketsTask{ this }, Priority::Low, CanIgnoreDuplicates::Yes);
+    getWorker(L"delayed")->addTask(START_CALLER new ListBucketsTask{ this });
 
     // アイドル時のメモリ解放(等)のタスクを登録
-    // 優先度は低い
-    mIdleWorker->addTask(START_CALLER new IdleTask{ this }, Priority::Low, CanIgnoreDuplicates::None);
+    getWorker(L"idle")->addTask(START_CALLER new IdleTask{ this });
 
     // 外部からの通知待ちイベントの生成
     SECURITY_ATTRIBUTES sa{ 0 };
@@ -243,7 +245,7 @@ void AwsS3::notifListener()
                         fwprintf(fp, L"ProcessHandle=%lu\n", handleCount);
                     }
 
-                    fwprintf(fp, L"ClientPtr.RefCount=%d\n", mClient.ptr.getRefCount());
+                    fwprintf(fp, L"ClientPtr.RefCount=%d\n", mClient.getRefCount());
 
                     fwprintf(fp, L"[BucketCache]\n");
                     this->reportBucketCache(START_CALLER fp);
@@ -260,8 +262,6 @@ void AwsS3::notifListener()
 
             case 1:
             {
-                //const auto now{ std::chrono::system_clock::now() };
-                //this->deleteOldObjects(START_CALLER now);
                 clearObjects(START_CALLER0);
 
                 break;

@@ -16,8 +16,6 @@ typedef struct
 	long readObject;
 	long close;
 	long cleanup;
-	long remove;
-	long writeObject;
 }
 WINCSE_DEVICE_STATS;
 
@@ -110,6 +108,7 @@ struct CSDeviceContext
 	ObjectKey mObjKey;
 	const FSP_FSCTL_FILE_INFO mFileInfo;
 	FileHandle mFile;
+	bool mWrite = false;
 
 	WINCSELIB_API CSDeviceContext(
 		const std::wstring& argCacheDataDir,
@@ -144,7 +143,7 @@ struct WINCSELIB_API ICSDevice : public ICSService
 
 	virtual CSDeviceContext* create(CALLER_ARG const ObjectKey& argObjKey,
 		const UINT32 CreateOptions, const UINT32 GrantedAccess, const UINT32 FileAttributes,
-		FSP_FSCTL_FILE_INFO* pFileInfo) = 0;
+		PSECURITY_DESCRIPTOR SecurityDescriptor, FSP_FSCTL_FILE_INFO* pFileInfo) = 0;
 
 	virtual CSDeviceContext* open(CALLER_ARG const ObjectKey& argObjKey,
 		const UINT32 CreateOptions, const UINT32 GrantedAccess,
@@ -155,14 +154,9 @@ struct WINCSELIB_API ICSDevice : public ICSService
 	virtual NTSTATUS readObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred) = 0;
 
-	virtual NTSTATUS writeObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
-		PVOID Buffer, UINT64 Offset, ULONG Length,
-		BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
-		PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO *FileInfo) = 0;
+	virtual void cleanup(CALLER_ARG CSDeviceContext* argCSDeviceContext, ULONG Flags) = 0;
 
-	virtual NTSTATUS remove(CALLER_ARG CSDeviceContext* argCSDeviceContext, BOOLEAN argDeleteFile) = 0;
-
-	virtual void cleanup(CALLER_ARG CSDeviceContext* argCSDeviceContext, ULONG argFlags) = 0;
+	virtual HANDLE HandleFromContext(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext) = 0;
 };
 
 } // namespace WinCseLib

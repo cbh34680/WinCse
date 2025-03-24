@@ -16,8 +16,7 @@ static bool app_tempdir(std::wstring* tmpDir);
 extern "C"
 {
     __declspec(dllimport) ICSDevice* NewCSDevice(
-        const wchar_t* argTempDir, const wchar_t* argIniSection,
-        IWorker* argDelayedWorker, IWorker* argIdleWorker);
+        const wchar_t* argTempDir, const wchar_t* argIniSection, NamedWorker workers[]);
 }
 
 static void test1_1(ICSDevice* cs)
@@ -43,7 +42,7 @@ static void test1_1(ICSDevice* cs)
                     continue;
                 }
 
-                if (obj->FileInfo.FileSize >= (FILESIZE_1BU * 1024 * 1024))
+                if (obj->FileInfo.FileSize >= FILESIZE_1MiBu)
                 {
                     // !!!
                     continue;
@@ -132,8 +131,13 @@ int test1(int argc, wchar_t** argv)
     {
         NoopWorker wk1;
         NoopWorker wk2;
+        NamedWorker workers[] = {
+            { L"wk1", &wk1 },
+            { L"wk2", &wk2 },
+            { nullptr, nullptr },
+        };
 
-        ICSDevice* cs = (ICSDevice*)NewCSDevice(tmpDir.c_str(), L"default", &wk1, &wk2);
+        ICSDevice* cs = (ICSDevice*)NewCSDevice(tmpDir.c_str(), L"default", workers);
 
         FSP_FSCTL_VOLUME_PARAMS vp{ };
 

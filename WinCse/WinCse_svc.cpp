@@ -5,14 +5,8 @@
 
 using namespace WinCseLib;
 
-static const wchar_t* CONFIGFILE_FNAME = L"WinCse.conf";
 
-template <typename T>
-std::string getDerivedClassNames(T* baseClass)
-{
-	const std::type_info& typeInfo = typeid(*baseClass);
-	return typeInfo.name();
-}
+static const wchar_t* CONFIGFILE_FNAME = L"WinCse.conf";
 
 //
 // ƒvƒƒOƒ‰ƒ€ˆø” "-u" ‚©‚çŽZo‚³‚ê‚½ƒfƒBƒŒƒNƒgƒŠ‚©‚ç ini ƒtƒ@ƒCƒ‹‚ð“Ç‚Ý
@@ -148,7 +142,21 @@ bool WinCse::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PAR
 
 		// PreCreateFilesystem() ‚Ì“`”d
 
-		ICSService* services[] = { mDelayedWorker, mIdleWorker, mCSDevice };
+		for (const auto& it: mWorkers)
+		{
+			const auto worker = it.second;
+			const auto klassName = getDerivedClassNames(worker);
+
+			traceA("%s::PreCreateFilesystem()", klassName.c_str());
+
+			if (!worker->PreCreateFilesystem(argWorkDir, VolumeParams))
+			{
+				traceA("fault: PreCreateFilesystem");
+				return false;
+			}
+		}
+
+		ICSService* services[] = { mCSDevice };
 
 		for (int i=0; i<_countof(services); i++)
 		{
@@ -191,7 +199,22 @@ bool WinCse::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 	try
 	{
 		// OnSvcStart() ‚Ì“`”d
-		ICSService* services[] = { mDelayedWorker, mIdleWorker, mCSDevice };
+
+		for (const auto& it: mWorkers)
+		{
+			const auto worker = it.second;
+			const auto klassName = getDerivedClassNames(worker);
+
+			traceA("%s::OnSvcStart()", klassName.c_str());
+
+			if (!worker->OnSvcStart(argWorkDir, FileSystem))
+			{
+				traceA("fault: PreCreateFilesystem");
+				return false;
+			}
+		}
+
+		ICSService* services[] = { mCSDevice };
 
 		for (int i=0; i<_countof(services); i++)
 		{
@@ -227,9 +250,20 @@ void WinCse::OnSvcStop()
 
 	NEW_LOG_BLOCK();
 
-	ICSService* services[] = { mDelayedWorker, mIdleWorker, mCSDevice };
-
 	// OnSvcStop() ‚Ì“`”d
+
+	for (const auto& it: mWorkers)
+	{
+		const auto worker = it.second;
+		const auto klassName = getDerivedClassNames(worker);
+
+		traceA("%s::OnSvcStop()", klassName.c_str());
+
+		worker->OnSvcStop();
+	}
+
+	ICSService* services[] = { mCSDevice };
+
 	for (int i=0; i<_countof(services); i++)
 	{
 		const auto service = services[i];
@@ -239,9 +273,6 @@ void WinCse::OnSvcStop()
 
 		services[i]->OnSvcStop();
 	}
-
-	mRefFile.close();
-	mRefDir.close();
 }
 
 // EOF

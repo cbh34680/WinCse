@@ -105,6 +105,18 @@ void AbnormalEnd(const char* file, const int line, const char* func, const int s
 	abort();
 }
 
+//
+void NamedWorkersToMap(NamedWorker workers[], std::unordered_map<std::wstring, IWorker*>* pWorkerMap)
+{
+	NamedWorker* cur = workers;
+
+	while (cur->name)
+	{
+		pWorkerMap->emplace(cur->name, cur->worker);
+		cur++;
+	}
+}
+
 // malloc, calloc ‚ÅŠm•Û‚µ‚½ƒƒ‚ƒŠ‚ğ shared_ptr ‚Å‰ğ•ú‚·‚é‚½‚ß‚ÌŠÖ”
 template <typename T>
 void free_deleter(T* ptr)
@@ -502,13 +514,6 @@ LONGLONG FileHandle::getFileSize()
 	}
 
 	return fileSize.QuadPart;
-}
-
-BOOL FileHandle::flushFileBuffers()
-{
-	APP_ASSERT(valid());
-
-	return ::FlushFileBuffers(mHandle);
 }
 
 //

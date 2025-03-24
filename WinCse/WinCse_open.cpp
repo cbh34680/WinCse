@@ -90,7 +90,7 @@ NTSTATUS WinCse::DoCreate(const wchar_t* FileName,
 		StatsIncr(_CallCreate);
 
 		CSDeviceContext* ctx = mCSDevice->create(START_CALLER objKey,
-			CreateOptions, GrantedAccess, FileAttributes, &fileInfo);
+			CreateOptions, GrantedAccess, FileAttributes, SecurityDescriptor, &fileInfo);
 
 		if (!ctx)
 		{
@@ -215,7 +215,7 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 
 			if (mMaxFileSize > 0)
 			{
-				if (fileInfo.FileSize > (FILESIZE_1BU * 1024 * 1024 * mMaxFileSize))
+				if (fileInfo.FileSize > (FILESIZE_1MiBu * mMaxFileSize))
 				{
 					ntstatus = STATUS_DEVICE_NOT_READY;
 					traceW(L"%llu: When a file size exceeds the maximum size that can be opened.", fileInfo.FileSize);
@@ -261,6 +261,21 @@ exit:
 	traceW(L"return NTSTATUS=%ld", ntstatus);
 
 	return ntstatus;
+}
+
+VOID WinCse::DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags)
+{
+	StatsIncr(DoCleanup);
+
+	NEW_LOG_BLOCK();
+	APP_ASSERT(FileContext);
+
+	traceW(L"FileName: \"%s\"", FileName);
+	traceW(L"(FileContext)FileName: \"%s\"", FileContext->FileName);
+	traceW(L"FileAttributes: %u", FileContext->FileInfo.FileAttributes);
+	traceW(L"Flags=%lu", Flags);
+
+	mCSDevice->cleanup(START_CALLER (CSDeviceContext*)FileContext->UParam, Flags);
 }
 
 NTSTATUS WinCse::DoClose(PTFS_FILE_CONTEXT* FileContext)

@@ -12,6 +12,7 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <unordered_map>
 
 #define DIRECT_LINK_TEST        (0)
 
@@ -64,12 +65,10 @@ struct DllModuleRAII
 };
 
 #if DIRECT_LINK_TEST
-bool loadCSDevice(const std::wstring& dllType,
-    const std::wstring& tmpDir, const wchar_t* iniSection,
-    WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker,
-    DllModuleRAII* pDll)
+bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir,
+    const wchar_t* iniSection, NamedWorker workers[], DllModuleRAII* pDll)
 {
-    pDll->mCSDevice = NewCSDevice(tmpDir.c_str(), iniSection, delayedWorker, idleWorker);
+    pDll->mCSDevice = NewCSDevice(tmpDir.c_str(), iniSection, workers);
 
     return true;
 }
@@ -80,10 +79,8 @@ bool loadCSDevice(const std::wstring& dllType,
 // その中にエクスポートされた NewCSDevice() を実行する。
 // 戻り値は ICSDevice* になる。
 //
-bool loadCSDevice(const std::wstring& dllType,
-    const std::wstring& tmpDir, const wchar_t* iniSection,
-	WinCseLib::IWorker* delayedWorker, WinCseLib::IWorker* idleWorker,
-    DllModuleRAII* pDll)
+bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir,
+    const wchar_t* iniSection, NamedWorker workers[], DllModuleRAII* pDll)
 {
     NEW_LOG_BLOCK();
 
@@ -92,8 +89,7 @@ bool loadCSDevice(const std::wstring& dllType,
 	const std::wstring dllName{ std::wstring(PROGNAME) + L'-' + dllType + L".dll" };
 
 	typedef WinCseLib::ICSDevice* (*NewCSDevice)(
-		const wchar_t* argTempDir, const wchar_t* argIniSection,
-		WinCseLib::IWorker * delayedWorker, WinCseLib::IWorker * idleWorker);
+		const wchar_t* argTempDir, const wchar_t* argIniSection, NamedWorker workers[]);
 
 	NewCSDevice dllFunc = nullptr;
     ICSDevice* pCSDevice = nullptr;
@@ -114,7 +110,7 @@ bool loadCSDevice(const std::wstring& dllType,
         goto exit;
     }
 
-    pCSDevice = dllFunc(tmpDir.c_str(), iniSection, delayedWorker, idleWorker);
+    pCSDevice = dllFunc(tmpDir.c_str(), iniSection, workers);
 	if (!pCSDevice)
 	{
         std::wcerr << L"fault: NewCSDevice" << std::endl;
@@ -204,11 +200,18 @@ static int app_main(int argc, wchar_t** argv,
                 DelayedWorker dworker(tmpDir, iniSection);
                 IdleWorker iworker(tmpDir, iniSection);
 
+                NamedWorker workers[] =
+                {
+                    { L"delayed", &dworker },
+                    { L"idle", &iworker },
+                    { nullptr, nullptr },
+                };
+
                 std::wcout << L"load dll type=" << dllType << std::endl;
                 traceW(L"load dll type=%s", dllType.c_str());
 
                 // dll のロード
-                if (loadCSDevice(dllType, tmpDir, iniSection, &dworker, &iworker, &dll))
+                if (loadCSDevice(dllType, tmpDir, iniSection, workers, &dll))
                 {
                     // WinCse メンバのデストラクタでの処理を appSTats に反映させるため
                     // app の生存期間より長くする
@@ -217,7 +220,7 @@ static int app_main(int argc, wchar_t** argv,
                     WINFSP_IF libif{};
 
                     {
-                        WinCse app(&appStats, tmpDir, iniSection, &dworker, &iworker, dll.mCSDevice);
+                        WinCse app(&appStats, tmpDir, iniSection, workers, dll.mCSDevice);
 
                         std::wcout << L"call WinFspMain" << std::endl;
                         traceW(L"call WinFspMain");
@@ -498,7 +501,6 @@ static void writeStats(
             fprintf(fp, "\t" "DoSetBasicInfo: %ld\n", appStats->DoSetBasicInfo);
             fprintf(fp, "\t" "DoSetDelete: %ld\n", appStats->DoSetDelete);
             fprintf(fp, "\t" "DoSetFileSize: %ld\n", appStats->DoSetFileSize);
-            fprintf(fp, "\t" "DoSetPath: %ld\n", appStats->DoSetPath);
             fprintf(fp, "\t" "DoSetSecurity: %ld\n", appStats->DoSetSecurity);
 
             fprintf(fp, "\t" "_CallCreate: %ld\n", appStats->_CallCreate);
@@ -516,11 +518,9 @@ static void writeStats(
             fprintf(fp, "\t" "listObjects: %ld\n", devStats->listObjects);
             fprintf(fp, "\t" "create: %ld\n", devStats->create);
             fprintf(fp, "\t" "open: %ld\n", devStats->open);
-            fprintf(fp, "\t" "cleanup: %ld\n", devStats->cleanup);
             fprintf(fp, "\t" "close: %ld\n", devStats->close);
             fprintf(fp, "\t" "readObject: %ld\n", devStats->readObject);
-            fprintf(fp, "\t" "writeObject: %ld\n", devStats->writeObject);
-            fprintf(fp, "\t" "remove: %ld\n", devStats->remove);
+            fprintf(fp, "\t" "cleanup: %ld\n", devStats->cleanup);
 
             fputs("\n", fp);
 

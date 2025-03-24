@@ -10,14 +10,6 @@ using namespace WinCseLib;
 //
 static ObjectCache gObjectCache;
 
-int AwsS3::unlockDeleteCacheByObjKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey)
-{
-    NEW_LOG_BLOCK();
-    APP_ASSERT(argObjKey.valid());
-
-    return gObjectCache.deleteByObjectKey(CONT_CALLER argObjKey);
-}
-
 bool AwsS3::unlockHeadObject(CALLER_ARG const ObjectKey& argObjKey, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
 {
     NEW_LOG_BLOCK();
@@ -217,6 +209,28 @@ DirInfoType AwsS3::unlockFindInParentOfDisplay(CALLER_ARG const ObjectKey& argOb
 }
 #endif
 
+
+void AwsS3::unlockReportObjectCache(CALLER_ARG FILE* fp)
+{
+    gObjectCache.report(CONT_CALLER fp);
+}
+
+void AwsS3::unlockDeleteOldObjects(CALLER_ARG std::chrono::system_clock::time_point threshold)
+{
+    gObjectCache.deleteOldRecords(CONT_CALLER threshold);
+}
+
+void AwsS3::unlockClearObjects(CALLER_ARG0)
+{
+    const auto now{ std::chrono::system_clock::now() };
+    gObjectCache.deleteOldRecords(CONT_CALLER now);
+}
+
+int AwsS3::unlockDeleteCacheByObjectKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey)
+{
+    return gObjectCache.deleteByObjectKey(CONT_CALLER argObjKey);
+}
+
 // -----------------------------------------------------------------------------------
 //
 // 外部IF に Purpose を記述させないためのブロック
@@ -319,27 +333,6 @@ DirInfoType AwsS3::unlockListObjects_Dir(CALLER_ARG const ObjectKey& argObjKey)
 static std::mutex gGuard;
 #define THREAD_SAFE() std::lock_guard<std::mutex> lock_(gGuard)
 
-// レポートの生成
-void AwsS3::reportObjectCache(CALLER_ARG FILE* fp)
-{
-    THREAD_SAFE();
-    gObjectCache.report(CONT_CALLER fp);
-}
-
-// 古いキャッシュの削除
-void AwsS3::deleteOldObjects(CALLER_ARG std::chrono::system_clock::time_point threshold)
-{
-    THREAD_SAFE();
-    gObjectCache.deleteOldRecords(CONT_CALLER threshold);
-}
-
-void AwsS3::clearObjects(CALLER_ARG0)
-{
-    THREAD_SAFE();
-    const auto now{ std::chrono::system_clock::now() };
-    gObjectCache.deleteOldRecords(CONT_CALLER now);
-}
-
 bool AwsS3::headObject(CALLER_ARG const ObjectKey& argObjKey, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
 {
     StatsIncr(headObject);
@@ -398,12 +391,36 @@ bool AwsS3::listObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* 
 // 以降は override ではないもの
 //
 
-int AwsS3::deleteCacheByObjKey(CALLER_ARG const ObjectKey& argObjKey)
+// レポートの生成
+void AwsS3::reportObjectCache(CALLER_ARG FILE* fp)
+{
+    THREAD_SAFE();
+    APP_ASSERT(fp);
+
+    this->unlockReportObjectCache(CONT_CALLER fp);
+}
+
+// 古いキャッシュの削除
+void AwsS3::deleteOldObjects(CALLER_ARG std::chrono::system_clock::time_point threshold)
+{
+    THREAD_SAFE();
+
+    this->unlockDeleteOldObjects(CONT_CALLER threshold);
+}
+
+void AwsS3::clearObjects(CALLER_ARG0)
+{
+    THREAD_SAFE();
+
+    this->unlockClearObjects(CONT_CALLER0);
+}
+
+int AwsS3::deleteCacheByObjectKey(CALLER_ARG const ObjectKey& argObjKey)
 {
     THREAD_SAFE();
     APP_ASSERT(argObjKey.valid());
 
-    return this->unlockDeleteCacheByObjKey(CONT_CALLER argObjKey);
+    return this->unlockDeleteCacheByObjectKey(CONT_CALLER argObjKey);
 }
 
 // EOF

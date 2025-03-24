@@ -238,7 +238,7 @@ void IdleWorker::listenEvent(const int i)
 
 				for (const auto& task: tasks)
 				{
-					if (task->mPriority != Priority::Low)
+					if (task->getPriority() != Priority::Low)
 					{
 						// 緊急度は低いので、他のスレッドを優先させる
 
@@ -283,35 +283,16 @@ void IdleWorker::listenEvent(const int i)
 static std::mutex gGuard;
 #define THREAD_SAFE() std::lock_guard<std::mutex> lock_(gGuard)
 
-bool IdleWorker::addTask(CALLER_ARG WinCseLib::ITask* argTask, WinCseLib::Priority priority, WinCseLib::CanIgnoreDuplicates ignState)
+bool IdleWorker::addTask(CALLER_ARG WinCseLib::ITask* argTask)
 {
 	THREAD_SAFE();
 	NEW_LOG_BLOCK();
 	APP_ASSERT(argTask);
 
-	// 無視可否は意味がないので設定させない
-	APP_ASSERT(ignState == CanIgnoreDuplicates::None);
-
 #if ENABLE_WORKER
-	argTask->mPriority = priority;
 	argTask->mCaller = wcsdup(CALL_CHAIN().c_str());
 
-	if (priority == Priority::High)
-	{
-		// 優先する場合
-		//traceW(L"add highPriority=true");
-		Local->mTasks.emplace_front(argTask);
-
-		// WaitForSingleObject() に通知
-		const auto b = ::SetEvent(mEvent);
-		APP_ASSERT(b);
-	}
-	else
-	{
-		// 通常はこちら
-		//traceW(L"add highPriority=false");
-		Local->mTasks.emplace_back(argTask);
-	}
+	mTasks.emplace_back(argTask);
 
 	return true;
 

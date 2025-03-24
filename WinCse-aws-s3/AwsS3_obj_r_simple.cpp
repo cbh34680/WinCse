@@ -34,7 +34,7 @@ NTSTATUS AwsS3::readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDe
 
         if (ctx->mFile.invalid())
         {
-            // openFile() 後の初回の呼び出し
+            // AwsS3::open() 後の初回の呼び出し
 
             traceW(L"init mLocalFile: HANDLE=%p, Offset=%llu Length=%lu remotePath=%s",
                 ctx->mFile.handle(), Offset, Length, remotePath.c_str());
@@ -76,8 +76,6 @@ NTSTATUS AwsS3::readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDe
             }
             else
             {
-                // ダウンロードが不要な場合はローカル・キャッシュを参考できる状態になっているはず
-
                 if (ctx->mFileInfo.FileSize == 0)
                 {
                     return STATUS_END_OF_FILE;
@@ -86,29 +84,18 @@ NTSTATUS AwsS3::readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDe
 
             // 既存のファイルを開く
 
-            DWORD dwDesiredAccess = ctx->mGrantedAccess;
-            if (needDownload)
+            NTSTATUS ntstatus = ctx->openFileHandle(CONT_CALLER
+                needDownload ? FILE_WRITE_ATTRIBUTES : 0,
+                OPEN_EXISTING
+            );
+
+            if (!NT_SUCCESS(ntstatus))
             {
-                dwDesiredAccess |= FILE_WRITE_ATTRIBUTES;           // SetFileTime() に必要
+                traceW(L"fault: openFileHandle");
+                return ntstatus;
             }
 
-            ULONG CreateFlags = 0;
-            //CreateFlags = FILE_FLAG_BACKUP_SEMANTICS;             // ディレクトリは操作しない
-
-            if (ctx->mCreateOptions & FILE_DELETE_ON_CLOSE)
-                CreateFlags |= FILE_FLAG_DELETE_ON_CLOSE;
-
-            ctx->mFile = ::CreateFileW(ctx->getFilePathW().c_str(),
-                dwDesiredAccess, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
-                OPEN_EXISTING, CreateFlags, 0);
-
-            if (ctx->mFile.invalid())
-            {
-                const auto lerr = ::GetLastError();
-                traceW(L"fault: CreateFileW lerr=%lu", lerr);
-
-                return FspNtStatusFromWin32(lerr);
-            }
+            APP_ASSERT(ctx->mFile.valid());
 
             if (needDownload)
             {

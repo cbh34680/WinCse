@@ -43,8 +43,18 @@ typedef std::list<DirInfoType> DirInfoListType;
 
 namespace WinCseLib {
 
-const int64_t FILESIZE_1B = 1LL;
-const uint64_t FILESIZE_1BU = 1ULL;
+constexpr int64_t FILESIZE_1B = 1LL;
+constexpr uint64_t FILESIZE_1Bu = 1ULL;
+
+constexpr int64_t FILESIZE_1KiB = FILESIZE_1B * 1024LL;
+constexpr uint64_t FILESIZE_1KiBu = FILESIZE_1Bu * 1024ULL;
+
+constexpr int64_t FILESIZE_1MiB = FILESIZE_1KiB * 1024LL;
+constexpr uint64_t FILESIZE_1MiBu = FILESIZE_1KiBu * 1024ULL;
+
+constexpr int64_t FILESIZE_1GiB = FILESIZE_1MiB * 1024LL;
+constexpr uint64_t FILESIZE_1GiBu = FILESIZE_1MiBu * 1024ULL;
+
 
 template<HANDLE InvalidHandleValue>
 class HandleRAII
@@ -102,11 +112,10 @@ public:
 class FileHandle : public HandleRAII<INVALID_HANDLE_VALUE>
 {
 public:
-	using HandleRAII<INVALID_HANDLE_VALUE>::HandleRAII;
+	using HandleRAII::HandleRAII;
 
 	WINCSELIB_API bool setFileTime(UINT64 argCreationTime, UINT64 argLastWriteTime);
 	WINCSELIB_API LONGLONG getFileSize();
-	WINCSELIB_API BOOL flushFileBuffers();
 };
 
 class EventHandle : public HandleRAII<(HANDLE)NULL>
@@ -195,6 +204,7 @@ WINCSELIB_API bool DecryptAES(const std::vector<BYTE>& key, const std::vector<BY
 WINCSELIB_API bool GetCryptKeyFromRegistry(std::string* pKeyStr);
 
 WINCSELIB_API void AbnormalEnd(const char* file, const int line, const char* func, const int signum);
+WINCSELIB_API void NamedWorkersToMap(NamedWorker workers[], std::unordered_map<std::wstring, IWorker*>* pWorkerMap);
 
 WINCSELIB_API bool CreateLogger(const wchar_t* argTempDir, const wchar_t* argTrcDir, const wchar_t* argDllType);
 WINCSELIB_API ILogger* GetLogger();
@@ -239,6 +249,13 @@ public:
 		::SetLastError(mLastError);
 	}
 };
+
+template <typename T>
+std::string getDerivedClassNames(T* baseClass)
+{
+	const std::type_info& typeInfo = typeid(*baseClass);
+	return typeInfo.name();
+}
 
 } // namespace WinCseLib
 

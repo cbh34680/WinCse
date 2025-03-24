@@ -30,7 +30,7 @@ std::wstring AwsS3::unlockGetBucketRegion(CALLER_ARG const std::wstring& bucketN
         Aws::S3::Model::GetBucketLocationRequest request;
         request.SetBucket(WC2MB(bucketName));
 
-        const auto outcome = mClient.ptr->GetBucketLocation(request);
+        const auto outcome = mClient->GetBucketLocation(request);
         if (outcomeIsSuccess(outcome))
         {
             const auto& result = outcome.GetResult();
@@ -108,13 +108,16 @@ void AwsS3::reportBucketCache(CALLER_ARG FILE* fp)
 
 struct NotifRemoveBucketTask : public ITask
 {
+    CanIgnoreDuplicates getCanIgnoreDuplicates() const noexcept override { return CanIgnoreDuplicates::Yes; }
+    Priority getPriority() const noexcept override { return Priority::Low; }
+
     FSP_FILE_SYSTEM* mFileSystem;
     const std::wstring mFileName;
 
     NotifRemoveBucketTask(FSP_FILE_SYSTEM* argFileSystem, const std::wstring& argFileName)
         : mFileSystem(argFileSystem), mFileName(argFileName) { }
 
-    std::wstring synonymString()
+    std::wstring synonymString() const noexcept override
     {
         return std::wstring(L"NotifyRemoveBucketTask; ") + mFileName;
     }
@@ -188,7 +191,7 @@ bool AwsS3::headBucket(CALLER_ARG const std::wstring& bucketName)
         Aws::S3::Model::HeadBucketRequest request;
         request.SetBucket(WC2MB(bucketName));
 
-        const auto outcome = mClient.ptr->HeadBucket(request);
+        const auto outcome = mClient->HeadBucket(request);
         if (!outcomeIsSuccess(outcome))
         {
             traceW(L"fault: HeadBucket");
@@ -204,7 +207,7 @@ bool AwsS3::headBucket(CALLER_ARG const std::wstring& bucketName)
         traceW(L"%s: no match bucket-region", bucketRegion.c_str());
 
         // 非表示になるバケットについて WinFsp に通知
-        mDelayedWorker->addTask(START_CALLER new NotifRemoveBucketTask{ mFileSystem, std::wstring(L"\\") + bucketName }, Priority::Low, CanIgnoreDuplicates::Yes);
+        getWorker(L"delayed")->addTask(START_CALLER new NotifRemoveBucketTask{ mFileSystem, std::wstring(L"\\") + bucketName });
 
         return false;
     }
@@ -232,7 +235,7 @@ bool AwsS3::listBuckets(CALLER_ARG DirInfoListType* pDirInfoList /* nullable */,
 
         Aws::S3::Model::ListBucketsRequest request;
 
-        const auto outcome = mClient.ptr->ListBuckets(request);
+        const auto outcome = mClient->ListBuckets(request);
         if (!outcomeIsSuccess(outcome))
         {
             traceW(L"fault: ListBuckets");
