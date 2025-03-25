@@ -72,31 +72,37 @@ void AwsS3::clearBuckets(CALLER_ARG0)
     gBucketCache.clear(CONT_CALLER0);
 }
 
-void AwsS3::reloadBukcetsIfNeed(CALLER_ARG0)
+bool AwsS3::reloadBukcetsIfNeed(CALLER_ARG std::chrono::system_clock::time_point threshold)
 {
     THREAD_SAFE();
     NEW_LOG_BLOCK();
 
-    namespace chrono = std::chrono;
-    const auto now { chrono::system_clock::now() };
-
     const auto lastSetTime = gBucketCache.getLastSetTime(CONT_CALLER0);
 
-    if ((now - chrono::minutes(60)) > lastSetTime)
+    if (threshold > lastSetTime)
     {
         // バケット・キャッシュを作成してから 60 分以上経過
+
         traceW(L"need re-load");
 
         // バケットのキャッシュを削除して、再度一覧を取得する
+
         gBucketCache.clear(CONT_CALLER0);
 
         // バケット一覧の取得 --> キャッシュの生成
-        listBuckets(CONT_CALLER nullptr, {});
+
+        if (!listBuckets(CONT_CALLER nullptr, {}))
+        {
+            traceW(L"fault: listBuckets");
+            return false;
+        }
     }
     else
     {
         traceW(L"is valid");
     }
+
+    return true;
 }
 
 void AwsS3::reportBucketCache(CALLER_ARG FILE* fp)
@@ -106,9 +112,9 @@ void AwsS3::reportBucketCache(CALLER_ARG FILE* fp)
     gBucketCache.report(CONT_CALLER fp);
 }
 
-struct NotifRemoveBucketTask : public ITask
+struct NotifRemoveBucketTask : public IOnDemandTask
 {
-    CanIgnoreDuplicates getCanIgnoreDuplicates() const noexcept override { return CanIgnoreDuplicates::Yes; }
+    IgnoreDuplicates getIgnoreDuplicates() const noexcept override { return IgnoreDuplicates::Yes; }
     Priority getPriority() const noexcept override { return Priority::Low; }
 
     FSP_FILE_SYSTEM* mFileSystem;

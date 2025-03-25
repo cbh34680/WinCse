@@ -9,7 +9,15 @@
 
 using namespace WinCseLib;
 
-class NoopWorker : public WinCseLib::IWorker { };
+struct ImmediateWorker : public WinCseLib::IWorker
+{
+    bool addTask(CALLER_ARG ITask* argTask)
+    {
+        argTask->run(START_CALLER0);
+        delete argTask;
+        return false;
+    }
+};
 
 static bool app_tempdir(std::wstring* tmpDir);
 
@@ -129,15 +137,17 @@ int test1(int argc, wchar_t** argv)
 
     if (CreateLogger(tmpDir.c_str(), argv[1], L"aws-s3"))
     {
-        NoopWorker wk1;
-        NoopWorker wk2;
+        ImmediateWorker worker;
+
         NamedWorker workers[] = {
-            { L"wk1", &wk1 },
-            { L"wk2", &wk2 },
+            { L"delayed", &worker },
+            { L"idle", &worker },
+            { L"timer", &worker },
             { nullptr, nullptr },
         };
 
         ICSDevice* cs = (ICSDevice*)NewCSDevice(tmpDir.c_str(), L"default", workers);
+        APP_ASSERT(cs);
 
         FSP_FSCTL_VOLUME_PARAMS vp{ };
 

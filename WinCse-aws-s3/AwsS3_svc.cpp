@@ -1,12 +1,13 @@
 #include "AwsS3.hpp"
 #include <iomanip>
+#include <filesystem>
 
 using namespace WinCseLib;
 
 
-struct ListBucketsTask : public ITask
+struct ListBucketsTask : public IOnDemandTask
 {
-    CanIgnoreDuplicates getCanIgnoreDuplicates() const noexcept override { return CanIgnoreDuplicates::Yes; }
+    IgnoreDuplicates getIgnoreDuplicates() const noexcept override { return IgnoreDuplicates::Yes; }
     Priority getPriority() const noexcept override { return Priority::Low; }
 
     AwsS3* mAwsS3;
@@ -28,21 +29,112 @@ struct ListBucketsTask : public ITask
     }
 };
 
-struct IdleTask : public ITask
+struct TimerTask : public IScheduledTask
+{
+    AwsS3* mAwsS3;
+
+    TimerTask(AwsS3* argAwsS3) : mAwsS3(argAwsS3) { }
+
+    bool shouldRun(int i) const noexcept override
+    {
+        // TimerWorker は 10 秒ごとなので、3 回に一度(30 秒ごと) run() を実行する
+
+        return i % 3 == 0;
+    }
+
+    void run(CALLER_ARG0) override
+    {
+        mAwsS3->onTimer(CONT_CALLER0);
+    }
+};
+
+void AwsS3::onTimer(CALLER_ARG0)
+{
+    NEW_LOG_BLOCK();
+
+    // TimerTask から呼び出され、メモリの古いものを削除
+
+    const auto now{ std::chrono::system_clock::now() };
+
+    const auto numDelete = this->deleteOldObjects(CONT_CALLER now - std::chrono::minutes(1));
+    traceW(L"delete %d records", numDelete);
+
+    traceW(L"done.");
+}
+
+struct IdleTask : public IScheduledTask
 {
     AwsS3* mAwsS3;
 
     IdleTask(AwsS3* argAwsS3) : mAwsS3(argAwsS3) { }
 
+    bool shouldRun(int i) const noexcept override
+    {
+        // IdleWorker は 1 分ごとなので、10 回に一度(10 分間隔) run() を実行する
+
+        return i % 10 == 0;
+    }
+
     void run(CALLER_ARG0) override
     {
-        NEW_LOG_BLOCK();
-
-        traceW(L"on Idle");
-
-        mAwsS3->OnIdleTime(CONT_CALLER0);
+        mAwsS3->onIdle(CONT_CALLER0);
     }
 };
+
+void AwsS3::onIdle(CALLER_ARG0)
+{
+    NEW_LOG_BLOCK();
+
+    // IdleTask から呼び出され、メモリやファイルの古いものを削除
+
+    const auto now{ std::chrono::system_clock::now() };
+
+    // バケット・キャッシュの再作成
+
+    this->reloadBukcetsIfNeed(CONT_CALLER now - std::chrono::minutes(20));
+
+    // ファイル・キャッシュ
+    //
+    // 最終アクセス日時から 24 時間以上経過したキャッシュ・ファイルを削除する
+
+    APP_ASSERT(std::filesystem::is_directory(mCacheDataDir));
+
+    const auto duration = now.time_since_epoch();
+    const uint64_t nowMillis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+
+    forEachFiles(mCacheDataDir, [this, nowMillis, &LOG_BLOCK()](const auto& wfd)
+    {
+        if (FA_IS_DIR(wfd.dwFileAttributes))
+        {
+            // ディレクトリは無視
+
+            return;
+        }
+
+        const auto lastAccessTime = WinFileTimeToUtcMillis(wfd.ftLastAccessTime);
+        const auto diffMillis = nowMillis - lastAccessTime;
+
+        traceW(L"cache file=\"%s\" nowMillis=%llu lastAccessTime=%llu diffMillis=%llu",
+            wfd.cFileName, nowMillis, lastAccessTime, diffMillis);
+
+        if (diffMillis > TIMEMILLIS_1DAYull)
+        {
+            const auto delPath{ mCacheDataDir + L'\\' + wfd.cFileName };
+
+            std::error_code ec;
+            if (std::filesystem::remove(delPath, ec))
+            {
+                traceW(L"%s: removed", delPath.c_str());
+            }
+            else
+            {
+                traceW(L"%s: remove error", delPath.c_str());
+            }
+        }
+    });
+
+    traceW(L"done.");
+}
 
 static std::atomic<bool> gEndWorkerFlag;
 static std::thread* gNotifWorker;
@@ -70,17 +162,24 @@ bool AwsS3::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
     mFileSystem = FileSystem;
 
     // バケット一覧の先読み
-    // 無視できて優先度は低い
+
     getWorker(L"delayed")->addTask(START_CALLER new ListBucketsTask{ this });
 
-    // アイドル時のメモリ解放(等)のタスクを登録
+    // 定期実行タスクを登録
+
+    getWorker(L"timer")->addTask(START_CALLER new TimerTask{ this });
+
+    // アイドル時のタスクを登録
+
     getWorker(L"idle")->addTask(START_CALLER new IdleTask{ this });
 
     // 外部からの通知待ちイベントの生成
+
     SECURITY_ATTRIBUTES sa{ 0 };
     sa.nLength = sizeof(SECURITY_ATTRIBUTES);
 
     // セキュリティ記述子の作成
+
     PSECURITY_DESCRIPTOR pSD = (PSECURITY_DESCRIPTOR)::LocalAlloc(LPTR, SECURITY_DESCRIPTOR_MIN_LENGTH);
     if (!pSD)
     {

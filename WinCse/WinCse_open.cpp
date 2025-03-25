@@ -182,6 +182,8 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 		goto exit;
 	}
 
+	FileContext->FileInfo = fileInfo;
+
 	if (wcscmp(FileName, L"\\") == 0)
 	{
 		traceW(L"root access");
@@ -228,7 +230,7 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 
 		StatsIncr(_CallOpen);
 
-		CSDeviceContext* ctx = mCSDevice->open(START_CALLER objKey, CreateOptions, GrantedAccess, fileInfo);
+		CSDeviceContext* ctx = mCSDevice->open(START_CALLER objKey, CreateOptions, GrantedAccess, FileContext->FileInfo);
 		if (!ctx)
 		{
 			traceW(L"fault: open");
@@ -238,8 +240,6 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 
 		FileContext->UParam = ctx;
 	}
-
-	FileContext->FileInfo = fileInfo;
 
 	// ƒSƒ~‰ñŽû‘ÎÛ‚É“o˜^
 	mResourceSweeper.add(FileContext);
@@ -275,7 +275,11 @@ VOID WinCse::DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Fla
 	traceW(L"FileAttributes: %u", FileContext->FileInfo.FileAttributes);
 	traceW(L"Flags=%lu", Flags);
 
-	mCSDevice->cleanup(START_CALLER (CSDeviceContext*)FileContext->UParam, Flags);
+	CSDeviceContext* ctx = (CSDeviceContext*)FileContext->UParam;
+	if (ctx)
+	{
+		mCSDevice->cleanup(START_CALLER ctx, Flags);
+	}
 }
 
 NTSTATUS WinCse::DoClose(PTFS_FILE_CONTEXT* FileContext)
@@ -289,7 +293,6 @@ NTSTATUS WinCse::DoClose(PTFS_FILE_CONTEXT* FileContext)
 	traceW(L"UParam=%p", FileContext->UParam);
 
 	CSDeviceContext* ctx = (CSDeviceContext*)FileContext->UParam;
-
 	if (ctx)
 	{
 		APP_ASSERT(wcscmp(FileContext->FileName, L"\\") != 0);

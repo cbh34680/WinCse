@@ -4,7 +4,7 @@
 
 namespace WinCseLib {
 
-struct WINCSELIB_API ICSService
+struct ICSService
 {
 	virtual ~ICSService() = default;
 

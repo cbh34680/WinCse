@@ -106,15 +106,24 @@ void AbnormalEnd(const char* file, const int line, const char* func, const int s
 }
 
 //
-void NamedWorkersToMap(NamedWorker workers[], std::unordered_map<std::wstring, IWorker*>* pWorkerMap)
+int NamedWorkersToMap(NamedWorker workers[], std::unordered_map<std::wstring, IWorker*>* pWorkerMap)
 {
-	NamedWorker* cur = workers;
+	if (!workers)
+	{
+		return -1;
+	}
 
+	int num = 0;
+
+	NamedWorker* cur = workers;
 	while (cur->name)
 	{
 		pWorkerMap->emplace(cur->name, cur->worker);
 		cur++;
+		num++;
 	}
+
+	return num;
 }
 
 // malloc, calloc で確保したメモリを shared_ptr で解放するための関数
@@ -233,6 +242,8 @@ bool SplitPath(const std::wstring& argKey, std::wstring* pParentDir /* nullable 
 
 bool GetIniStringW(const std::wstring& confPath, const wchar_t* argSection, const wchar_t* keyName, std::wstring* pValue)
 {
+	LastErrorBackup _backup;
+
 	APP_ASSERT(argSection);
 	APP_ASSERT(argSection[0]);
 
@@ -253,6 +264,8 @@ bool GetIniStringW(const std::wstring& confPath, const wchar_t* argSection, cons
 
 bool GetIniStringA(const std::string& confPath, const char* argSection, const char* keyName, std::string* pValue)
 {
+	LastErrorBackup _backup;
+
 	APP_ASSERT(argSection);
 	APP_ASSERT(argSection[0]);
 
@@ -356,7 +369,7 @@ ObjectKey::ObjectKey(const std::wstring& argWinPath)
 //
 // std::map のキーにする場合に必要
 //
-bool ObjectKey::operator<(const ObjectKey& other) const
+bool ObjectKey::operator<(const ObjectKey& other) const noexcept
 {
 	if (mBucket < other.mBucket) {			// bucket
 		return true;
@@ -374,7 +387,7 @@ bool ObjectKey::operator<(const ObjectKey& other) const
 	return false;
 }
 
-bool ObjectKey::operator>(const ObjectKey& other) const
+bool ObjectKey::operator>(const ObjectKey& other) const noexcept
 {
 	if (this->operator<(other))
 	{
@@ -388,7 +401,7 @@ bool ObjectKey::operator>(const ObjectKey& other) const
 	return true;
 }
 
-ObjectKey ObjectKey::toDir() const
+ObjectKey ObjectKey::toDir() const noexcept
 {
 	//
 	// キーの後ろに "/" を付与したものを返却する
@@ -443,15 +456,13 @@ std::string ObjectKey::strA() const
 //
 // CSDeviceContext
 //
-CSDeviceContext::CSDeviceContext(
-	const std::wstring& argCacheDataDir,
-	const WinCseLib::ObjectKey& argObjKey,
-	const FSP_FSCTL_FILE_INFO& argFileInfo)
+CSDeviceContext::CSDeviceContext(const std::wstring& argCacheDataDir,
+	const WinCseLib::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo)
 	:
-	mCacheDataDir(argCacheDataDir),
-	mFileInfo(argFileInfo)
+	mCacheDataDir(argCacheDataDir), mFileInfo(argFileInfo),
+	mIsDir(FA_IS_DIR(mFileInfo.FileAttributes))
 {
-	if (FA_IS_DIR(mFileInfo.FileAttributes))
+	if (mIsDir)
 	{
 		// ディレクトリの場合は '/' を付与する
 
@@ -463,19 +474,32 @@ CSDeviceContext::CSDeviceContext(
 	}
 }
 
-bool CSDeviceContext::isDir() const
+bool CSDeviceContext::getFilePathW(std::wstring* pPath) const
 {
-	return FA_IS_DIR(mFileInfo.FileAttributes);
+	std::wstring encPath;
+
+	if (!EncodeFileNameToLocalNameW(getRemotePath(), &encPath))
+	{
+		return false;
+	}
+	
+	*pPath = mCacheDataDir + L'\\' + encPath;
+
+	return true;
 }
 
-std::wstring CSDeviceContext::getFilePathW() const
+bool CSDeviceContext::getFilePathA(std::string* pPath) const
 {
-	return mCacheDataDir + L'\\' + EncodeFileNameToLocalNameW(getRemotePath());
-}
+	std::wstring filePath;
 
-std::string CSDeviceContext::getFilePathA() const
-{
-	return WC2MB(getFilePathW());
+	if (!getFilePathW(&filePath))
+	{
+		return false;
+	}
+
+	*pPath = WC2MB(filePath);
+
+	return true;
 }
 
 //
@@ -483,6 +507,8 @@ std::string CSDeviceContext::getFilePathA() const
 //
 bool FileHandle::setFileTime(UINT64 argCreationTime, UINT64 argLastWriteTime)
 {
+	LastErrorBackup _backup;
+
 	APP_ASSERT(valid());
 
 	FILETIME ftCreation;
@@ -504,6 +530,8 @@ bool FileHandle::setFileTime(UINT64 argCreationTime, UINT64 argLastWriteTime)
 
 LONGLONG FileHandle::getFileSize()
 {
+	LastErrorBackup _backup;
+
 	APP_ASSERT(valid());
 
 	LARGE_INTEGER fileSize;

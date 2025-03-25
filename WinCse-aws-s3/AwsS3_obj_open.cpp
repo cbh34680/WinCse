@@ -57,13 +57,16 @@ bool AwsS3::putObject(CALLER_ARG const ObjectKey& argObjKey,
         request.SetBody(inputData);
     }
 
+    request.AddMetadata("wincse-file-attributes", std::to_string(fileInfo.FileAttributes).c_str());
     request.AddMetadata("wincse-creation-time", std::to_string(fileInfo.CreationTime).c_str());
     request.AddMetadata("wincse-last-access-time", std::to_string(fileInfo.LastAccessTime).c_str());
     request.AddMetadata("wincse-last-write-time", std::to_string(fileInfo.LastWriteTime).c_str());
 
-    request.AddMetadata("wincse-creation-time-debug", WinFileTime100nsToLocalTimeStringA(fileInfo.CreationTime).c_str());
-    request.AddMetadata("wincse-last-access-time-debug", WinFileTime100nsToLocalTimeStringA(fileInfo.LastAccessTime).c_str());
-    request.AddMetadata("wincse-last-write-time-debug", WinFileTime100nsToLocalTimeStringA(fileInfo.LastWriteTime).c_str());
+#if _DEBUG
+    request.AddMetadata("wincse-debug-creation-time", WinFileTime100nsToLocalTimeStringA(fileInfo.CreationTime).c_str());
+    request.AddMetadata("wincse-debug-last-access-time", WinFileTime100nsToLocalTimeStringA(fileInfo.LastAccessTime).c_str());
+    request.AddMetadata("wincse-debug-last-write-time", WinFileTime100nsToLocalTimeStringA(fileInfo.LastWriteTime).c_str());
+#endif
 
     const auto outcome = mClient->PutObject(request);
 
@@ -128,13 +131,11 @@ CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
 
     const auto remotePath{ objKey.str() };
 
-    // ファイル名への参照を登録
-
     UnprotectedShare<CreateFileShared> unsafeShare(&mGuardCreateFile, remotePath);  // 名前への参照を登録
     {
         const auto safeShare{ unsafeShare.lock() };                                 // 名前のロック
 
-        HANDLE hFile = INVALID_HANDLE_VALUE;
+        FileHandle hFile;
 
         if (CreateOptions & FILE_DIRECTORY_FILE)
         {
@@ -142,17 +143,25 @@ CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
         }
         else
         {
-            const auto localPath{ mCacheDataDir + L'\\' + EncodeFileNameToLocalNameW(argObjKey.str()) };
+            std::wstring encPath;
+            if (!EncodeFileNameToLocalNameW(argObjKey.str(), &encPath))
+            {
+                traceW(L"fault: EncodeFileNameToLocalNameW");
+                return nullptr;
+            }
+
+            const auto localPath{ mCacheDataDir + L'\\' + encPath };
             traceW(L"localPath=%s", localPath.c_str());
 
-            UINT32 FileAttributes = argFileAttributes;
+#if 0
             SECURITY_ATTRIBUTES SecurityAttributes{};
-            ULONG CreateFlags = 0;
-
             SecurityAttributes.nLength = sizeof SecurityAttributes;
             SecurityAttributes.lpSecurityDescriptor = SecurityDescriptor;
             SecurityAttributes.bInheritHandle = FALSE;
+#endif
 
+            UINT32 FileAttributes = argFileAttributes;
+            ULONG CreateFlags = 0;
             //CreateFlags = FILE_FLAG_BACKUP_SEMANTICS;             // ディレクトリは操作しないので不要
 
             if (CreateOptions & FILE_DELETE_ON_CLOSE)
@@ -176,12 +185,26 @@ CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
                 FileAttributes = FILE_ATTRIBUTE_NORMAL;
 
             hFile = ::CreateFileW(localPath.c_str(),
-                GrantedAccess, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, &SecurityAttributes,
-                CREATE_ALWAYS, CreateFlags | FileAttributes, 0);
-            if (hFile == INVALID_HANDLE_VALUE)
+                GrantedAccess,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                NULL, //&SecurityAttributes,
+                CREATE_ALWAYS,
+                CreateFlags | FileAttributes,
+                NULL);
+
+            if (hFile.invalid())
             {
                 const auto lerr = ::GetLastError();
                 traceW(L"fault: CreateFileW lerr=%lu", lerr);
+
+                return nullptr;
+            }
+
+            // ファイル日時を同期
+
+            if (!hFile.setFileTime(fileInfo.CreationTime, fileInfo.LastWriteTime))
+            {
+                traceW(L"fault: setLocalTimeTime");
 
                 return nullptr;
             }
@@ -190,28 +213,14 @@ CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
         OpenContext* ctx = new OpenContext(mCacheDataDir, argObjKey, fileInfo, CreateOptions, GrantedAccess);
         APP_ASSERT(ctx);
 
-        if (hFile == INVALID_HANDLE_VALUE)
-        {
-            // ディレクトリの場合
-        }
-        else
+        if (hFile.valid())
         {
             // ファイルの場合
 
-            ctx->mFile = hFile;
+            ctx->mFile = std::move(hFile);
+
             APP_ASSERT(ctx->mFile.valid());
-
-            // ファイル日時を同期
-
-            if (!ctx->mFile.setFileTime(fileInfo.CreationTime, fileInfo.LastWriteTime))
-            {
-                APP_ASSERT(0);
-
-                traceW(L"fault: setLocalTimeTime");
-                delete ctx;
-
-                return nullptr;
-            }
+            APP_ASSERT(hFile.invalid());
         }
 
         *pFileInfo = fileInfo;
@@ -273,18 +282,19 @@ void AwsS3::cleanup(CALLER_ARG WinCseLib::CSDeviceContext* ctx, ULONG Flags)
     }
 }
 
-void AwsS3::close(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext)
+void AwsS3::close(CALLER_ARG WinCseLib::CSDeviceContext* ctx)
 {
     StatsIncr(close);
     NEW_LOG_BLOCK();
-
-    OpenContext* ctx = dynamic_cast<OpenContext*>(argCSDeviceContext);
     APP_ASSERT(ctx);
 
-    traceW(L"close mObjKey=%s path=%s", ctx->mObjKey.c_str(), ctx->getFilePathW().c_str());
+    traceW(L"close mObjKey=%s", ctx->mObjKey.c_str());
 
-    if (ctx->mFile.valid() && ctx->mWrite)
+    if (ctx->mFile.valid() && ctx->mFlags & CSDCTX_FLAGS_WRITE)
     {
+        // cleanup() で削除されるファイルはクローズされているので
+        // ここを通過するのはアップロードする必要のあるファイルのみとなっているはず
+
         APP_ASSERT(ctx->mObjKey.meansFile());
 
         const auto fileSize = ctx->mFile.getFileSize();
@@ -297,6 +307,8 @@ void AwsS3::close(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext)
         }
         else
         {
+            // 閉じておかないと putObject() にある Aws::FStream が失敗する
+
             ctx->mFile.close();
 
             const auto remotePath{ ctx->getRemotePath() };
@@ -307,9 +319,18 @@ void AwsS3::close(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext)
 
                 if (fileSize < FILESIZE_1GiB * 5)
                 {
-                    if (!putObject(CONT_CALLER ctx->mObjKey, ctx->getFilePathA().c_str(), nullptr))
+                    std::string localPath;
+
+                    if (ctx->getFilePathA(&localPath))
                     {
-                        traceW(L"fault: putObject");
+                        if (!putObject(CONT_CALLER ctx->mObjKey, localPath.c_str(), nullptr))
+                        {
+                            traceW(L"fault: putObject");
+                        }
+                    }
+                    else
+                    {
+                        traceW(L"fault: getFilePathA");
                     }
                 }
                 else

@@ -26,22 +26,26 @@
 #include <chrono>
 #include <unordered_map>
 #include <mutex>
+#include <functional>
 
 typedef std::shared_ptr<FSP_FSCTL_DIR_INFO> DirInfoType;
 typedef std::list<DirInfoType> DirInfoListType;
 
-#define CALLER_ARG0		const std::wstring& caller_
-#define CALLER_ARG		CALLER_ARG0,
+#define CALLER_ARG0				const std::wstring& caller_
+#define CALLER_ARG				CALLER_ARG0,
 
-#define START_CALLER0   std::wstring(__FUNCTIONW__)
-#define START_CALLER	START_CALLER0,
+#define START_CALLER0			std::wstring(__FUNCTIONW__)
+#define START_CALLER			START_CALLER0,
 
-#define CALL_FROM()		(caller_)
-#define CALL_CHAIN()	(CALL_FROM() + L"->" + __FUNCTIONW__)
-#define CONT_CALLER0	CALL_CHAIN()
-#define CONT_CALLER		CONT_CALLER0,
+#define CALL_FROM()				(caller_)
+#define CALL_CHAIN()			(CALL_FROM() + L"->" + __FUNCTIONW__)
+#define CONT_CALLER0			CALL_CHAIN()
+#define CONT_CALLER				CONT_CALLER0,
+
 
 namespace WinCseLib {
+
+// ファイルサイズ
 
 constexpr int64_t FILESIZE_1B = 1LL;
 constexpr uint64_t FILESIZE_1Bu = 1ULL;
@@ -55,6 +59,36 @@ constexpr uint64_t FILESIZE_1MiBu = FILESIZE_1KiBu * 1024ULL;
 constexpr int64_t FILESIZE_1GiB = FILESIZE_1MiB * 1024LL;
 constexpr uint64_t FILESIZE_1GiBu = FILESIZE_1MiBu * 1024ULL;
 
+// 時間 (DWORD)
+
+constexpr int32_t TIMEMILLIS_1SEC = 1000L;
+constexpr uint32_t TIMEMILLIS_1SECu = 1000UL;
+
+constexpr int32_t TIMEMILLIS_1MIN = TIMEMILLIS_1SEC * 60;
+constexpr uint32_t TIMEMILLIS_1MINu = TIMEMILLIS_1SECu * 60;
+
+constexpr int32_t TIMEMILLIS_1HOUR = TIMEMILLIS_1MIN * 60;
+constexpr uint32_t TIMEMILLIS_1HOURu = TIMEMILLIS_1MINu * 60;
+
+constexpr int32_t TIMEMILLIS_1DAY = TIMEMILLIS_1HOUR * 24;
+constexpr uint32_t TIMEMILLIS_1DAYu = TIMEMILLIS_1HOURu * 60;
+
+// 時間 (int64_t, uint64_t)
+
+constexpr int64_t TIMEMILLIS_1SECll = 1000LL;
+constexpr uint64_t TIMEMILLIS_1SECull = 1000ULL;
+
+constexpr int64_t TIMEMILLIS_1MINll = TIMEMILLIS_1SECll * 60;
+constexpr uint64_t TIMEMILLIS_1MINull = TIMEMILLIS_1SECull * 60;
+
+constexpr int64_t TIMEMILLIS_1HOURll = TIMEMILLIS_1MINll * 60;
+constexpr uint64_t TIMEMILLIS_1HOURull = TIMEMILLIS_1MINull * 60;
+
+constexpr int64_t TIMEMILLIS_1DAYll = TIMEMILLIS_1HOURll * 24;
+constexpr uint64_t TIMEMILLIS_1DAYull = TIMEMILLIS_1HOURull * 60;
+
+
+// HANDLE 用 RAII
 
 template<HANDLE InvalidHandleValue>
 class HandleRAII
@@ -65,6 +99,8 @@ protected:
 public:
 	HandleRAII() : mHandle(InvalidHandleValue) { }
 	HandleRAII(HANDLE argHandle) : mHandle(argHandle) { }
+
+	HandleRAII(HandleRAII& other) noexcept = delete;
 
 	HandleRAII(HandleRAII&& other) noexcept : mHandle(other.mHandle)
 	{
@@ -81,14 +117,6 @@ public:
 			mHandle = other.mHandle;
 			other.mHandle = InvalidHandleValue;
 		}
-
-		return *this;
-	}
-
-	HandleRAII& operator=(HANDLE argHandle) noexcept
-	{
-		close();
-		mHandle = argHandle;
 
 		return *this;
 	}
@@ -144,16 +172,17 @@ WINCSELIB_API bool HandleToFileInfo(HANDLE argHandle, FSP_FSCTL_FILE_INFO* pFile
 WINCSELIB_API bool PathToFileInfoW(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo);
 WINCSELIB_API bool PathToFileInfoA(const std::string& path, FSP_FSCTL_FILE_INFO* pFileInfo);
 WINCSELIB_API bool MkdirIfNotExists(const std::wstring& dir);
+WINCSELIB_API bool forEachFiles(const std::wstring& directory, const std::function<void(const WIN32_FIND_DATA& wfd)>& callback);
 
-WINCSELIB_API std::string Base64EncodeA(const std::string& data);
-WINCSELIB_API std::string Base64DecodeA(const std::string& encodedData);
+WINCSELIB_API bool Base64EncodeA(const std::string& src, std::string* pDst);
+WINCSELIB_API bool Base64DecodeA(const std::string& src, std::string* pDst);
 WINCSELIB_API std::string URLEncodeA(const std::string& str);
 WINCSELIB_API std::string URLDecodeA(const std::string& str);
 
-WINCSELIB_API std::string EncodeFileNameToLocalNameA(const std::string& str);
-WINCSELIB_API std::string DecodeLocalNameToFileNameA(const std::string& str);
-WINCSELIB_API std::wstring EncodeFileNameToLocalNameW(const std::wstring& str);
-WINCSELIB_API std::wstring DecodeLocalNameToFileNameW(const std::wstring& str);
+WINCSELIB_API bool EncodeFileNameToLocalNameA(const std::string& src, std::string* pDst);
+WINCSELIB_API bool DecodeLocalNameToFileNameA(const std::string& src, std::string* pDst);
+WINCSELIB_API bool EncodeFileNameToLocalNameW(const std::wstring& src, std::wstring* pDst);
+WINCSELIB_API bool DecodeLocalNameToFileNameW(const std::wstring& src, std::wstring* pDst);
 
 //WINCSELIB_API bool HandleToPath(HANDLE Handle, std::wstring& wstr);
 //WINCSELIB_API bool PathToSDStr(const std::wstring& path, std::wstring& sdstr);;
@@ -204,7 +233,7 @@ WINCSELIB_API bool DecryptAES(const std::vector<BYTE>& key, const std::vector<BY
 WINCSELIB_API bool GetCryptKeyFromRegistry(std::string* pKeyStr);
 
 WINCSELIB_API void AbnormalEnd(const char* file, const int line, const char* func, const int signum);
-WINCSELIB_API void NamedWorkersToMap(NamedWorker workers[], std::unordered_map<std::wstring, IWorker*>* pWorkerMap);
+WINCSELIB_API int NamedWorkersToMap(NamedWorker workers[], std::unordered_map<std::wstring, IWorker*>* pWorkerMap);
 
 WINCSELIB_API bool CreateLogger(const wchar_t* argTempDir, const wchar_t* argTrcDir, const wchar_t* argDllType);
 WINCSELIB_API ILogger* GetLogger();
@@ -215,6 +244,8 @@ WINCSELIB_API DirInfoType makeDirInfo(const ObjectKey& argObjKey);
 
 WINCSELIB_API bool SplitPath(const std::wstring& argKey,
     std::wstring* pParentDir /* nullable */, std::wstring* pFilename /* nullable */);
+
+WINCSELIB_API DWORD WinCseGetLastError_();
 
 //
 // ログ・ブロックの情報
@@ -230,7 +261,6 @@ public:
 	~LogBlock();
 
 	int depth();
-
 	static int getCount();
 };
 
@@ -242,7 +272,9 @@ class LastErrorBackup
 	DWORD mLastError;
 
 public:
-	LastErrorBackup() : mLastError(::GetLastError()) { }
+	LastErrorBackup() : mLastError(::GetLastError())
+	{
+	}
 
 	~LastErrorBackup()
 	{
@@ -251,10 +283,17 @@ public:
 };
 
 template <typename T>
-std::string getDerivedClassNames(T* baseClass)
+std::string getDerivedClassNamesA(T* baseClass)
 {
 	const std::type_info& typeInfo = typeid(*baseClass);
 	return typeInfo.name();
+}
+
+template <typename T>
+std::wstring getDerivedClassNamesW(T* baseClass)
+{
+	const std::type_info& typeInfo = typeid(*baseClass);
+	return MB2WC(typeInfo.name());
 }
 
 } // namespace WinCseLib
@@ -315,9 +354,9 @@ WINCSELIB_API int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINFSP_I
         WinCseLib::AbnormalEnd(__FILE__, __LINE__, __FUNCTION__, -1); \
     }
 
-#define FA_IS_DIR(fa)		((fa) & FILE_ATTRIBUTE_DIRECTORY)
+#define FA_IS_DIR(fa)			((fa) & FILE_ATTRIBUTE_DIRECTORY)
 
-#define BOOL_CSTRW(b)		((b) ? L"true" : L"false")
-#define BOOL_CSTRA(b)		((b) ? "true" : "false")
+#define BOOL_CSTRW(b)			((b) ? L"true" : L"false")
+#define BOOL_CSTRA(b)			((b) ? "true" : "false")
 
 // EOF

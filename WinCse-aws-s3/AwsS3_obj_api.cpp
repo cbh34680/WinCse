@@ -35,6 +35,7 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
     UINT64 creationTime = lastModified;
     UINT64 lastAccessTime = lastModified;
     UINT64 lastWriteTime = lastModified;
+    UINT32 fileAttributes = mDefaultFileAttributes;
 
     const auto& metadata = result.GetMetadata();
 
@@ -53,8 +54,13 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
         lastWriteTime = std::stoull(metadata.at("wincse-last-write-time"));
     }
 
-    UINT32 fileAttributes = mDefaultFileAttributes;
+#if 0
+    if (metadata.find("wincse-file-attributes") != metadata.end())
+    {
+        fileAttributes = std::stoul(metadata.at("wincse-file-attributes"));
+    }
 
+#endif
     if (argObjKey.meansHidden())
     {
         // 隠しファイル
@@ -64,6 +70,15 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
 
     if (fileAttributes == 0)
     {
+#if 0
+        if (argObjKey.meansHidden())
+        {
+            // 隠しファイル
+
+            fileAttributes |= FILE_ATTRIBUTE_HIDDEN;
+        }
+
+#endif
         fileAttributes = FILE_ATTRIBUTE_NORMAL;
     }
 

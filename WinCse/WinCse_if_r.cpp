@@ -6,9 +6,9 @@
 using namespace WinCseLib;
 
 
-struct ListObjectsTask : public ITask
+struct ListObjectsTask : public IOnDemandTask
 {
-	CanIgnoreDuplicates getCanIgnoreDuplicates() const noexcept override { return CanIgnoreDuplicates::Yes; }
+	IgnoreDuplicates getIgnoreDuplicates() const noexcept override { return IgnoreDuplicates::Yes; }
 	Priority getPriority() const noexcept override { return Priority::Low; }
 
 	ICSDevice* mCSDevice;
@@ -159,7 +159,9 @@ NTSTATUS WinCse::DoGetFileInfo(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_IN
 
 	traceW(L"FileName: \"%s\"", FileContext->FileName);
 
-	return FileNameToFileInfo(START_CALLER FileContext->FileName, FileInfo);
+	*FileInfo = FileContext->FileInfo;
+
+	return STATUS_SUCCESS;
 }
 
 NTSTATUS WinCse::DoGetSecurity(PTFS_FILE_CONTEXT* FileContext,
@@ -173,25 +175,12 @@ NTSTATUS WinCse::DoGetSecurity(PTFS_FILE_CONTEXT* FileContext,
 	traceW(L"FileName: \"%s\"", FileContext->FileName);
 	traceW(L"FileAttributes: %u", FileContext->FileInfo.FileAttributes);
 
-	const bool isFile = !FA_IS_DIR(FileContext->FileInfo.FileAttributes);
-	traceW(L"isFile: %s", BOOL_CSTRW(isFile));
+	const bool isDir = FA_IS_DIR(FileContext->FileInfo.FileAttributes);
+	traceW(L"isDir=%s", BOOL_CSTRW(isDir));
 
-	const HANDLE handle = isFile ? mRefFile.handle() : mRefDir.handle();
+	const HANDLE handle = isDir ? mRefDir.handle() : mRefFile.handle();
 
 	return HandleToInfo(START_CALLER handle, nullptr, SecurityDescriptor, PSecurityDescriptorSize);
-}
-
-void WinCse::DoGetVolumeInfo(PCWSTR Path, FSP_FSCTL_VOLUME_INFO* VolumeInfo)
-{
-	StatsIncr(DoGetVolumeInfo);
-
-	NEW_LOG_BLOCK();
-	APP_ASSERT(Path);
-	APP_ASSERT(VolumeInfo);
-
-	traceW(L"Path: %s", Path);
-	traceW(L"FreeSize: %llu", VolumeInfo->FreeSize);
-	traceW(L"TotalSize: %llu", VolumeInfo->TotalSize);
 }
 
 NTSTATUS WinCse::DoRead(PTFS_FILE_CONTEXT* FileContext,

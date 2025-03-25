@@ -18,8 +18,8 @@ NTSTATUS AwsS3::readObject(CALLER_ARG WinCseLib::CSDeviceContext* ctx,
     APP_ASSERT(ctx);
     APP_ASSERT(ctx->isFile());
 
-    //return readObject_Simple(CONT_CALLER ctx, Buffer, Offset, Length, PBytesTransferred);
-    return readObject_Multipart(CONT_CALLER ctx, Buffer, Offset, Length, PBytesTransferred);
+    return readObject_Simple(CONT_CALLER ctx, Buffer, Offset, Length, PBytesTransferred);
+    //return readObject_Multipart(CONT_CALLER ctx, Buffer, Offset, Length, PBytesTransferred);
 }
 
 //

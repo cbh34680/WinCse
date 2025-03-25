@@ -39,7 +39,13 @@ NTSTATUS AwsS3::readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDe
             traceW(L"init mLocalFile: HANDLE=%p, Offset=%llu Length=%lu remotePath=%s",
                 ctx->mFile.handle(), Offset, Length, remotePath.c_str());
 
-            const auto localPath{ ctx->getFilePathW() };
+            std::wstring localPath;
+
+            if (!ctx->getFilePathW(&localPath))
+            {
+                traceW(L"fault: getFilePathW");
+                return STATUS_OBJECT_PATH_NOT_FOUND;
+            }
 
             // ダウンロードが必要か判断
 
@@ -85,7 +91,8 @@ NTSTATUS AwsS3::readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDe
             // 既存のファイルを開く
 
             NTSTATUS ntstatus = ctx->openFileHandle(CONT_CALLER
-                needDownload ? FILE_WRITE_ATTRIBUTES : 0,
+                //needDownload ? FILE_WRITE_ATTRIBUTES : 0,
+                FILE_WRITE_ATTRIBUTES,
                 OPEN_EXISTING
             );
 
@@ -102,6 +109,16 @@ NTSTATUS AwsS3::readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDe
                 // ファイル日時を同期
 
                 if (!ctx->mFile.setFileTime(ctx->mFileInfo.CreationTime, ctx->mFileInfo.LastWriteTime))
+                {
+                    traceW(L"fault: setLocalTimeTime");
+                    return STATUS_IO_DEVICE_ERROR;
+                }
+            }
+            else
+            {
+                // アクセス日時のみ更新
+
+                if (!ctx->mFile.setFileTime(0, 0))
                 {
                     traceW(L"fault: setLocalTimeTime");
                     return STATUS_IO_DEVICE_ERROR;

@@ -10,6 +10,8 @@ namespace WinCseLib {
 // wstring Ç©ÇÁ string Ç÷ÇÃïœä∑
 std::string WC2MB(const std::wstring& wstr)
 {
+	LastErrorBackup _backup;
+
 	if (wstr.empty())
 	{
 		return "";
@@ -33,6 +35,8 @@ std::string WC2MB(const std::wstring& wstr)
 // string Ç©ÇÁ wstring Ç÷ÇÃïœä∑
 std::wstring MB2WC(const std::string& str)
 {
+	LastErrorBackup _backup;
+
 	if (str.empty())
 	{
 		return L"";
@@ -60,30 +64,66 @@ size_t HashString(const std::wstring& arg)
 	return f(arg);
 }
 
-std::string Base64EncodeA(const std::string& data)
+bool Base64EncodeA(const std::string& src, std::string* pDst)
 {
-	DWORD encodedSize = 0;
-	BOOL b = ::CryptBinaryToStringA(reinterpret_cast<const BYTE*>(data.c_str()), (DWORD)data.size(), CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, NULL, &encodedSize);
-	APP_ASSERT(b);
+	LastErrorBackup _backup;
 
-	std::vector<char> encodedData(encodedSize);
-	b = ::CryptBinaryToStringA(reinterpret_cast<const BYTE*>(data.c_str()), (DWORD)data.size(), CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, encodedData.data(), &encodedSize);
-	APP_ASSERT(b);
+	DWORD dstSize = 0;
 
-	return std::string(encodedData.begin(), encodedData.end() - 1);
+	BOOL b = ::CryptBinaryToStringA(
+		reinterpret_cast<const BYTE*>(src.c_str()), (DWORD)src.size(),
+		CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, NULL, &dstSize);
+
+	if (!b)
+	{
+		return false;
+	}
+
+	std::vector<char> dst(dstSize);
+
+	b = ::CryptBinaryToStringA(
+		reinterpret_cast<const BYTE*>(src.c_str()), (DWORD)src.size(),
+		CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, dst.data(), &dstSize);
+
+	if (!b)
+	{
+		return false;
+	}
+
+	*pDst = std::string(dst.begin(), dst.end() - 1);
+
+	return true;
 }
 
-std::string Base64DecodeA(const std::string& encodedData)
+bool Base64DecodeA(const std::string& src, std::string* pDst)
 {
-	DWORD decodedSize = 0;
-	BOOL b = ::CryptStringToBinaryA(encodedData.c_str(), (DWORD)encodedData.size(), CRYPT_STRING_BASE64, NULL, &decodedSize, NULL, NULL);
-	APP_ASSERT(b);
+	LastErrorBackup _backup;
 
-	std::vector<BYTE> decodedData(decodedSize);
-	b = ::CryptStringToBinaryA(encodedData.c_str(), (DWORD)encodedData.size(), CRYPT_STRING_BASE64, decodedData.data(), &decodedSize, NULL, NULL);
-	APP_ASSERT(b);
+	DWORD dstSize = 0;
 
-	return std::string(decodedData.begin(), decodedData.end());
+	BOOL b = ::CryptStringToBinaryA(
+		src.c_str(), (DWORD)src.size(), CRYPT_STRING_BASE64,
+		NULL, &dstSize, NULL, NULL);
+
+	if (!b)
+	{
+		return false;
+	}
+
+	std::vector<BYTE> dst(dstSize);
+
+	b = ::CryptStringToBinaryA(
+		src.c_str(), (DWORD)src.size(), CRYPT_STRING_BASE64,
+		dst.data(), &dstSize, NULL, NULL);
+
+	if (!b)
+	{
+		return false;
+	}
+
+	*pDst = std::string(dst.begin(), dst.end());
+
+	return true;
 }
 
 std::string URLEncodeA(const std::string& str)
@@ -137,6 +177,62 @@ std::string URLDecodeA(const std::string& str)
 	}
 
 	return decoded.str();
+}
+
+bool EncodeFileNameToLocalNameA(const std::string& src, std::string* pDst)
+{
+	std::string dst;
+
+	if (!Base64EncodeA(src, &dst))
+	{
+		return false;
+	}
+
+	*pDst = URLEncodeA(dst);
+
+	return true;
+}
+
+bool DecodeLocalNameToFileNameA(const std::string& src, std::string* pDst)
+{
+	std::string dst;
+
+	if (!Base64DecodeA(URLDecodeA(src), &dst))
+	{
+		return false;
+	}
+
+	*pDst = std::move(dst);
+
+	return true;
+}
+
+bool EncodeFileNameToLocalNameW(const std::wstring& src, std::wstring* pDst)
+{
+	std::string dst;
+
+	if (!Base64EncodeA(WC2MB(src), &dst))
+	{
+		return false;
+	}
+
+	*pDst = MB2WC(URLEncodeA(dst));
+
+	return true;
+}
+
+bool DecodeLocalNameToFileNameW(const std::wstring& src, std::wstring* pDst)
+{
+	std::string dst;
+
+	if (!Base64DecodeA(URLDecodeA(WC2MB(src)), &dst))
+	{
+		return false;
+	}
+
+	*pDst = MB2WC(dst);
+
+	return true;
 }
 
 // ëOå„ÇÃãÛîíÇÉgÉäÉÄÇ∑ÇÈä÷êî

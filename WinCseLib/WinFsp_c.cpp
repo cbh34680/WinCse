@@ -118,10 +118,6 @@ static NTSTATUS GetVolumeInfo(FSP_FILE_SYSTEM *FileSystem,
     VolumeInfo->TotalSize = TotalSize.QuadPart;
     VolumeInfo->FreeSize = FreeSize.QuadPart;
 
-#if !WINFSP_PASSTHROUGH
-    CSDriver()->DoGetVolumeInfo(Ptfs->Path, VolumeInfo);
-#endif
-
     return STATUS_SUCCESS;
 }
 

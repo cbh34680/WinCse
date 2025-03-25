@@ -35,17 +35,15 @@ WINCSE_DRIVER_STATS;
 
 namespace WinCseLib {
 
-struct WINCSELIB_API ICSDriver : public ICSService
+struct ICSDriver : public ICSService
 {
 	virtual ~ICSDriver() = default;
 
 	// READ
-	virtual NTSTATUS DoGetSecurityByName(
-		const wchar_t* FileName, PUINT32 PFileAttributes,
+	virtual NTSTATUS DoGetSecurityByName(const wchar_t* FileName, PUINT32 PFileAttributes,
 		PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize) { return STATUS_INVALID_DEVICE_REQUEST; }
 
-	virtual NTSTATUS DoOpen(
-		const wchar_t* FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
+	virtual NTSTATUS DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
 		PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo) { return STATUS_INVALID_DEVICE_REQUEST; }
 
 	virtual NTSTATUS DoClose(PTFS_FILE_CONTEXT* FileContext) { return STATUS_INVALID_DEVICE_REQUEST; }
@@ -66,7 +64,6 @@ struct WINCSELIB_API ICSDriver : public ICSService
 		PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern, PWSTR Marker,
 		PVOID Buffer, ULONG BufferLength, PULONG PBytesTransferred) { return STATUS_INVALID_DEVICE_REQUEST; }
 
-	// WRITE
 	virtual VOID DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags) { }
 
 	virtual NTSTATUS DoCreate(const wchar_t* FileName, UINT32 CreateOptions, UINT32 GrantedAccess,

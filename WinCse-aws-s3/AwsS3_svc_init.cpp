@@ -9,31 +9,6 @@ static const wchar_t* CONFIGFILE_FNAME = L"WinCse.conf";
 static const wchar_t* CACHE_DATA_DIR_FNAME = L"aws-s3\\cache\\data";
 static const wchar_t* CACHE_REPORT_DIR_FNAME = L"aws-s3\\cache\\report";
 
-
-static bool forEachFiles(const std::wstring& directory, const std::function<void(const WIN32_FIND_DATA& wfd)>& callback)
-{
-    WIN32_FIND_DATA wfd = {};
-    HANDLE hFind = ::FindFirstFileW((directory + L"\\*").c_str(), &wfd);
-
-    if (hFind == INVALID_HANDLE_VALUE)
-    {
-        return false;
-    }
-
-    do
-    {
-        if (wcscmp(wfd.cFileName, L".") != 0 && wcscmp(wfd.cFileName, L"..") != 0)
-        {
-            callback(wfd);
-        }
-    }
-    while (::FindNextFile(hFind, &wfd) != 0);
-
-    ::FindClose(hFind);
-
-    return true;
-}
-
 static bool decryptIfNeed(const std::string& secureKeyStr, std::string* pInOut)
 {
     APP_ASSERT(pInOut);
@@ -46,30 +21,43 @@ static bool decryptIfNeed(const std::string& secureKeyStr, std::string* pInOut)
         {
             if (str.substr(0, 8) == "{aes256}")
             {
-                // MachineGuid の値を AES の key とし、iv には key[0..16] を設定する
-                std::vector<BYTE> aesKey{ secureKeyStr.begin(), secureKeyStr.end() };
-
                 // 先頭の "{aes256}" を除く
-                std::string concatB64Str{ str.substr(8) };
+
+                const std::string concatB64Str{ str.substr(8) };
+
+                // MachineGuid の値を AES の key とし、iv には key[0..16] を設定する
+
+                const std::vector<BYTE> aesKey{ secureKeyStr.begin(), secureKeyStr.end() };
 
                 // BASE64 文字列をデコード
-                std::string concatStr = Base64DecodeA(concatB64Str);
-                std::vector<BYTE> concatBytes{ concatStr.begin(), concatStr.end() };
+
+                std::string concatStr;
+                if (!Base64DecodeA(concatB64Str, &concatStr))
+                {
+                    return false;
+                }
+
+                const std::vector<BYTE> concatBytes{ concatStr.begin(), concatStr.end() };
 
                 if (concatBytes.size() < 17)
                 {
                     // IV + データなので最低でも 16 + 1 byte は必要
+
                     return false;
                 }
 
                 // 先頭の 16 byte が IV
-                std::vector<BYTE> aesIV{ concatStr.begin(), concatStr.begin() + 16 };
+
+                const std::vector<BYTE> aesIV{ concatStr.begin(), concatStr.begin() + 16 };
 
                 // それ以降がデータ
-                std::vector<BYTE> encrypted{ concatStr.begin() + 16, concatStr.end() };
+
+                const std::vector<BYTE> encrypted{ concatStr.begin() + 16, concatStr.end() };
 
                 // 復号化
+
                 std::vector<BYTE> decrypted;
+
                 if (!DecryptAES(aesKey, aesIV, encrypted, &decrypted))
                 {
                     return false;
@@ -79,6 +67,7 @@ static bool decryptIfNeed(const std::string& secureKeyStr, std::string* pInOut)
                 //str.assign(decrypted.begin(), decrypted.end());
 
                 // 入力が '\0' 終端であることを前提に char* から std::string を初期化する
+
                 str = (char*)decrypted.data();
 
                 *pInOut = std::move(str);
@@ -102,10 +91,8 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
 
         const std::wstring workDir{ fs::weakly_canonical(fs::path(argWorkDir)).wstring() };
 
-        //
         // ファイル・キャッシュ保存用ディレクトリの準備
-        // システムのクリーンアップで自動的に削除されるように、%TMP% に保存する
-        //
+
         const std::wstring cacheDataDir{ workDir + L'\\' + CACHE_DATA_DIR_FNAME };
         if (!MkdirIfNotExists(cacheDataDir))
         {
@@ -121,17 +108,27 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
         }
 
 #ifdef _DEBUG
-        forEachFiles(cacheDataDir, [this, &LOG_BLOCK()](const WIN32_FIND_DATA& wfd)
+        forEachFiles(cacheDataDir, [this, &LOG_BLOCK()](const auto& wfd)
         {
-            traceW(L"cache file: [%s] [%s]",
-                wfd.cFileName,
-                DecodeLocalNameToFileNameW(wfd.cFileName).c_str());
+            if (FA_IS_DIR(wfd.dwFileAttributes))
+            {
+                // ディレクトリは無視
+
+                return;
+            }
+
+            std::wstring decFileName;
+            if (!DecodeLocalNameToFileNameW(wfd.cFileName, &decFileName))
+            {
+                decFileName = L"*** decode fault ***";
+            }
+
+            traceW(L"cache file: [%s] [%s]", wfd.cFileName, decFileName.c_str());
         });
 #endif
 
-        //
         // ini ファイルから値を取得
-        //
+
         const std::wstring confPath{ workDir + L'\\' + CONFIGFILE_FNAME };
         const std::string confPathA{ WC2MB(confPath) };
 
@@ -141,6 +138,7 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
         const auto iniSectionA{ WC2MB(mIniSection) };
 
         // AWS 認証情報
+
         std::string str_access_key_id;
         std::string str_secret_access_key;
         std::string str_region;
@@ -150,6 +148,7 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
         GetIniStringA(confPathA, iniSectionA.c_str(), "region", &str_region);
 
         // レジストリ "HKLM:\SOFTWARE\Microsoft\Cryptography" から "MachineGuid" の値を取得
+
         std::string secureKeyStr;
         if (!GetCryptKeyFromRegistry(&secureKeyStr))
         {
@@ -164,6 +163,7 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
         }
 
         // MachineGuid の値をキーにして keyid&secret を復号化 (必要なら)
+
         if (!decryptIfNeed(secureKeyStr, &str_access_key_id))
         {
             traceW(L"%s: keyid decrypt fault", str_access_key_id.c_str());
@@ -174,9 +174,8 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
             traceW(L"%s: secret decrypt fault", str_secret_access_key.c_str());
         }
 
-        //
         // バケット名フィルタ
-        //
+
         std::wstring bucket_filters_str;
 
         if (GetIniStringW(confPath, iniSection, L"bucket_filters", &bucket_filters_str))
@@ -192,14 +191,12 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
             }
         }
 
-        //
         // 最大表示バケット数
-        //
+
         const int maxBuckets = (int)::GetPrivateProfileIntW(iniSection, L"max_buckets", -1, confPath.c_str());
 
-        //
         // 最大表示オブジェクト数
-        //
+
         const int maxObjects = (int)::GetPrivateProfileIntW(iniSection, L"max_objects", 1000, confPath.c_str());
 
         if (VolumeParams->ReadOnlyVolume)
@@ -207,9 +204,8 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
             mDefaultFileAttributes |= FILE_ATTRIBUTE_READONLY;
         }
 
-        //
         // 属性参照用ファイル/ディレクトリの準備
-        //
+
         mRefFile = ::CreateFileW
         (
             confPath.c_str(),
@@ -244,9 +240,8 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
             return false;
         }
 
-        //
         // S3 クライアントの生成
-        //
+
         mSDKOptions = std::make_unique<Aws::SDKOptions>();
         APP_ASSERT(mSDKOptions);
 
@@ -256,6 +251,7 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
         if (str_region.empty())
         {
             // とりあえずデフォルト・リージョンとして設定しておく
+
             str_region = AWS_DEFAULT_REGION;
         }
 
@@ -285,15 +281,16 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
         APP_ASSERT(client);
         mClient = ClientPtr(client);
 
-        //
-        // 接続試験
-        //
+        // S3 接続試験
+
         const auto outcome = mClient->ListBuckets();
         if (!outcomeIsSuccess(outcome))
         {
             traceW(L"fault: test ListBuckets");
             return false;
         }
+
+        // メンバに保存して終了
 
         mWorkDirCTime = STCTimeToWinFileTimeW(workDir);
         mWorkDir = workDir;
@@ -315,71 +312,6 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
     }
 
     return ret;
-}
-
-void AwsS3::OnIdleTime(CALLER_ARG0)
-{
-    NEW_LOG_BLOCK();
-
-    static int countCalled = 0;
-    countCalled++;
-
-    // IdleTask から呼び出され、メモリやファイルの古いものを削除
-
-    namespace chrono = std::chrono;
-    const auto now { chrono::system_clock::now() };
-
-    //
-    // バケット・キャッシュの再作成
-    // 
-    this->reloadBukcetsIfNeed(CONT_CALLER0);
-
-    //
-    // オブジェクト・キャッシュ
-    //
-
-    // 最終アクセスから 5 分以上経過したオブジェクト・キャッシュを削除
-
-    this->deleteOldObjects(CONT_CALLER now - chrono::minutes(5));
-
-    //
-    // ファイル・キャッシュ
-    //
-
-    // 更新日時から 24 時間以上経過したキャッシュ・ファイルを削除する
-
-    APP_ASSERT(std::filesystem::is_directory(mCacheDataDir));
-
-    const auto nowMillis{ GetCurrentUtcMillis() };
-
-    forEachFiles(mCacheDataDir, [this, nowMillis, &LOG_BLOCK()](const WIN32_FIND_DATA& wfd)
-    {
-        const auto lastAccessTime { WinFileTimeToUtcMillis(wfd.ftLastAccessTime) };
-
-        traceW(L"cache file: [%s] [%s] lastAccess=%llu",
-            wfd.cFileName, DecodeLocalNameToFileNameW(wfd.cFileName).c_str(), lastAccessTime);
-
-        const auto diffMillis = nowMillis - lastAccessTime;
-        if (diffMillis > (24ULL * 60 * 60 * 1000))
-        {
-            const auto delPath{ mCacheDataDir + L'\\' + wfd.cFileName };
-
-            std::error_code ec;
-            if (std::filesystem::remove(delPath, ec))
-            {
-                traceW(L"%s: removed", delPath.c_str());
-            }
-            else
-            {
-                traceW(L"%s: remove error", delPath.c_str());
-            }
-        }
-    });
-
-#if _DEBUG
-    const auto tid = ::GetCurrentThreadId();
-    traceW(L"tid=%lu", tid);
-#endif
 }
 
 // EOF

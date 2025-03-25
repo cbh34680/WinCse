@@ -10,17 +10,32 @@ WinCseLib::ICSDevice* NewCSDevice(
     const wchar_t* argTempDir, const wchar_t* argIniSection,
     NamedWorker argWorkers[])
 {
-    return new AwsS3(argTempDir, argIniSection, argWorkers);
+    std::unordered_map<std::wstring, IWorker*> workers;
+
+    if (NamedWorkersToMap(argWorkers, &workers) <= 0)
+    {
+        return nullptr;
+    }
+
+    for (const auto* key: { L"delayed", L"idle", L"timer", })
+    {
+        if (workers.find(key) == workers.end())
+        {
+            return nullptr;
+        }
+    }
+
+    return new AwsS3(argTempDir, argIniSection, std::move(workers));
 }
 
-AwsS3::AwsS3(const std::wstring& argTempDir, const std::wstring& argIniSection, NamedWorker argWorkers[])
+AwsS3::AwsS3(const std::wstring& argTempDir, const std::wstring& argIniSection,
+    std::unordered_map<std::wstring, IWorker*>&& argWorkers)
     :
-    mTempDir(argTempDir), mIniSection(argIniSection)
+    mTempDir(argTempDir), mIniSection(argIniSection),
+    mWorkers(std::move(argWorkers))
 {
     APP_ASSERT(std::filesystem::exists(argTempDir));
     APP_ASSERT(std::filesystem::is_directory(argTempDir));
-
-    NamedWorkersToMap(argWorkers, &mWorkers);
 
     mStats = &mStats_;
 }
@@ -91,7 +106,10 @@ DirInfoType AwsS3::makeDirInfo_dir(const WinCseLib::ObjectKey& argObjKey, const 
     return makeDirInfo_attr(argObjKey, argFileTime, FILE_ATTRIBUTE_DIRECTORY);
 }
 
-HANDLE AwsS3::HandleFromContext(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext)
+NTSTATUS AwsS3::getHandleFromContext(CALLER_ARG
+    WinCseLib::CSDeviceContext* argCSDeviceContext,
+    const DWORD argDesiredAccess, const DWORD argCreationDisposition,
+    HANDLE* pHandle)
 {
     NEW_LOG_BLOCK();
 
@@ -101,7 +119,9 @@ HANDLE AwsS3::HandleFromContext(CALLER_ARG WinCseLib::CSDeviceContext* argCSDevi
 
     const auto remotePath{ ctx->getRemotePath() };
 
-    traceW(L"ctx=%p mObjKey=%s HANDLE=%p, remotePath=%s", ctx, ctx->mObjKey.c_str(), ctx->mFile.handle(), remotePath.c_str());
+    traceW(L"Context=%p ObjectKey=%s HANDLE=%p, RemotePath=%s DesiredAccess=%lu CreationDisposition=%lu",
+        ctx, ctx->mObjKey.c_str(), ctx->mFile.handle(), remotePath.c_str(),
+        argDesiredAccess, argCreationDisposition);
 
     // ファイル名への参照を登録
 
@@ -113,20 +133,20 @@ HANDLE AwsS3::HandleFromContext(CALLER_ARG WinCseLib::CSDeviceContext* argCSDevi
         {
             // AwsS3::open() 後の初回の呼び出し
 
-            NTSTATUS ntstatus = ctx->openFileHandle(CONT_CALLER 0, OPEN_EXISTING);
+            NTSTATUS ntstatus = ctx->openFileHandle(CONT_CALLER argDesiredAccess, argCreationDisposition);
             if (!NT_SUCCESS(ntstatus))
             {
                 traceW(L"fault: openFileHandle");
-                return INVALID_HANDLE_VALUE;
+                return ntstatus;
             }
 
             APP_ASSERT(ctx->mFile.valid());
         }
     }   // 名前のロックを解除 (safeShare の生存期間)
 
-    traceW(L"ctx=%p mObjKey=%s HANDLE=%p, remotePath=%s", ctx, ctx->mObjKey.c_str(), ctx->mFile.handle(), remotePath.c_str());
+    *pHandle = ctx->mFile.handle();
 
-    return ctx->mFile.handle();
+    return STATUS_SUCCESS;
 }
 
 //
@@ -171,6 +191,13 @@ NTSTATUS OpenContext::openFileHandle(CALLER_ARG const DWORD argDesiredAccess, co
     APP_ASSERT(isFile());
     APP_ASSERT(mObjKey.meansFile());
 
+    std::wstring localPath;
+    if (!getFilePathW(&localPath))
+    {
+        traceW(L"fault: getFilePathW");
+        return STATUS_OBJECT_PATH_NOT_FOUND;
+    }
+
     const DWORD dwDesiredAccess = mGrantedAccess | argDesiredAccess;
 
     ULONG CreateFlags = 0;
@@ -179,7 +206,7 @@ NTSTATUS OpenContext::openFileHandle(CALLER_ARG const DWORD argDesiredAccess, co
     if (mCreateOptions & FILE_DELETE_ON_CLOSE)
         CreateFlags |= FILE_FLAG_DELETE_ON_CLOSE;
 
-    HANDLE hFile = ::CreateFileW(getFilePathW().c_str(),
+    HANDLE hFile = ::CreateFileW(localPath.c_str(),
         dwDesiredAccess, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
         argCreationDisposition, CreateFlags, 0);
 

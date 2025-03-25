@@ -145,13 +145,13 @@ bool WinCse::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PAR
 		for (const auto& it: mWorkers)
 		{
 			const auto worker = it.second;
-			const auto klassName = getDerivedClassNames(worker);
+			const auto klassName = getDerivedClassNamesW(worker);
 
-			traceA("%s::PreCreateFilesystem()", klassName.c_str());
+			traceW(L"%s::PreCreateFilesystem()", klassName.c_str());
 
 			if (!worker->PreCreateFilesystem(argWorkDir, VolumeParams))
 			{
-				traceA("fault: PreCreateFilesystem");
+				traceW(L"fault: PreCreateFilesystem");
 				return false;
 			}
 		}
@@ -161,13 +161,13 @@ bool WinCse::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PAR
 		for (int i=0; i<_countof(services); i++)
 		{
 			const auto service = services[i];
-			const auto klassName = getDerivedClassNames(service);
+			const auto klassName = getDerivedClassNamesW(service);
 
-			traceA("%s::PreCreateFilesystem()", klassName.c_str());
+			traceW(L"%s::PreCreateFilesystem()", klassName.c_str());
 
 			if (!services[i]->PreCreateFilesystem(argWorkDir, VolumeParams))
 			{
-				traceA("fault: PreCreateFilesystem");
+				traceW(L"fault: PreCreateFilesystem");
 				return false;
 			}
 		}
@@ -203,13 +203,13 @@ bool WinCse::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 		for (const auto& it: mWorkers)
 		{
 			const auto worker = it.second;
-			const auto klassName = getDerivedClassNames(worker);
+			const auto klassName = getDerivedClassNamesW(worker);
 
-			traceA("%s::OnSvcStart()", klassName.c_str());
+			traceW(L"%s::OnSvcStart()", klassName.c_str());
 
 			if (!worker->OnSvcStart(argWorkDir, FileSystem))
 			{
-				traceA("fault: PreCreateFilesystem");
+				traceW(L"fault: PreCreateFilesystem");
 				return false;
 			}
 		}
@@ -219,13 +219,13 @@ bool WinCse::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 		for (int i=0; i<_countof(services); i++)
 		{
 			const auto service = services[i];
-			const auto klassName = getDerivedClassNames(service);
+			const auto klassName = getDerivedClassNamesW(service);
 
-			traceA("%s::OnSvcStart()", klassName.c_str());
+			traceW(L"%s::OnSvcStart()", klassName.c_str());
 
 			if (!services[i]->OnSvcStart(argWorkDir, FileSystem))
 			{
-				traceA("fault: OnSvcStart");
+				traceW(L"fault: OnSvcStart");
 				return false;
 			}
 		}
@@ -255,9 +255,9 @@ void WinCse::OnSvcStop()
 	for (const auto& it: mWorkers)
 	{
 		const auto worker = it.second;
-		const auto klassName = getDerivedClassNames(worker);
+		const auto klassName = getDerivedClassNamesW(worker);
 
-		traceA("%s::OnSvcStop()", klassName.c_str());
+		traceW(L"%s::OnSvcStop()", klassName.c_str());
 
 		worker->OnSvcStop();
 	}
@@ -267,9 +267,9 @@ void WinCse::OnSvcStop()
 	for (int i=0; i<_countof(services); i++)
 	{
 		const auto service = services[i];
-		const auto klassName = getDerivedClassNames(service);
+		const auto klassName = getDerivedClassNamesW(service);
 
-		traceA("%s::OnSvcStop()", klassName.c_str());
+		traceW(L"%s::OnSvcStop()", klassName.c_str());
 
 		services[i]->OnSvcStop();
 	}

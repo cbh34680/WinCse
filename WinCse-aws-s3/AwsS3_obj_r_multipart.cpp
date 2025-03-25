@@ -40,9 +40,9 @@ struct FilePart
     }
 };
 
-struct ReadPartTask : public ITask
+struct ReadPartTask : public IOnDemandTask
 {
-    CanIgnoreDuplicates getCanIgnoreDuplicates() const noexcept override { return CanIgnoreDuplicates::No; }
+    IgnoreDuplicates getIgnoreDuplicates() const noexcept override { return IgnoreDuplicates::No; }
     Priority getPriority() const noexcept override { return Priority::Middle; }
 
     AwsS3* mAwsS3;
@@ -227,7 +227,13 @@ NTSTATUS AwsS3::readObject_Multipart(CALLER_ARG WinCseLib::CSDeviceContext* argC
             traceW(L"init mLocalFile: HANDLE=%p, Offset=%llu Length=%lu remotePath=%s",
                 ctx->mFile.handle(), Offset, Length, remotePath.c_str());
 
-            const auto localPath{ ctx->getFilePathW() };
+            std::wstring localPath;
+
+            if (!ctx->getFilePathW(&localPath))
+            {
+                traceW(L"fault: getFilePathW");
+                return STATUS_OBJECT_PATH_NOT_FOUND;
+            }
 
             // ダウンロードが必要か判断
 
@@ -250,7 +256,8 @@ NTSTATUS AwsS3::readObject_Multipart(CALLER_ARG WinCseLib::CSDeviceContext* argC
             }
 
             NTSTATUS ntstatus = ctx->openFileHandle(CONT_CALLER
-                needDownload ? FILE_WRITE_ATTRIBUTES : 0,
+                //needDownload ? FILE_WRITE_ATTRIBUTES : 0,
+                FILE_WRITE_ATTRIBUTES,
                 needDownload ? CREATE_ALWAYS : OPEN_EXISTING
             );
 
@@ -275,6 +282,16 @@ NTSTATUS AwsS3::readObject_Multipart(CALLER_ARG WinCseLib::CSDeviceContext* argC
                 // ファイル日時を同期
 
                 if (!ctx->mFile.setFileTime(ctx->mFileInfo.CreationTime, ctx->mFileInfo.LastWriteTime))
+                {
+                    traceW(L"fault: setLocalTimeTime");
+                    return STATUS_IO_DEVICE_ERROR;
+                }
+            }
+            else
+            {
+                // アクセス日時のみ更新
+
+                if (!ctx->mFile.setFileTime(0, 0))
                 {
                     traceW(L"fault: setLocalTimeTime");
                     return STATUS_IO_DEVICE_ERROR;

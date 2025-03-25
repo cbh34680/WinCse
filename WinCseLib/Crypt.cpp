@@ -7,6 +7,8 @@ namespace WinCseLib {
 bool DecryptAES(const std::vector<BYTE>& key, const std::vector<BYTE>& iv, 
     const std::vector<BYTE>& encrypted, std::vector<BYTE>* pDecrypted)
 {
+    LastErrorBackup _backup;
+
     APP_ASSERT(pDecrypted);
 
     bool ret = false;
@@ -79,6 +81,8 @@ exit:
 
 bool GetCryptKeyFromRegistry(std::string* pKeyStr)
 {
+    LastErrorBackup _backup;
+
     bool ret = false;
 
     HKEY hKey = NULL;

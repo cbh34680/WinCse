@@ -149,7 +149,7 @@
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="IdleWorker.cpp" />
+    <ClCompile Include="ScheduledWorker.cpp" />
     <ClCompile Include="WinCse.cpp" />
     <ClCompile Include="WinCse_if_w.cpp" />
     <ClCompile Include="WinCse_open.cpp" />
@@ -161,6 +161,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="IdleWorker.hpp" />
+    <ClInclude Include="ScheduledWorker.hpp" />
+    <ClInclude Include="TimerWorker.hpp" />
     <ClInclude Include="WinCse.hpp" />
     <ClInclude Include="DelayedWorker.hpp" />
   </ItemGroup>

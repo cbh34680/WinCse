@@ -11,7 +11,7 @@ using namespace WinCseLib;
 
 #if ENABLE_TASK
 // タスク処理が有効
-const int WORKER_MAX = 2;
+const int WORKER_MAX = 4;
 
 #else
 // タスク処理が無効
@@ -100,74 +100,85 @@ void DelayedWorker::OnSvcStop()
 	mTaskQueue.clear();
 }
 
-void DelayedWorker::listenEvent(const int argThreadIndex)
+void DelayedWorker::listenEvent(const int threadIndex)
 {
 	NEW_LOG_BLOCK();
 
 	while (1)
 	{
-		try
-		{
-			traceW(L"(%d): wait for signal ...", argThreadIndex);
-			const auto reason = ::WaitForSingleObject(mEvent.handle(), INFINITE);
+		traceW(L"(%d): wait for signal ...", threadIndex);
+		const auto reason = ::WaitForSingleObject(mEvent.handle(), INFINITE);
 
-			if (mEndWorkerFlag)
+		bool breakLoop = false;
+
+		if (mEndWorkerFlag)
+		{
+			traceW(L"(%d): receive end worker request", threadIndex);
+
+			breakLoop = true;
+		}
+		else
+		{
+			switch (reason)
 			{
-				traceW(L"(%d): receive end worker request", argThreadIndex);
+				case WAIT_OBJECT_0:
+				{
+					// SetEvent の実行
+
+					traceW(L"(%d): wait for signal: catch signal", threadIndex);
+					break;
+				}
+
+				default:
+				{
+					// タイムアウト、又はシステムエラー
+
+					traceW(L"(%d): wait for signal: error code=%ld, break", threadIndex, reason);
+
+					breakLoop = true;
+
+					break;
+				}
+			}
+		}
+
+		if (breakLoop)
+		{
+			traceW(L"(%d): catch end-loop request, break", threadIndex);
+			break;
+		}
+
+		// キューに入っているタスクを処理
+
+		while (1)
+		{
+			auto task{ dequeueTask() };
+			if (!task)
+			{
+				traceW(L"(%d): no more oneshot-tasks", threadIndex);
 				break;
 			}
 
-			switch (reason)
+			try
 			{
-				case WAIT_TIMEOUT:
-				{
-					APP_ASSERT(0);
-
-					break;
-				}
-				case WAIT_OBJECT_0:
-				{
-					traceW(L"(%d): wait for signal: catch signal", argThreadIndex);
-					break;
-				}
-				default:
-				{
-					traceW(L"(%d): wait for signal: error code=%ld, continue", argThreadIndex, reason);
-					throw std::runtime_error("illegal route");
-
-					break;
-				}
-			}
-
-			// キューに入っているタスクを処理
-			while (1)
-			{
-				auto task{ dequeueTask() };
-				if (!task)
-				{
-					traceW(L"(%d): no more oneshot-tasks", argThreadIndex);
-					break;
-				}
-
-				traceW(L"(%d): run oneshot task ...", argThreadIndex);
+				traceW(L"(%d): run oneshot task ...", threadIndex);
 				task->run(std::wstring(task->mCaller) + L"->" + __FUNCTIONW__);
-				traceW(L"(%d): run oneshot task done", argThreadIndex);
+				traceW(L"(%d): run oneshot task done", threadIndex);
 
 				// 処理するごとに他のスレッドに回す
 				//::SwitchToThread();
 			}
-		}
-		catch (const std::exception& err)
-		{
-			traceA("(%d): what: %s", argThreadIndex, err.what());
-			break;
-		}
-		catch (...)
-		{
-			traceA("(%d): unknown error, continue", argThreadIndex);
+			catch (const std::exception& err)
+			{
+				traceA("(%d): what: %s", threadIndex, err.what());
+				break;
+			}
+			catch (...)
+			{
+				traceA("(%d): unknown error, continue", threadIndex);
+			}
 		}
 	}
-
 
 	// 残ったタスクはキャンセルして破棄
 
@@ -176,23 +187,24 @@ void DelayedWorker::listenEvent(const int argThreadIndex)
 		auto task{ dequeueTask() };
 		if (!task)
 		{
-			traceW(L"(%d): no more oneshot-tasks", argThreadIndex);
+			traceW(L"(%d): no more oneshot-tasks", threadIndex);
 			break;
 		}
 
 		task->cancelled(std::wstring(task->mCaller) + L"->" + __FUNCTIONW__);
 	}
 
-	traceW(L"(%d): exit event loop", argThreadIndex);
+	traceW(L"(%d): exit event loop", threadIndex);
 }
 
 //
 // ここから下のメソッドは THREAD_SAFE マクロによる修飾が必要
 //
+
 static std::mutex gGuard;
 #define THREAD_SAFE() std::lock_guard<std::mutex> lock_(gGuard)
 
-bool taskComparator(const std::unique_ptr<ITask>& a, const std::unique_ptr<ITask>& b)
+bool taskComparator(const std::unique_ptr<IOnDemandTask>& a, const std::unique_ptr<IOnDemandTask>& b)
 {
 	if (a->getPriority() < b->getPriority())
 	{
@@ -221,7 +233,8 @@ bool taskComparator(const std::unique_ptr<ITask>& a, const std::unique_ptr<ITask
 	return false;
 }
 
-bool DelayedWorker::addTask(CALLER_ARG WinCseLib::ITask* argTask)
+#if ENABLE_TASK
+bool DelayedWorker::addTypedTask(CALLER_ARG WinCseLib::IOnDemandTask* argTask)
 {
 	THREAD_SAFE();
 	NEW_LOG_BLOCK();
@@ -233,40 +246,40 @@ bool DelayedWorker::addTask(CALLER_ARG WinCseLib::ITask* argTask)
 		// --> 基本的にはありえない
 
 		argTask->cancelled(CONT_CALLER0);
-
 		delete argTask;
 
 		return false;
 	}
 
-	bool added = false;
+	bool add = false;
 
-#if ENABLE_TASK
 	argTask->mAddTime = GetCurrentUtcMillis();
 	argTask->mCaller = _wcsdup(CALL_CHAIN().c_str());
 
-	if (argTask->getCanIgnoreDuplicates() == CanIgnoreDuplicates::Yes)
+	if (argTask->getIgnoreDuplicates() == IOnDemandTask::IgnoreDuplicates::Yes)
 	{
-		const auto argTaskName{ argTask->synonymString() };
+		const auto taskName{ argTask->synonymString() };
 
 		// 無視可能の時には synonym は設定されるべき
-		APP_ASSERT(!argTaskName.empty());
 
-		// 無視可能
-		const auto it = std::find_if(mTaskQueue.begin(), mTaskQueue.end(), [&argTaskName](const auto& task)
+		APP_ASSERT(!taskName.empty());
+
+		// キューから同じシノニムを持つタスクを探す
+
+		const auto it = std::find_if(mTaskQueue.begin(), mTaskQueue.end(), [&taskName](const auto& task)
 		{
-			// キューから同じシノニムを探す
-			return task->synonymString() == argTaskName;
+			return task->synonymString() == taskName;
 		});
 
 		if (it == mTaskQueue.end())
 		{
 			// 同等のものが存在しない
-			added = true;
+
+			add = true;
 		}
 		else
 		{
-			traceW(L"[%s]: task ignored", argTaskName.c_str());
+			traceW(L"[%s]: task ignored", taskName.c_str());
 
 			mTaskSkipCount++;
 		}
@@ -274,48 +287,39 @@ bool DelayedWorker::addTask(CALLER_ARG WinCseLib::ITask* argTask)
 	else
 	{
 		// 無視できない
-		added = true;
+
+		add = true;
 	}
 
-	if (added)
+	if (add)
 	{
 		mTaskQueue.emplace_back(argTask);
 	}
 
-	if (added)
+	if (add)
 	{
 		// Priority, AddTime の順にソート
 
 		std::sort(mTaskQueue.begin(), mTaskQueue.end(), taskComparator);
 
 		// WaitForSingleObject() に通知
+
 		const auto b = ::SetEvent(mEvent.handle());
 		APP_ASSERT(b);
 	}
 	else
 	{
 		argTask->cancelled(CONT_CALLER0);
-
 		delete argTask;
 	}
 
-#else
-	// ワーカー処理が無効な場合は、タスクのリクエストを無視
-	argTask->cancelled();
-
-	delete argTask;
-
-#endif
-
-	return added;
+	return add;
 }
 
-std::unique_ptr<ITask> DelayedWorker::dequeueTask()
+std::unique_ptr<IOnDemandTask> DelayedWorker::dequeueTask()
 {
 	THREAD_SAFE();
-	//NEW_LOG_BLOCK();
 
-#if ENABLE_TASK
 	if (!mTaskQueue.empty())
 	{
 		auto ret{ std::move(mTaskQueue.front()) };
@@ -324,12 +328,31 @@ std::unique_ptr<ITask> DelayedWorker::dequeueTask()
 		return ret;
 	}
 
-#else
-	// ワーカー処理が無効な場合は、null を返却
+	return nullptr;
+}
 
-#endif
+#else
+
+bool DelayedWorker::addTypedTask(CALLER_ARG WinCseLib::IOnDemandTask* argTask)
+{
+	THREAD_SAFE();
+
+	// ワーカー処理が無効な場合は、タスクのリクエストを無視
+
+	argTask->cancelled(CONT_CALLER0);
+	delete argTask;
+
+	return add;
+}
+
+std::unique_ptr<IOnDemandTask> DelayedWorker::dequeueTask()
+{
+	THREAD_SAFE();
+
+	// ワーカー処理が無効な場合は、null を返却
 
 	return nullptr;
 }
+#endif
 
 // EOF

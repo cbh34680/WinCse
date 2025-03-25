@@ -7,6 +7,7 @@
 #include "WinCseLib.h"
 #include "DelayedWorker.hpp"
 #include "IdleWorker.hpp"
+#include "TimerWorker.hpp"
 #include "WinCse.hpp"
 #include <csignal>
 #include <iostream>
@@ -199,11 +200,13 @@ static int app_main(int argc, wchar_t** argv,
 
                 DelayedWorker dworker(tmpDir, iniSection);
                 IdleWorker iworker(tmpDir, iniSection);
+                TimerWorker tworker(tmpDir, iniSection);
 
                 NamedWorker workers[] =
                 {
                     { L"delayed", &dworker },
                     { L"idle", &iworker },
+                    { L"timer", &tworker },
                     { nullptr, nullptr },
                 };
 
@@ -487,7 +490,6 @@ static void writeStats(
             fprintf(fp, "\t" "DoGetSecurityByName: %ld\n", appStats->DoGetSecurityByName);
             fprintf(fp, "\t" "DoGetFileInfo: %ld\n", appStats->DoGetFileInfo);
             fprintf(fp, "\t" "DoGetSecurity: %ld\n", appStats->DoGetSecurity);
-            fprintf(fp, "\t" "DoGetVolumeInfo: %ld\n", appStats->DoGetVolumeInfo);
             fprintf(fp, "\t" "DoCreate: %ld\n", appStats->DoCreate);
             fprintf(fp, "\t" "DoOpen: %ld\n", appStats->DoOpen);
             fprintf(fp, "\t" "DoCleanup: %ld\n", appStats->DoCleanup);

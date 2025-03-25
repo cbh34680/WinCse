@@ -165,7 +165,7 @@ int ObjectCache::deleteOldRecords(CALLER_ARG std::chrono::system_clock::time_poi
 
     const auto OldAccessTime = [&threshold](const auto& it)
     {
-        return it->second.mAccessTime < threshold;
+        return it->second.mCreateTime < threshold;
     };
 
     const int delPositive = eraseCacheBy(OldAccessTime, mPositive);

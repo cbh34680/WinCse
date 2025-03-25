@@ -16,6 +16,8 @@ bool HandleToFileInfo(HANDLE argHandle, FSP_FSCTL_FILE_INFO* pFileInfo)
 
 bool PathToFileInfoW(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo)
 {
+	LastErrorBackup _backup;
+
 	FileHandle hFile = ::CreateFileW
 	(
 		path.c_str(),
@@ -43,6 +45,8 @@ bool PathToFileInfoA(const std::string& path, FSP_FSCTL_FILE_INFO* pFileInfo)
 // ƒpƒX‚©‚ç FILETIME ‚Ì’l‚ðŽæ“¾
 bool PathToWinFileTimes(const std::wstring& path, FILETIME* pFtCreate, FILETIME* pFtAccess, FILETIME* pFtWrite)
 {
+	LastErrorBackup _backup;
+
 	FileHandle hFile = ::CreateFileW
 	(
 		path.c_str(),
@@ -64,6 +68,8 @@ bool PathToWinFileTimes(const std::wstring& path, FILETIME* pFtCreate, FILETIME*
 
 bool MkdirIfNotExists(const std::wstring& arg)
 {
+	LastErrorBackup _backup;
+
 	if (std::filesystem::exists(arg))
 	{
 		if (!std::filesystem::is_directory(arg))
@@ -101,24 +107,30 @@ bool MkdirIfNotExists(const std::wstring& arg)
 	return true;
 }
 
-std::string EncodeFileNameToLocalNameA(const std::string& str)
+bool forEachFiles(const std::wstring& directory, const std::function<void(const WIN32_FIND_DATA& wfd)>& callback)
 {
-	return URLEncodeA(Base64EncodeA(str));
-}
+	LastErrorBackup _backup;
 
-std::string DecodeLocalNameToFileNameA(const std::string& str)
-{
-	return Base64DecodeA(URLDecodeA(str));
-}
+	WIN32_FIND_DATA wfd = {};
+	HANDLE hFind = ::FindFirstFileW((directory + L"\\*").c_str(), &wfd);
 
-std::wstring EncodeFileNameToLocalNameW(const std::wstring& str)
-{
-	return MB2WC(URLEncodeA(Base64EncodeA(WC2MB(str))));
-}
+	if (hFind == INVALID_HANDLE_VALUE)
+	{
+		return false;
+	}
 
-std::wstring DecodeLocalNameToFileNameW(const std::wstring& str)
-{
-	return MB2WC(Base64DecodeA(URLDecodeA(WC2MB(str))));
+	do
+	{
+		//if (wcscmp(wfd.cFileName, L".") != 0 && wcscmp(wfd.cFileName, L"..") != 0)
+		{
+			callback(wfd);
+		}
+	}
+	while (::FindNextFile(hFind, &wfd) != 0);
+
+	::FindClose(hFind);
+
+	return true;
 }
 
 #if 0

@@ -31,4 +31,16 @@
 
 #include "internal_define_alloc.h"
 
+//
+// "Windows.h" で定義されている GetObject と aws-sdk-cpp のメソッド名が
+// バッティングしてコンパイルできないのことを回避
+//
+#ifdef GetObject
+#undef GetObject
+#endif
+
+#ifdef GetMessage
+#undef GetMessage
+#endif
+
 // EOF

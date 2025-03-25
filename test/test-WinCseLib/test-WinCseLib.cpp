@@ -22,8 +22,16 @@ void test1()
     wcout << L"JP[" << MB2WC("日本語") << L"]" << endl;
     cout << "JP[" << WC2MB(L"日本語") << "]" << endl;
 
-    cout << Base64EncodeA("C:\\Windows\\system32\\drivers\\hosts") << endl;
-    cout << Base64DecodeA("QzpcV2luZG93c1xzeXN0ZW0zMlxkcml2ZXJzXGhvc3Rz") << endl;
+    std::string tmp;
+    if (Base64EncodeA("C:\\Windows\\system32\\drivers\\hosts", &tmp))
+    {
+        cout << tmp << endl;
+    }
+
+    if (Base64DecodeA("QzpcV2luZG93c1xzeXN0ZW0zMlxkcml2ZXJzXGhvc3Rz", &tmp))
+    {
+        cout << tmp << endl;
+    }
 
     cout << URLEncodeA("https://company.com/s /p+/m-/u_/d$") << endl;
     cout << URLDecodeA("https%3A%2F%2Fcompany.com%2Fs%20%2Fp%2B%2Fm-%2Fu_%2Fd%24") << endl;
@@ -132,7 +140,10 @@ void test3()
     std::string concatB64Str{ "60sNtN3sCNXh2uKRWFAK5M2KiQYxNNO0N/JZRHSL20Y=" };
 
     // DATA の BASE64 文字列をデコード
-    std::string concatStr = Base64DecodeA(concatB64Str);
+    std::string concatStr;
+    BOOL b = Base64DecodeA(concatB64Str, &concatStr);
+    APP_ASSERT(b);
+
     std::vector<BYTE> concatBytes{ concatStr.begin(), concatStr.end() };
 
     // 先頭の 16 byte が IV
@@ -762,9 +773,9 @@ int main()
     //cout.imbue(locale(""));
     cerr.imbue(locale(""));
 
-    //test1();
+    test1();
     //test2();
-    //test3();
+    test3();
     //test4();
     //test5();
     //test6();
@@ -777,8 +788,8 @@ int main()
     //test13();
     //test14();
     //test15();
-    test16();
-    test16_2();
+    //test16();
+    //test16_2();
     //test17();
     //test18();
     //test19();

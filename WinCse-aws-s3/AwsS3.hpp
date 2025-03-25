@@ -3,18 +3,6 @@
 #include "WinCseLib.h"
 #include "aws_sdk_s3.h"
 
-//
-// "Windows.h" で定義されている GetObject と aws-sdk-cpp のメソッド名が
-// バッティングしてコンパイルできないのことを回避
-//
-#ifdef GetObject
-#undef GetObject
-#endif
-
-#ifdef GetMessage
-#undef GetMessage
-#endif
-
 #include <regex>
 #include "Purpose.h"
 #include "Protect.hpp"
@@ -100,7 +88,7 @@ private:
 	ClientPtr mClient;
 
 	// Worker 取得
-	std::unordered_map<std::wstring, WinCseLib::IWorker*> mWorkers;
+	const std::unordered_map<std::wstring, WinCseLib::IWorker*> mWorkers;
 
 	WinCseLib::IWorker* getWorker(const std::wstring& argName)
 	{
@@ -115,20 +103,20 @@ private:
 
 	// バケット操作関連
 	void clearBuckets(CALLER_ARG0);
-	void reloadBukcetsIfNeed(CALLER_ARG0);
+	bool reloadBukcetsIfNeed(CALLER_ARG std::chrono::system_clock::time_point threshold);
 	void reportBucketCache(CALLER_ARG FILE* fp);
 	std::wstring unlockGetBucketRegion(CALLER_ARG const std::wstring& bucketName);
 
 	// オブジェクト操作関連
 	void reportObjectCache(CALLER_ARG FILE* fp);
-	void deleteOldObjects(CALLER_ARG std::chrono::system_clock::time_point threshold);
-	void clearObjects(CALLER_ARG0);
+	int deleteOldObjects(CALLER_ARG std::chrono::system_clock::time_point threshold);
+	int clearObjects(CALLER_ARG0);
 	int deleteCacheByObjectKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
 
 	//
 	void unlockReportObjectCache(CALLER_ARG FILE* fp);
-	void unlockDeleteOldObjects(CALLER_ARG std::chrono::system_clock::time_point threshold);
-	void unlockClearObjects(CALLER_ARG0);
+	int unlockDeleteOldObjects(CALLER_ARG std::chrono::system_clock::time_point threshold);
+	int unlockClearObjects(CALLER_ARG0);
 	int unlockDeleteCacheByObjectKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
 
 	// AWS SDK API を実行
@@ -162,14 +150,15 @@ private:
 public:
 	// 外部から呼び出されるため override ではないが public のメソッド
 
-	void OnIdleTime(CALLER_ARG0);
+	void onTimer(CALLER_ARG0);
+	void onIdle(CALLER_ARG0);
 
 	int64_t prepareLocalCacheFile(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		const FileOutputParams& argOutputParams);
 
 public:
 	AwsS3(const std::wstring& argTempDir, const std::wstring& argIniSection,
-		WinCseLib::NamedWorker argWorkers[]);
+		std::unordered_map<std::wstring, WinCseLib::IWorker*>&& argWorkers);
 
 	~AwsS3();
 
@@ -194,7 +183,7 @@ public:
 		DirInfoListType* pDirInfoList /* nullable */) override;
 
 	bool putObject(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
-		const char* sourceFile, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */);
+		const char* sourceFile, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) override;
 
 	WinCseLib::CSDeviceContext* create(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		const UINT32 CreateOptions, const UINT32 GrantedAccess, const UINT32 FileAttributes,
@@ -210,7 +199,9 @@ public:
 
 	void cleanup(CALLER_ARG WinCseLib::CSDeviceContext* ctx, ULONG Flags) override;
 
-	HANDLE HandleFromContext(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext) override;
+	NTSTATUS getHandleFromContext(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
+		const DWORD argDesiredAccess, const DWORD argCreationDisposition,
+		HANDLE* pHandle) override;
 
 private:
 	// ファイル/ディレクトリに特化

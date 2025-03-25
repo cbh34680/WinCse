@@ -67,8 +67,19 @@ NTSTATUS WinCse::FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCT
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileName);
 	APP_ASSERT(pFileInfo);
+	APP_ASSERT(FileName[0] == L'\\');
 
-	FSP_FSCTL_FILE_INFO fileInfo = {};
+	traceW(L"FileName: \"%s\"", FileName);
+
+	if (isFileNameIgnored(FileName))
+	{
+		// "desktop.ini" ‚È‚Ç‚Í–³Ž‹‚³‚¹‚é
+
+		traceW(L"ignore pattern");
+		return STATUS_OBJECT_NAME_NOT_FOUND;
+	}
+
+	FSP_FSCTL_FILE_INFO fileInfo{};
 
 	bool isDir = false;
 	bool isFile = false;

@@ -4,24 +4,7 @@
 
 namespace WinCseLib {
 
-enum class CanIgnoreDuplicates
-{
-	None,
-	Yes,
-	No,
-};
-
-enum class Priority
-{
-	None,
-	High,
-	Middle,
-	Low,
-};
-
-struct IWorker;
-
-struct WINCSELIB_API ITask
+struct ITask
 {
 	uint64_t mAddTime = 0ULL;
 	wchar_t* mCaller = nullptr;
@@ -31,24 +14,51 @@ struct WINCSELIB_API ITask
 		delete mCaller;
 	}
 
-	virtual CanIgnoreDuplicates getCanIgnoreDuplicates() const noexcept { return CanIgnoreDuplicates::None; }
-	virtual Priority getPriority() const noexcept { return Priority::None; }
-	virtual std::wstring synonymString() const noexcept { return std::wstring{}; }
-
 	virtual void run(CALLER_ARG0) = 0;
-	virtual void cancelled(CALLER_ARG0) { }
+	virtual void cancelled(CALLER_ARG0) noexcept { }
 };
 
-struct WINCSELIB_API IWorker : public ICSService
+struct IWorker : public ICSService
 {
 	virtual ~IWorker() = default;
+	virtual bool addTask(CALLER_ARG ITask* argTask) = 0;
+};
 
-	virtual bool addTask(CALLER_ARG ITask* pTask)
+struct IOnDemandTask : public ITask
+{
+	enum class IgnoreDuplicates
 	{
-		pTask->cancelled(CONT_CALLER0);
-		delete pTask;
-		return false;
+		Yes,
+		No,
+	};
+
+	enum class Priority
+	{
+		High,
+		Middle,
+		Low,
+	};
+
+	virtual IgnoreDuplicates getIgnoreDuplicates() const noexcept = 0;
+	virtual Priority getPriority() const noexcept = 0;
+	virtual std::wstring synonymString() const noexcept { return std::wstring{}; }
+};
+
+struct IScheduledTask : public ITask
+{
+	virtual bool shouldRun(int i) const noexcept = 0;
+};
+
+template<typename T>
+struct ITaskTypedWorker : public IWorker
+{
+	virtual bool addTask(CALLER_ARG ITask* argTask) override
+	{
+		T* task = dynamic_cast<T*>(argTask);
+		return task ? addTypedTask(CONT_CALLER task) : false;
 	}
+
+	virtual bool addTypedTask(CALLER_ARG T* argTask) = 0;
 };
 
 typedef struct

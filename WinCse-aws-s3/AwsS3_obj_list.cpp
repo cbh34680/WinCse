@@ -215,15 +215,15 @@ void AwsS3::unlockReportObjectCache(CALLER_ARG FILE* fp)
     gObjectCache.report(CONT_CALLER fp);
 }
 
-void AwsS3::unlockDeleteOldObjects(CALLER_ARG std::chrono::system_clock::time_point threshold)
+int AwsS3::unlockDeleteOldObjects(CALLER_ARG std::chrono::system_clock::time_point threshold)
 {
-    gObjectCache.deleteOldRecords(CONT_CALLER threshold);
+    return gObjectCache.deleteOldRecords(CONT_CALLER threshold);
 }
 
-void AwsS3::unlockClearObjects(CALLER_ARG0)
+int AwsS3::unlockClearObjects(CALLER_ARG0)
 {
     const auto now{ std::chrono::system_clock::now() };
-    gObjectCache.deleteOldRecords(CONT_CALLER now);
+    return gObjectCache.deleteOldRecords(CONT_CALLER now);
 }
 
 int AwsS3::unlockDeleteCacheByObjectKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey)
@@ -401,18 +401,18 @@ void AwsS3::reportObjectCache(CALLER_ARG FILE* fp)
 }
 
 // ŒÃ‚¢ƒLƒƒƒbƒVƒ…‚Ìíœ
-void AwsS3::deleteOldObjects(CALLER_ARG std::chrono::system_clock::time_point threshold)
+int AwsS3::deleteOldObjects(CALLER_ARG std::chrono::system_clock::time_point threshold)
 {
     THREAD_SAFE();
 
-    this->unlockDeleteOldObjects(CONT_CALLER threshold);
+    return this->unlockDeleteOldObjects(CONT_CALLER threshold);
 }
 
-void AwsS3::clearObjects(CALLER_ARG0)
+int AwsS3::clearObjects(CALLER_ARG0)
 {
     THREAD_SAFE();
 
-    this->unlockClearObjects(CONT_CALLER0);
+    return this->unlockClearObjects(CONT_CALLER0);
 }
 
 int AwsS3::deleteCacheByObjectKey(CALLER_ARG const ObjectKey& argObjKey)
