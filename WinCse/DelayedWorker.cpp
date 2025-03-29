@@ -168,9 +168,9 @@ void DelayedWorker::listenEvent(const int threadIndex)
 				// ˆ—‚·‚é‚²‚Æ‚É‘¼‚ÌƒXƒŒƒbƒh‚É‰ñ‚·
 				//::SwitchToThread();
 			}
-			catch (const std::exception& err)
+			catch (const std::exception& ex)
 			{
-				traceA("(%d): what: %s", threadIndex, err.what());
+				traceA("(%d): what: %s", threadIndex, ex.what());
 				break;
 			}
 			catch (...)

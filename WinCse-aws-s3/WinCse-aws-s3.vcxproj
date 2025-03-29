@@ -27,6 +27,7 @@
     <ClCompile Include="AwsS3_obj_r_multipart.cpp" />
     <ClCompile Include="AwsS3_obj_r_simple.cpp" />
     <ClCompile Include="AwsS3_obj_read.cpp" />
+    <ClCompile Include="AwsS3_obj_w.cpp.cpp" />
     <ClCompile Include="AwsS3_svc.cpp" />
     <ClCompile Include="AwsS3_svc_init.cpp" />
     <ClCompile Include="BucketCache.cpp" />

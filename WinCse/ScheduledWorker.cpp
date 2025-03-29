@@ -51,7 +51,7 @@ bool ScheduledWorker::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* Fil
 #if !ENABLE_WORKER
 	traceW(L"***");
 	traceW(L"***     W A R N N I N G");
-	traceW(L"***   %s disabled", klassName);
+	traceW(L"***   %s disabled", klassName.c_str());
 	traceW(L"***");
 #endif
 
@@ -68,12 +68,16 @@ bool ScheduledWorker::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* Fil
 		ss << L" index=";
 		ss << i;
 
+		const auto ssStr{ ss.str() };
+
 		auto h = thr.native_handle();
-		NTSTATUS ntstatus = ::SetThreadDescription(h, ss.str().c_str());
+		NTSTATUS ntstatus = ::SetThreadDescription(h, ssStr.c_str());
 		APP_ASSERT(NT_SUCCESS(ntstatus));
 
 		BOOL b = ::SetThreadPriority(h, priority);
 		APP_ASSERT(b);
+
+		traceW(L"worker [%s] started", ssStr.c_str());
 	}
 
 	return true;

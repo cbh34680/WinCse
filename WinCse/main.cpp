@@ -379,9 +379,9 @@ int wmain(int argc, wchar_t** argv)
 
         rc = app_main(argc, argv, iniSection, traceLogDir, names[1]);
     }
-    catch (const std::exception& err)
+    catch (const std::exception& ex)
     {
-        std::cerr << "wmain) what: " << err.what() << std::endl;
+        std::cerr << "wmain) what: " << ex.what() << std::endl;
     }
     catch (...)
     {

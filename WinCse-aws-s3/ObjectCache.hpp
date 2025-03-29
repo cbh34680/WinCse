@@ -69,15 +69,15 @@ namespace std
 struct BaseCacheVal
 {
 	std::wstring mCreateCallChain;
-	std::wstring mAccessCallChain;
+	std::wstring mLastAccessCallChain;
 	std::chrono::system_clock::time_point mCreateTime;
-	std::chrono::system_clock::time_point mAccessTime;
+	std::chrono::system_clock::time_point mLastAccessTime;
 	int mRefCount = 0;
 
 	BaseCacheVal(CALLER_ARG0)
 	{
-		mCreateCallChain = mAccessCallChain = CALL_CHAIN();
-		mCreateTime = mAccessTime = std::chrono::system_clock::now();
+		mCreateCallChain = mLastAccessCallChain = CALL_CHAIN();
+		mCreateTime = mLastAccessTime = std::chrono::system_clock::now();
 	}
 };
 
@@ -125,15 +125,22 @@ public:
 
 	bool getPositive(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		const Purpose argPurpose, DirInfoListType* pDirInfoList);
+
 	void setPositive(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
-		Purpose argPurpose, DirInfoListType& pDirInfoList);
+		Purpose argPurpose, const DirInfoListType& pDirInfoList);
+
 	bool getPositive_File(CALLER_ARG
 		const WinCseLib::ObjectKey& argObjKey, DirInfoType* pDirInfo);
+
 	void setPositive_File(CALLER_ARG
-		const WinCseLib::ObjectKey& argObjKey, DirInfoType& pDirInfo);
+		const WinCseLib::ObjectKey& argObjKey, const DirInfoType& pDirInfo);
+
 	bool isInNegative(CALLER_ARG const WinCseLib::ObjectKey& argObjKey, const Purpose argPurpose);
+
 	void addNegative(CALLER_ARG const WinCseLib::ObjectKey& argObjKey, const Purpose argPurpose);
+
 	bool isInNegative_File(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
+
 	void addNegative_File(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
 
 	int deleteOldRecords(CALLER_ARG std::chrono::system_clock::time_point threshold);

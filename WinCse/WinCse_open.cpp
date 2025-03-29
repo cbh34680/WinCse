@@ -21,54 +21,122 @@ NTSTATUS WinCse::DoCreate(const wchar_t* FileName,
 	traceW(L"CreateOptions=%u, GrantedAccess=%u, FileAttributes=%u, SecurityDescriptor=%p, AllocationSize=%llu, PFileContext=%p, FileInfo=%p",
 		CreateOptions, GrantedAccess, FileAttributes, SecurityDescriptor, AllocationSize, PFileContext, FileInfo);
 
-	const ObjectKey objKey{ ObjectKey::fromWinPath(FileName) };
-	NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
-	PTFS_FILE_CONTEXT* FileContext = nullptr;
-	FSP_FSCTL_FILE_INFO fileInfo{};
-
 	if (isFileNameIgnored(FileName))
 	{
-		ntstatus = STATUS_OBJECT_NAME_INVALID;
-		goto exit;
+		// "desktop.ini" などは無視させる
+
+		traceW(L"ignore pattern");
+		return STATUS_OBJECT_NAME_INVALID;
 	}
 
-	if (!objKey.valid())
+	const ObjectKey objKey{ ObjectKey::fromWinPath(FileName) };
+	if (objKey.invalid())
 	{
 		traceW(L"illegal FileName: \"%s\"", FileName);
-		ntstatus = STATUS_OBJECT_NAME_INVALID;
-		goto exit;
+
+		return STATUS_OBJECT_NAME_INVALID;
 	}
 
 	traceW(L"objKey=%s", objKey.str().c_str());
 
-	if (!mCSDevice->headBucket(START_CALLER objKey.bucket()))
+	if (objKey.isBucket())
 	{
-		// "\\" に新規作成しようとしたとき
-		//
-		// 意味的にバケットの作成になるので、拒否
+		// バケットに対する create の実行
 
-		traceW(L"fault: headBucket");
-		goto exit;
-
-		//return STATUS_ACCESS_DENIED;				// 理想的なメッセージだが、何度も呼び出される
-		//return STATUS_INVALID_PARAMETER;			// 変なメッセージになる
-		//return STATUS_NOT_IMPLEMENTED;			// 無効な MS-DOS ファンクション (何度も呼び出されてしまう)
+		//return STATUS_ACCESS_DENIED;
+		//return FspNtStatusFromWin32(ERROR_ACCESS_DENIED);
+		//return FspNtStatusFromWin32(ERROR_WRITE_PROTECT);
+		return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
 	}
 
-	if (objKey.meansFile())
+	APP_ASSERT(objKey.hasKey());
+
+	if (CreateOptions & FILE_DIRECTORY_FILE)
 	{
+		// "ディレクトリ" のとき
+
+		if (mCSDevice->headObject(START_CALLER objKey, nullptr))
+		{
+			// 同じ名前の "ファイル" が存在する
+
+			return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
+		}
+	}
+	else
+	{
+		// "ファイル" のとき
+
 		if (mCSDevice->headObject(START_CALLER objKey.toDir(), nullptr))
 		{
-			// ファイル名と同じディレクトリが存在するとき
-			traceW(L"fault: already exists same name dir");
+			// 同じ名前の "ディレクトリ" が存在する
 
-			ntstatus = STATUS_OBJECT_NAME_COLLISION;
-			goto exit;
+			return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
+		}
+	}
+
+	const ObjectKey createObjKey{ CreateOptions & FILE_DIRECTORY_FILE ? objKey.toDir() : objKey };
+
+	if (mCSDevice->headObject(START_CALLER createObjKey, nullptr))
+	{
+		// 同じ名前のものが存在するとき
+
+		traceW(L"fault: exists same name");
+
+		return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
+	}
+
+	//
+	// 空のオブジェクトを作成して、その情報を fileInfo に記録する
+	//
+
+	FSP_FSCTL_FILE_INFO fileInfo{};
+
+	if (!mCSDevice->putObject(START_CALLER createObjKey, nullptr, &fileInfo))
+	{
+		traceW(L"fault: putObject");
+
+		//return STATUS_DEVICE_NOT_READY;
+		return FspNtStatusFromWin32(ERROR_IO_DEVICE);
+	}
+
+	if (CreateOptions & FILE_DIRECTORY_FILE)
+	{
+		// go next
+	}
+	else
+	{
+		// ファイルの場合
+
+		FSP_FSCTL_FILE_INFO checkFileInfo{};
+
+		if (!mCSDevice->headObject(START_CALLER createObjKey, &checkFileInfo))
+		{
+			traceW(L"fault: putObject");
+
+			return FspNtStatusFromWin32(ERROR_IO_DEVICE);
+		}
+
+		if (fileInfo.CreationTime == checkFileInfo.CreationTime &&
+			fileInfo.LastAccessTime == checkFileInfo.LastAccessTime &&
+			fileInfo.LastWriteTime == checkFileInfo.LastWriteTime &&
+			fileInfo.FileSize == checkFileInfo.FileSize)
+		{
+			// go next
+		}
+		else
+		{
+			// putObject() した状態と異なっているので、他でアップロードしたものと判定
+			// --> 他のプロセスによってファイルが使用中
+
+			return FspNtStatusFromWin32(ERROR_SHARING_VIOLATION);
 		}
 	}
 
 	//
-	FileContext = (PTFS_FILE_CONTEXT*)calloc(1, sizeof(*FileContext));
+	NTSTATUS ntstatus = STATUS_UNSUCCESSFUL;
+	CSDeviceContext* ctx = nullptr;
+
+	PTFS_FILE_CONTEXT* FileContext = (PTFS_FILE_CONTEXT*)calloc(1, sizeof(*FileContext));
 	if (0 == FileContext)
 	{
 		ntstatus = STATUS_INSUFFICIENT_RESOURCES;
@@ -79,39 +147,28 @@ NTSTATUS WinCse::DoCreate(const wchar_t* FileName,
 	if (!FileContext->FileName)
 	{
 		traceW(L"fault: _wcsdup");
+
 		ntstatus = STATUS_INSUFFICIENT_RESOURCES;
 		goto exit;
 	}
 
-	if (objKey.hasKey())
+	// リソースを作成し UParam に保存
+
+	StatsIncr(_CallCreate);
+
+	ctx = mCSDevice->create(START_CALLER createObjKey, fileInfo,
+		CreateOptions, GrantedAccess, FileAttributes);
+
+	if (!ctx)
 	{
-		// クラウド・ストレージのコンテキストを UParam に保存させる
+		traceW(L"fault: create");
 
-		StatsIncr(_CallCreate);
-
-		CSDeviceContext* ctx = mCSDevice->create(START_CALLER objKey,
-			CreateOptions, GrantedAccess, FileAttributes, SecurityDescriptor, &fileInfo);
-
-		if (!ctx)
-		{
-			traceW(L"fault: create");
-			ntstatus = STATUS_DEVICE_NOT_READY;
-			goto exit;
-		}
-
-		FileContext->UParam = ctx;
+		//ntstatus = STATUS_DEVICE_NOT_READY;
+		ntstatus = FspNtStatusFromWin32(ERROR_IO_DEVICE);
+		goto exit;
 	}
-	else
-	{
-		// "\\bucket" に対する create --> ディレクトリ
 
-		ntstatus = GetFileInfoInternal(mRefDir.handle(), &fileInfo);
-		if (!NT_SUCCESS(ntstatus))
-		{
-			traceW(L"fault: GetFileInfoInternal");
-			goto exit;
-		}
-	}
+	FileContext->UParam = ctx;
 
 	FileContext->FileInfo = fileInfo;
 
@@ -150,15 +207,31 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 	traceW(L"FileName: \"%s\"", FileName);
 	traceW(L"CreateOptions=%u, GrantedAccess=%u, PFileContext=%p, FileInfo=%p", CreateOptions, GrantedAccess, PFileContext, FileInfo);
 
-	PTFS_FILE_CONTEXT* FileContext = nullptr;
 	FSP_FSCTL_FILE_INFO fileInfo{};
-	NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
 
-	ntstatus = FileNameToFileInfo(START_CALLER FileName, &fileInfo);
+	NTSTATUS ntstatus = FileNameToFileInfo(START_CALLER FileName, &fileInfo);
 	if (!NT_SUCCESS(ntstatus))
 	{
 		traceW(L"fault: FileNameToFileInfo");
-		goto exit;
+		return ntstatus;
+	}
+
+	if (!FA_IS_DIR(fileInfo.FileAttributes))
+	{
+		// ファイルの最大サイズ確認
+
+		traceW(L"FileSize: %llu", fileInfo.FileSize);
+
+		if (mMaxFileSize > 0)
+		{
+			if (fileInfo.FileSize > (FILESIZE_1MiBu * mMaxFileSize))
+			{
+				traceW(L"%llu: When a file size exceeds the maximum size that can be opened.", fileInfo.FileSize);
+
+				//return STATUS_DEVICE_NOT_READY;
+				return FspNtStatusFromWin32(ERROR_IO_DEVICE);
+			}
+		}
 	}
 
 	// 念のため検査
@@ -166,10 +239,11 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 
 	// WinFsp に保存されるファイル・コンテキストを生成
 
-	FileContext = (PTFS_FILE_CONTEXT*)calloc(1, sizeof(*FileContext));
+	PTFS_FILE_CONTEXT* FileContext = (PTFS_FILE_CONTEXT*)calloc(1, sizeof(*FileContext));
 	if (!FileContext)
 	{
 		traceW(L"fault: calloc");
+
 		ntstatus = STATUS_INSUFFICIENT_RESOURCES;
 		goto exit;
 	}
@@ -178,6 +252,7 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 	if (!FileContext->FileName)
 	{
 		traceW(L"fault: _wcsdup");
+
 		ntstatus = STATUS_INSUFFICIENT_RESOURCES;
 		goto exit;
 	}
@@ -187,43 +262,16 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 	if (wcscmp(FileName, L"\\") == 0)
 	{
 		traceW(L"root access");
-
-		//APP_ASSERT(fileInfo.FileSize == 0);
 	}
 	else
 	{
 		const ObjectKey objKey{ ObjectKey::fromWinPath(FileName) };
-
-		if (!objKey.valid())
+		if (objKey.invalid())
 		{
 			traceW(L"illegal FileName: \"%s\"", FileName);
+
 			ntstatus = STATUS_OBJECT_NAME_INVALID;
 			goto exit;
-		}
-
-		if (FA_IS_DIR(fileInfo.FileAttributes))
-		{
-			// ディレクトリへのアクセス
-
-			//APP_ASSERT(fileInfo.FileSize == 0);
-		}
-		else
-		{
-			// ファイルへのアクセス
-
-			APP_ASSERT(objKey.hasKey());
-
-			traceW(L"FileSize: %llu", fileInfo.FileSize);
-
-			if (mMaxFileSize > 0)
-			{
-				if (fileInfo.FileSize > (FILESIZE_1MiBu * mMaxFileSize))
-				{
-					ntstatus = STATUS_DEVICE_NOT_READY;
-					traceW(L"%llu: When a file size exceeds the maximum size that can be opened.", fileInfo.FileSize);
-					goto exit;
-				}
-			}
 		}
 
 		// クラウド・ストレージのコンテキストを UParam に保存させる
@@ -234,7 +282,9 @@ NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 Gr
 		if (!ctx)
 		{
 			traceW(L"fault: open");
-			ntstatus = STATUS_DEVICE_NOT_READY;
+
+			//ntstatus = STATUS_DEVICE_NOT_READY;
+			ntstatus = FspNtStatusFromWin32(ERROR_IO_DEVICE);
 			goto exit;
 		}
 
@@ -278,7 +328,22 @@ VOID WinCse::DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Fla
 	CSDeviceContext* ctx = (CSDeviceContext*)FileContext->UParam;
 	if (ctx)
 	{
-		mCSDevice->cleanup(START_CALLER ctx, Flags);
+		if (Flags & FspCleanupDelete)
+		{
+			// setDelete() により削除フラグを設定されたファイルと、
+			// CreateFile() 時に FILE_FLAG_DELETE_ON_CLOSE の属性が与えられたファイル
+			// がクローズされるときにここを通過する
+
+			bool b = mCSDevice->deleteObject(START_CALLER ctx->mObjKey);
+			if (!b)
+			{
+				traceW(L"fault: deleteObject");
+			}
+
+			// WinFsp の Cleanup() で CloseHandle() しているので、同様の処理を行う
+
+			ctx->mFile.close();
+		}
 	}
 }
 

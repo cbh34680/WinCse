@@ -6,6 +6,11 @@
 #endif
 #endif
 
+
+#define SET_ATTRIBUTES_LOCAL_FILE		(0)
+#define DELETE_ONLY_EMPTY_DIR           (0)
+
+
 #ifdef WINCSELIB_EXPORTS
 #define WINCSELIB_API __declspec(dllexport)
 #else
@@ -142,7 +147,10 @@ class FileHandle : public HandleRAII<INVALID_HANDLE_VALUE>
 public:
 	using HandleRAII::HandleRAII;
 
-	WINCSELIB_API bool setFileTime(UINT64 argCreationTime, UINT64 argLastWriteTime);
+	WINCSELIB_API BOOL setFileTime(const FSP_FSCTL_FILE_INFO& fileInfo);
+	WINCSELIB_API BOOL setFileTime(UINT64 argCreationTime, UINT64 argLastWriteTime);
+	WINCSELIB_API BOOL setBasicInfo(const FSP_FSCTL_FILE_INFO& fileInfo);
+	WINCSELIB_API BOOL setBasicInfo(UINT32 argFileAttributes, UINT64 argCreationTime, UINT64 argLastWriteTime);
 	WINCSELIB_API LONGLONG getFileSize();
 };
 
@@ -168,11 +176,11 @@ namespace WinCseLib {
 //
 // グローバル関数
 //
-WINCSELIB_API bool HandleToFileInfo(HANDLE argHandle, FSP_FSCTL_FILE_INFO* pFileInfo);
+WINCSELIB_API bool GetCacheFilePath(const std::wstring& argDir, const std::wstring& argName, std::wstring* pPath);
 WINCSELIB_API bool PathToFileInfoW(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo);
 WINCSELIB_API bool PathToFileInfoA(const std::string& path, FSP_FSCTL_FILE_INFO* pFileInfo);
 WINCSELIB_API bool MkdirIfNotExists(const std::wstring& dir);
-WINCSELIB_API bool forEachFiles(const std::wstring& directory, const std::function<void(const WIN32_FIND_DATA& wfd)>& callback);
+WINCSELIB_API bool forEachFiles(const std::wstring& argDir, const std::function<void(const WIN32_FIND_DATA& wfd, const std::wstring& fullPath)>& callback);
 
 WINCSELIB_API bool Base64EncodeA(const std::string& src, std::string* pDst);
 WINCSELIB_API bool Base64DecodeA(const std::string& src, std::string* pDst);
@@ -185,7 +193,7 @@ WINCSELIB_API bool EncodeFileNameToLocalNameW(const std::wstring& src, std::wstr
 WINCSELIB_API bool DecodeLocalNameToFileNameW(const std::wstring& src, std::wstring* pDst);
 
 //WINCSELIB_API bool HandleToPath(HANDLE Handle, std::wstring& wstr);
-//WINCSELIB_API bool PathToSDStr(const std::wstring& path, std::wstring& sdstr);;
+//WINCSELIB_API bool PathToSDStr(const std::wstring& path, std::wstring& sdstr);
 
 WINCSELIB_API uint64_t UtcMillisToWinFileTime100ns(uint64_t utcMilliseconds);
 WINCSELIB_API uint64_t WinFileTime100nsToUtcMillis(uint64_t fileTime100ns);
@@ -197,6 +205,7 @@ WINCSELIB_API void UtcMillisToWinFileTime(uint64_t utcMilliseconds, FILETIME* ft
 WINCSELIB_API uint64_t WinFileTimeToUtcMillis(const FILETIME &ft);
 WINCSELIB_API bool PathToWinFileTimes(const std::wstring& path, FILETIME* pFtCreate, FILETIME* pFtAccess, FILETIME* pFtWrite);
 WINCSELIB_API uint64_t GetCurrentUtcMillis();
+WINCSELIB_API uint64_t GetCurrentWinFileTime100ns();
 
 WINCSELIB_API long long int TimePointToUtcMillis(const std::chrono::system_clock::time_point& tp);
 WINCSELIB_API long long int TimePointToUtcSecs(const std::chrono::system_clock::time_point& tp);
@@ -230,22 +239,29 @@ WINCSELIB_API bool GetIniStringA(const std::string& confPath, const char* argSec
 WINCSELIB_API size_t HashString(const std::wstring& str);
 
 WINCSELIB_API bool DecryptAES(const std::vector<BYTE>& key, const std::vector<BYTE>& iv, const std::vector<BYTE>& encrypted, std::vector<BYTE>* pDecrypted);
-WINCSELIB_API bool GetCryptKeyFromRegistry(std::string* pKeyStr);
+WINCSELIB_API bool GetCryptKeyFromRegistryA(std::string* pOutput);
+WINCSELIB_API bool GetCryptKeyFromRegistryW(std::wstring* pOutput);
+WINCSELIB_API bool ComputeSHA256A(const std::string& input, std::string* pOutput);
+WINCSELIB_API bool ComputeSHA256W(const std::wstring& input, std::wstring* pOutput);
 
 WINCSELIB_API void AbnormalEnd(const char* file, const int line, const char* func, const int signum);
 WINCSELIB_API int NamedWorkersToMap(NamedWorker workers[], std::unordered_map<std::wstring, IWorker*>* pWorkerMap);
+
+//WINCSELIB_API NTSTATUS HandleToInfo(HANDLE handle, PUINT32 PFileAttributes /* nullable */, PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize /* nullable */);
+
+WINCSELIB_API NTSTATUS HandleToSecurityInfo(HANDLE Handle,
+	PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize /* nullable */);
+
 
 WINCSELIB_API bool CreateLogger(const wchar_t* argTempDir, const wchar_t* argTrcDir, const wchar_t* argDllType);
 WINCSELIB_API ILogger* GetLogger();
 WINCSELIB_API void DeleteLogger();
 
 // ファイル名から FSP_FSCTL_DIR_INFO のヒープ領域を生成し、いくつかのメンバを設定して返却
-WINCSELIB_API DirInfoType makeDirInfo(const ObjectKey& argObjKey);
+WINCSELIB_API DirInfoType makeDirInfo(const std::wstring& argFileName);
 
 WINCSELIB_API bool SplitPath(const std::wstring& argKey,
-    std::wstring* pParentDir /* nullable */, std::wstring* pFilename /* nullable */);
-
-WINCSELIB_API DWORD WinCseGetLastError_();
+    std::wstring* pParentDir /* nullable */, std::wstring* pFileName /* nullable */);
 
 //
 // ログ・ブロックの情報

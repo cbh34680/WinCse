@@ -70,14 +70,16 @@ bool AwsS3::isInBucketFilters(const std::wstring& arg)
     return it != mBucketFilters.end();
 }
 
-DirInfoType AwsS3::makeDirInfo_attr(const WinCseLib::ObjectKey& argObjKey, const UINT64 argFileTime, const UINT32 argFileAttributes)
+DirInfoType AwsS3::makeDirInfo_attr(const std::wstring& argFileName, const UINT64 argFileTime, const UINT32 argFileAttributes)
 {
-    auto dirInfo = makeDirInfo(argObjKey);
+    APP_ASSERT(!argFileName.empty());
+
+    auto dirInfo = makeDirInfo(argFileName);
     APP_ASSERT(dirInfo);
 
     UINT32 fileAttributes = argFileAttributes | mDefaultFileAttributes;
 
-    if (argObjKey.meansHidden())
+    if (argFileName != L"." && argFileName != L".." && argFileName[0] == L'.')
     {
         // 隠しファイル
 
@@ -94,16 +96,18 @@ DirInfoType AwsS3::makeDirInfo_attr(const WinCseLib::ObjectKey& argObjKey, const
     return dirInfo;
 }
 
-DirInfoType AwsS3::makeDirInfo_byName(const WinCseLib::ObjectKey& argObjKey, const UINT64 argFileTime)
+DirInfoType AwsS3::makeDirInfo_byName(const std::wstring& argFileName, const UINT64 argFileTime)
 {
-    APP_ASSERT(argObjKey.valid());
+    APP_ASSERT(!argFileName.empty());
 
-    return makeDirInfo_attr(argObjKey, argFileTime, argObjKey.meansFile() ? FILE_ATTRIBUTE_NORMAL : FILE_ATTRIBUTE_DIRECTORY);
+    const auto lastChar = argFileName[argFileName.length() - 1];
+
+    return makeDirInfo_attr(argFileName, argFileTime, lastChar == L'/' ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL);
 }
 
-DirInfoType AwsS3::makeDirInfo_dir(const WinCseLib::ObjectKey& argObjKey, const UINT64 argFileTime)
+DirInfoType AwsS3::makeDirInfo_dir(const std::wstring& argFileName, const UINT64 argFileTime)
 {
-    return makeDirInfo_attr(argObjKey, argFileTime, FILE_ATTRIBUTE_DIRECTORY);
+    return makeDirInfo_attr(argFileName, argFileTime, FILE_ATTRIBUTE_DIRECTORY);
 }
 
 NTSTATUS AwsS3::getHandleFromContext(CALLER_ARG
@@ -117,7 +121,7 @@ NTSTATUS AwsS3::getHandleFromContext(CALLER_ARG
     APP_ASSERT(ctx);
     APP_ASSERT(ctx->isFile());
 
-    const auto remotePath{ ctx->getRemotePath() };
+    const auto remotePath{ ctx->mObjKey.str() };
 
     traceW(L"Context=%p ObjectKey=%s HANDLE=%p, RemotePath=%s DesiredAccess=%lu CreationDisposition=%lu",
         ctx, ctx->mObjKey.c_str(), ctx->mFile.handle(), remotePath.c_str(),
@@ -145,6 +149,48 @@ NTSTATUS AwsS3::getHandleFromContext(CALLER_ARG
     }   // 名前のロックを解除 (safeShare の生存期間)
 
     *pHandle = ctx->mFile.handle();
+
+    return STATUS_SUCCESS;
+}
+
+//
+// OpenContext
+//
+NTSTATUS OpenContext::openFileHandle(CALLER_ARG const DWORD argDesiredAccess, const DWORD argCreationDisposition)
+{
+    NEW_LOG_BLOCK();
+    APP_ASSERT(isFile());
+    APP_ASSERT(mObjKey.meansFile());
+
+    std::wstring localPath;
+    if (!getCacheFilePath(&localPath))
+    {
+        traceW(L"fault: getCacheFilePath");
+        //return STATUS_OBJECT_NAME_NOT_FOUND;
+        return FspNtStatusFromWin32(ERROR_FILE_NOT_FOUND);
+    }
+
+    const DWORD dwDesiredAccess = mGrantedAccess | argDesiredAccess;
+
+    ULONG CreateFlags = 0;
+    //CreateFlags = FILE_FLAG_BACKUP_SEMANTICS;             // ディレクトリは操作しない
+
+    if (mCreateOptions & FILE_DELETE_ON_CLOSE)
+        CreateFlags |= FILE_FLAG_DELETE_ON_CLOSE;
+
+    HANDLE hFile = ::CreateFileW(localPath.c_str(),
+        dwDesiredAccess, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
+        argCreationDisposition, CreateFlags, 0);
+
+    if (hFile == INVALID_HANDLE_VALUE)
+    {
+        const auto lerr = ::GetLastError();
+        traceW(L"fault: CreateFileW lerr=%lu", lerr);
+
+        return FspNtStatusFromWin32(lerr);
+    }
+
+    mFile = hFile;
 
     return STATUS_SUCCESS;
 }
@@ -180,47 +226,6 @@ std::wstring FileOutputParams::str() const
     ss << BOOL_CSTRW(mSpecifyRange);
 
     return ss.str();
-}
-
-//
-// OpenContext
-//
-NTSTATUS OpenContext::openFileHandle(CALLER_ARG const DWORD argDesiredAccess, const DWORD argCreationDisposition)
-{
-    NEW_LOG_BLOCK();
-    APP_ASSERT(isFile());
-    APP_ASSERT(mObjKey.meansFile());
-
-    std::wstring localPath;
-    if (!getFilePathW(&localPath))
-    {
-        traceW(L"fault: getFilePathW");
-        return STATUS_OBJECT_PATH_NOT_FOUND;
-    }
-
-    const DWORD dwDesiredAccess = mGrantedAccess | argDesiredAccess;
-
-    ULONG CreateFlags = 0;
-    //CreateFlags = FILE_FLAG_BACKUP_SEMANTICS;             // ディレクトリは操作しない
-
-    if (mCreateOptions & FILE_DELETE_ON_CLOSE)
-        CreateFlags |= FILE_FLAG_DELETE_ON_CLOSE;
-
-    HANDLE hFile = ::CreateFileW(localPath.c_str(),
-        dwDesiredAccess, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
-        argCreationDisposition, CreateFlags, 0);
-
-    if (hFile == INVALID_HANDLE_VALUE)
-    {
-        const auto lerr = ::GetLastError();
-        traceW(L"fault: CreateFileW lerr=%lu", lerr);
-
-        return FspNtStatusFromWin32(lerr);
-    }
-
-    mFile = hFile;
-
-    return STATUS_SUCCESS;
 }
 
 // EOF

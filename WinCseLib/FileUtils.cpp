@@ -7,17 +7,35 @@
 
 namespace WinCseLib {
 
-bool HandleToFileInfo(HANDLE argHandle, FSP_FSCTL_FILE_INFO* pFileInfo)
+bool GetCacheFilePath(const std::wstring& argDir, const std::wstring& argName, std::wstring* pPath)
 {
-	NTSTATUS ntstatus = GetFileInfoInternal(argHandle, pFileInfo);
+	std::wstring nameSha256;
 
-	return NT_SUCCESS(ntstatus) ? true : false;
+	if (!ComputeSHA256W(argName, &nameSha256))
+	{
+		return false;
+	}
+
+	std::filesystem::path filePath{ argDir };
+	filePath.append(nameSha256.substr(0, 2));
+
+	std::error_code ec;
+	std::filesystem::create_directory(filePath, ec);
+
+	if (ec)
+	{
+		return false;
+	}
+
+	filePath.append(nameSha256.substr(2));
+
+	*pPath = filePath.wstring();
+
+	return true;
 }
 
 bool PathToFileInfoW(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo)
 {
-	LastErrorBackup _backup;
-
 	FileHandle hFile = ::CreateFileW
 	(
 		path.c_str(),
@@ -34,7 +52,8 @@ bool PathToFileInfoW(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo)
 		return false;
 	}
 
-	return HandleToFileInfo(hFile.handle(), pFileInfo);
+	NTSTATUS ntstatus = GetFileInfoInternal(hFile.handle(), pFileInfo);
+	return NT_SUCCESS(ntstatus);
 }
 
 bool PathToFileInfoA(const std::string& path, FSP_FSCTL_FILE_INFO* pFileInfo)
@@ -45,8 +64,6 @@ bool PathToFileInfoA(const std::string& path, FSP_FSCTL_FILE_INFO* pFileInfo)
 // ƒpƒX‚©‚ç FILETIME ‚Ì’l‚ðŽæ“¾
 bool PathToWinFileTimes(const std::wstring& path, FILETIME* pFtCreate, FILETIME* pFtAccess, FILETIME* pFtWrite)
 {
-	LastErrorBackup _backup;
-
 	FileHandle hFile = ::CreateFileW
 	(
 		path.c_str(),
@@ -68,8 +85,6 @@ bool PathToWinFileTimes(const std::wstring& path, FILETIME* pFtCreate, FILETIME*
 
 bool MkdirIfNotExists(const std::wstring& arg)
 {
-	LastErrorBackup _backup;
-
 	if (std::filesystem::exists(arg))
 	{
 		if (!std::filesystem::is_directory(arg))
@@ -107,12 +122,12 @@ bool MkdirIfNotExists(const std::wstring& arg)
 	return true;
 }
 
-bool forEachFiles(const std::wstring& directory, const std::function<void(const WIN32_FIND_DATA& wfd)>& callback)
+bool forEachFiles(const std::wstring& argDir, const std::function<void(const WIN32_FIND_DATA& wfd, const std::wstring& fullPath)>& callback)
 {
-	LastErrorBackup _backup;
-
 	WIN32_FIND_DATA wfd = {};
-	HANDLE hFind = ::FindFirstFileW((directory + L"\\*").c_str(), &wfd);
+	HANDLE hFind = ::FindFirstFileW((argDir + L"\\*").c_str(), &wfd);
+
+	const std::filesystem::path dir{ argDir };
 
 	if (hFind == INVALID_HANDLE_VALUE)
 	{
@@ -121,9 +136,23 @@ bool forEachFiles(const std::wstring& directory, const std::function<void(const 
 
 	do
 	{
-		//if (wcscmp(wfd.cFileName, L".") != 0 && wcscmp(wfd.cFileName, L"..") != 0)
+		if (wcscmp(wfd.cFileName, L".") == 0 || wcscmp(wfd.cFileName, L"..") == 0)
 		{
-			callback(wfd);
+			continue;
+		}
+
+		const std::filesystem::path curPath{ dir / wfd.cFileName };
+
+		if (FA_IS_DIR(wfd.dwFileAttributes))
+		{
+			if (!forEachFiles(curPath, callback))
+			{
+				return false;
+			}
+		}
+		else
+		{
+			callback(wfd, curPath.wstring());
 		}
 	}
 	while (::FindNextFile(hFind, &wfd) != 0);

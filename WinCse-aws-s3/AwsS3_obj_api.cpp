@@ -21,11 +21,17 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
         // HeadObject の実行時エラー、またはオブジェクトが見つからない
 
         traceW(L"fault: HeadObject");
-
         return nullptr;
     }
 
-    auto dirInfo = makeDirInfo(argObjKey);
+    std::wstring fileName;
+    if (!SplitPath(argObjKey.key(), nullptr, &fileName))
+    {
+        traceW(L"fault: SplitPath");
+        return nullptr;
+    }
+
+    auto dirInfo = makeDirInfo(fileName);
     APP_ASSERT(dirInfo);
 
     const auto& result = outcome.GetResult();
@@ -54,13 +60,22 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
         lastWriteTime = std::stoull(metadata.at("wincse-last-write-time"));
     }
 
-#if 0
+#if SET_ATTRIBUTES_LOCAL_FILE
     if (metadata.find("wincse-file-attributes") != metadata.end())
     {
-        fileAttributes = std::stoul(metadata.at("wincse-file-attributes"));
+        fileAttributes |= std::stoul(metadata.at("wincse-file-attributes"));
+    }
+    else
+    {
+        if (argObjKey.meansHidden())
+        {
+            // 隠しファイル
+
+            fileAttributes |= FILE_ATTRIBUTE_HIDDEN;
+        }
     }
 
-#endif
+#else
     if (argObjKey.meansHidden())
     {
         // 隠しファイル
@@ -68,17 +83,10 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
         fileAttributes |= FILE_ATTRIBUTE_HIDDEN;
     }
 
+#endif
+
     if (fileAttributes == 0)
     {
-#if 0
-        if (argObjKey.meansHidden())
-        {
-            // 隠しファイル
-
-            fileAttributes |= FILE_ATTRIBUTE_HIDDEN;
-        }
-
-#endif
         fileAttributes = FILE_ATTRIBUTE_NORMAL;
     }
 
@@ -164,7 +172,8 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
     }
 
     UINT64 commonPrefixTime = UINT64_MAX;
-    std::set<std::wstring> already;
+    //std::set<std::wstring> already;
+    std::set<std::wstring> dirNames;
 
     Aws::String continuationToken;                              // Used for pagination.
 
@@ -235,6 +244,7 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
 
             APP_ASSERT(!key.empty());
 
+#if 0
             {
                 // 大文字小文字を同一視した上で、同じ名前があったら無視する
                 // 
@@ -250,8 +260,10 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
 
                 already.insert(keyUpper);
             }
+#endif
+            dirNames.insert(key);
 
-            dirInfoList.push_back(makeDirInfo_dir(ObjectKey{ argObjKey.bucket(), key }, commonPrefixTime));
+            dirInfoList.push_back(makeDirInfo_dir(key, commonPrefixTime));
 
             if (limit > 0)
             {
@@ -305,6 +317,7 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
 
             APP_ASSERT(!key.empty());
 
+#if 0
             {
                 // 大文字小文字を同一視した上で、同じ名前があったら無視する
 
@@ -318,8 +331,15 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
 
                 already.insert(keyUpper);
             }
+#endif
+            if (dirNames.find(key) != dirNames.end())
+            {
+                // ディレクトリと同じ名前のファイルは無視
 
-            auto dirInfo = makeDirInfo(ObjectKey{ argObjKey.bucket(), key });
+                continue;
+            }
+
+            auto dirInfo = makeDirInfo(key);
             APP_ASSERT(dirInfo);
 
             UINT32 FileAttributes = mDefaultFileAttributes;
@@ -402,7 +422,7 @@ exit:
 
             if (itParent == dirInfoList.end())
             {
-                dirInfoList.insert(dirInfoList.begin(), makeDirInfo_dir(ObjectKey{ argObjKey.bucket(), L".." }, commonPrefixTime));
+                dirInfoList.insert(dirInfoList.begin(), makeDirInfo_dir(L"..", commonPrefixTime));
             }
             else
             {
@@ -419,7 +439,7 @@ exit:
 
         if (itCurr == dirInfoList.end())
         {
-            dirInfoList.insert(dirInfoList.begin(), makeDirInfo_dir(ObjectKey{ argObjKey.bucket(), L"." }, commonPrefixTime));
+            dirInfoList.insert(dirInfoList.begin(), makeDirInfo_dir(L".", commonPrefixTime));
         }
         else
         {

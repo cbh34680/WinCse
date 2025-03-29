@@ -9,7 +9,7 @@ static const wchar_t* CONFIGFILE_FNAME = L"WinCse.conf";
 static const wchar_t* CACHE_DATA_DIR_FNAME = L"aws-s3\\cache\\data";
 static const wchar_t* CACHE_REPORT_DIR_FNAME = L"aws-s3\\cache\\report";
 
-static bool decryptIfNeed(const std::string& secureKeyStr, std::string* pInOut)
+static bool decryptIfNecessary(const std::string& secureKeyStr, std::string* pInOut)
 {
     APP_ASSERT(pInOut);
 
@@ -78,7 +78,7 @@ static bool decryptIfNeed(const std::string& secureKeyStr, std::string* pInOut)
     return true;
 }
 
-bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams)
+bool AwsS3::PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(argWorkDir);
@@ -108,22 +108,11 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
         }
 
 #ifdef _DEBUG
-        forEachFiles(cacheDataDir, [this, &LOG_BLOCK()](const auto& wfd)
+        forEachFiles(cacheDataDir, [this, &LOG_BLOCK()](const auto& wfd, const auto& fullPath)
         {
-            if (FA_IS_DIR(wfd.dwFileAttributes))
-            {
-                // ディレクトリは無視
+            APP_ASSERT(!FA_IS_DIR(wfd.dwFileAttributes));
 
-                return;
-            }
-
-            std::wstring decFileName;
-            if (!DecodeLocalNameToFileNameW(wfd.cFileName, &decFileName))
-            {
-                decFileName = L"*** decode fault ***";
-            }
-
-            traceW(L"cache file: [%s] [%s]", wfd.cFileName, decFileName.c_str());
+            traceW(L"cache file: [%s]", fullPath.c_str());
         });
 #endif
 
@@ -150,7 +139,7 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
         // レジストリ "HKLM:\SOFTWARE\Microsoft\Cryptography" から "MachineGuid" の値を取得
 
         std::string secureKeyStr;
-        if (!GetCryptKeyFromRegistry(&secureKeyStr))
+        if (!GetCryptKeyFromRegistryA(&secureKeyStr))
         {
             traceW(L"fault: GetCryptKeyFromRegistry");
             return false;
@@ -164,12 +153,12 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
 
         // MachineGuid の値をキーにして keyid&secret を復号化 (必要なら)
 
-        if (!decryptIfNeed(secureKeyStr, &str_access_key_id))
+        if (!decryptIfNecessary(secureKeyStr, &str_access_key_id))
         {
             traceW(L"%s: keyid decrypt fault", str_access_key_id.c_str());
         }
 
-        if (!decryptIfNeed(secureKeyStr, &str_secret_access_key))
+        if (!decryptIfNecessary(secureKeyStr, &str_secret_access_key))
         {
             traceW(L"%s: secret decrypt fault", str_secret_access_key.c_str());
         }
@@ -199,9 +188,16 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
 
         const int maxObjects = (int)::GetPrivateProfileIntW(iniSection, L"max_objects", 1000, confPath.c_str());
 
-        if (VolumeParams->ReadOnlyVolume)
+        // 読み取り専用
+
+        const bool readonly = ::GetPrivateProfileIntW(iniSection, L"readonly", 0, confPath.c_str()) != 0;
+        if (readonly)
         {
             mDefaultFileAttributes |= FILE_ATTRIBUTE_READONLY;
+
+            // ボリュームの設定
+
+            VolumeParams->ReadOnlyVolume = 1;
         }
 
         // 属性参照用ファイル/ディレクトリの準備
@@ -292,6 +288,7 @@ bool AwsS3::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARA
 
         // メンバに保存して終了
 
+        mWinFspService = Service;
         mWorkDirCTime = STCTimeToWinFileTimeW(workDir);
         mWorkDir = workDir;
         mCacheDataDir = cacheDataDir;

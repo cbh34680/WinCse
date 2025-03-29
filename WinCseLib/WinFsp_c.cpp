@@ -156,7 +156,8 @@ static NTSTATUS GetSecurityByName(FSP_FILE_SYSTEM *FileSystem,
         OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
     if (INVALID_HANDLE_VALUE == Handle)
     {
-        Result = FspNtStatusFromWin32(GetLastError());
+        DWORD lerr = GetLastError();
+        Result = FspNtStatusFromWin32(lerr);
         goto exit;
     }
 
@@ -252,7 +253,9 @@ static NTSTATUS Create(FSP_FILE_SYSTEM *FileSystem,
     if (INVALID_HANDLE_VALUE == FileContext->Handle)
     {
         free(FileContext);
-        return FspNtStatusFromWin32(GetLastError());
+
+        DWORD lerr = GetLastError();
+        return FspNtStatusFromWin32(lerr);
     }
 
     *PFileContext = FileContext;
@@ -1112,7 +1115,7 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
     }
 
 #if !WINFSP_PASSTHROUGH
-    if (!CSDriver()->PreCreateFilesystem(PassThrough, &VolumeParams))
+    if (!CSDriver()->PreCreateFilesystem(Service, PassThrough, &VolumeParams))
     {
         fail(L"fault: PreCreateFilesystem");
 

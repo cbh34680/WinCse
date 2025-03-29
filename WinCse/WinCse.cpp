@@ -38,6 +38,19 @@ WinCse::~WinCse()
 	traceW(L"all done.");
 }
 
+bool WinCse::isFileNameIgnored(const std::wstring& arg)
+{
+	// desktop.ini などリクエストが増え過ぎるものは無視する
+
+	if (mIgnoredFileNamePatterns.mark_count() == 0)
+	{
+		// 正規表現が設定されていない
+		return false;
+	}
+
+	return std::regex_search(arg, mIgnoredFileNamePatterns);
+}
+
 //
 // エクスプローラーを開いたまま切断すると WinFsp の Close が実行されない (為だと思う)
 // ので、DoOpen が呼ばれて DoClose が呼ばれていないものは、アプリケーション終了時に

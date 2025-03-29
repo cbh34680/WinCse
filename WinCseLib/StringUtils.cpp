@@ -10,8 +10,6 @@ namespace WinCseLib {
 // wstring ‚©‚ç string ‚Ö‚Ì•ÏŠ·
 std::string WC2MB(const std::wstring& wstr)
 {
-	LastErrorBackup _backup;
-
 	if (wstr.empty())
 	{
 		return "";
@@ -35,8 +33,6 @@ std::string WC2MB(const std::wstring& wstr)
 // string ‚©‚ç wstring ‚Ö‚Ì•ÏŠ·
 std::wstring MB2WC(const std::string& str)
 {
-	LastErrorBackup _backup;
-
 	if (str.empty())
 	{
 		return L"";
@@ -66,8 +62,6 @@ size_t HashString(const std::wstring& arg)
 
 bool Base64EncodeA(const std::string& src, std::string* pDst)
 {
-	LastErrorBackup _backup;
-
 	DWORD dstSize = 0;
 
 	BOOL b = ::CryptBinaryToStringA(
@@ -97,8 +91,6 @@ bool Base64EncodeA(const std::string& src, std::string* pDst)
 
 bool Base64DecodeA(const std::string& src, std::string* pDst)
 {
-	LastErrorBackup _backup;
-
 	DWORD dstSize = 0;
 
 	BOOL b = ::CryptStringToBinaryA(

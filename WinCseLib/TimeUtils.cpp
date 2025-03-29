@@ -81,6 +81,14 @@ uint64_t GetCurrentUtcMillis()
 	return WinFileTimeToUtcMillis(ft);
 }
 
+uint64_t GetCurrentWinFileTime100ns()
+{
+	FILETIME ft;
+	::GetSystemTimeAsFileTime(&ft);
+
+	return WinFileTimeToWinFileTime100ns(ft);
+}
+
 uint64_t STCTimeToUTCMilliSecW(const std::wstring& path)
 {
 	APP_ASSERT(!path.empty());

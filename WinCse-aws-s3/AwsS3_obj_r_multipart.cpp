@@ -209,7 +209,7 @@ NTSTATUS AwsS3::readObject_Multipart(CALLER_ARG WinCseLib::CSDeviceContext* argC
 
     traceW(L"mObjKey=%s", ctx->mObjKey.c_str());
 
-    const auto remotePath{ ctx->getRemotePath() };
+    const auto remotePath{ ctx->mObjKey.str() };
 
     traceW(L"ctx=%p HANDLE=%p, Offset=%llu Length=%lu remotePath=%s",
         ctx, ctx->mFile.handle(), Offset, Length, remotePath.c_str());
@@ -229,20 +229,22 @@ NTSTATUS AwsS3::readObject_Multipart(CALLER_ARG WinCseLib::CSDeviceContext* argC
 
             std::wstring localPath;
 
-            if (!ctx->getFilePathW(&localPath))
+            if (!ctx->getCacheFilePath(&localPath))
             {
-                traceW(L"fault: getFilePathW");
-                return STATUS_OBJECT_PATH_NOT_FOUND;
+                traceW(L"fault: getCacheFilePath");
+                //return STATUS_OBJECT_NAME_NOT_FOUND;
+                return FspNtStatusFromWin32(ERROR_FILE_NOT_FOUND);
             }
 
             // ダウンロードが必要か判断
 
             bool needDownload = false;
 
-            if (!syncFileAttributes(CONT_CALLER ctx->mObjKey, ctx->mFileInfo, localPath, &needDownload))
+            NTSTATUS ntstatus = syncFileAttributes(CONT_CALLER ctx->mObjKey, ctx->mFileInfo, localPath, &needDownload);
+            if (!NT_SUCCESS(ntstatus))
             {
                 traceW(L"fault: syncFileAttributes");
-                return STATUS_IO_DEVICE_ERROR;
+                return ntstatus;
             }
 
             traceW(L"needDownload: %s", BOOL_CSTRW(needDownload));
@@ -251,11 +253,12 @@ NTSTATUS AwsS3::readObject_Multipart(CALLER_ARG WinCseLib::CSDeviceContext* argC
             {
                 if (ctx->mFileInfo.FileSize == 0)
                 {
-                    return STATUS_END_OF_FILE;
+                    //return STATUS_END_OF_FILE;
+                    return FspNtStatusFromWin32(ERROR_HANDLE_EOF);
                 }
             }
 
-            NTSTATUS ntstatus = ctx->openFileHandle(CONT_CALLER
+            ntstatus = ctx->openFileHandle(CONT_CALLER
                 //needDownload ? FILE_WRITE_ATTRIBUTES : 0,
                 FILE_WRITE_ATTRIBUTES,
                 needDownload ? CREATE_ALWAYS : OPEN_EXISTING
@@ -276,16 +279,33 @@ NTSTATUS AwsS3::readObject_Multipart(CALLER_ARG WinCseLib::CSDeviceContext* argC
                 if (!this->doMultipartDownload(CONT_CALLER ctx, localPath))
                 {
                     traceW(L"fault: doMultipartDownload");
-                    return STATUS_IO_DEVICE_ERROR;
+                    //return STATUS_IO_DEVICE_ERROR;
+                    return FspNtStatusFromWin32(ERROR_IO_DEVICE);
                 }
 
-                // ファイル日時を同期
+#if SET_ATTRIBUTES_LOCAL_FILE
+                // ファイル属性を同期
 
-                if (!ctx->mFile.setFileTime(ctx->mFileInfo.CreationTime, ctx->mFileInfo.LastWriteTime))
+                if (!ctx->mFile.setBasicInfo(ctx->mFileInfo))
                 {
-                    traceW(L"fault: setLocalTimeTime");
-                    return STATUS_IO_DEVICE_ERROR;
+                    const auto lerr = ::GetLastError();
+                    traceW(L"fault: setBasicInfo lerr=%lu", lerr);
+
+                    return FspNtStatusFromWin32(lerr);
                 }
+
+#else
+                // ファイル日付の同期
+
+                if (!ctx->mFile.setFileTime(ctx->mFileInfo))
+                {
+                    const auto lerr = ::GetLastError();
+                    traceW(L"fault: setBasicInfo lerr=%lu", lerr);
+
+                    return FspNtStatusFromWin32(lerr);
+                }
+
+#endif
             }
             else
             {
@@ -293,8 +313,10 @@ NTSTATUS AwsS3::readObject_Multipart(CALLER_ARG WinCseLib::CSDeviceContext* argC
 
                 if (!ctx->mFile.setFileTime(0, 0))
                 {
-                    traceW(L"fault: setLocalTimeTime");
-                    return STATUS_IO_DEVICE_ERROR;
+                    const auto lerr = ::GetLastError();
+                    traceW(L"fault: setFileTime lerr=%lu", lerr);
+
+                    return FspNtStatusFromWin32(lerr);
                 }
             }
 
@@ -314,7 +336,8 @@ NTSTATUS AwsS3::readObject_Multipart(CALLER_ARG WinCseLib::CSDeviceContext* argC
                 APP_ASSERT(0);
 
                 traceW(L"fault: no match filesize ");
-                return STATUS_IO_DEVICE_ERROR;
+                //return STATUS_IO_DEVICE_ERROR;
+                return FspNtStatusFromWin32(ERROR_IO_DEVICE);
             }
         }
     }   // 名前のロックを解除 (safeShare の生存期間)

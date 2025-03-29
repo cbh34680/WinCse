@@ -133,83 +133,6 @@ bool AwsS3::unlockListObjects(CALLER_ARG const ObjectKey& argObjKey,
     return true;
 }
 
-#define USE_FIND_PARENT     (0)
-
-#if USE_FIND_PARENT
-//
-// 表示用のキャッシュ (Purpose::Display) の中から、引数に合致する
-// ファイルの情報を取得する
-//
-DirInfoType AwsS3::unlockFindInParentOfDisplay(CALLER_ARG const ObjectKey& argObjKey)
-{
-    NEW_LOG_BLOCK();
-    APP_ASSERT(argObjKey.valid());
-    APP_ASSERT(argObjKey.hasKey());
-
-    traceW(L"argObjKey=%s", argObjKey.c_str());
-
-    std::wstring parentDir;
-    std::wstring filename;
-
-    if (!SplitPath(argObjKey.key(), &parentDir, &filename))
-    {
-        traceW(L"fault: SplitPath");
-        return nullptr;
-    }
-
-    traceW(L"parentDir=[%s] filename=[%s]", parentDir.c_str(), filename.c_str());
-
-    // Purpose::Display として保存されたキャッシュを取得
-
-    DirInfoListType dirInfoList;
-
-    const bool inCache = gObjectCache.getPositive(CONT_CALLER
-        ObjectKey{ argObjKey.bucket(), parentDir }, Purpose::Display, &dirInfoList);
-
-    if (!inCache)
-    {
-        // 子孫のオブジェクトを探すときには、親ディレクトリはキャッシュに存在するはず
-        // なので、基本的には通過しないはず
-
-        traceW(L"not found in positive-cache, check it");
-        return nullptr;
-    }
-
-    const auto it = std::find_if(dirInfoList.begin(), dirInfoList.end(), [&filename](const auto& dirInfo)
-    {
-        std::wstring name{ dirInfo->FileNameBuf };
-
-        if (name == L"." || name == L"..")
-        {
-            return false;
-        }
-
-        if (FA_IS_DIR(dirInfo->FileInfo.FileAttributes))
-        {
-            // FSP_FSCTL_DIR_INFO の FileNameBuf にはディレクトリであっても
-            // "/" で終端していないので、比較のために "/" を付与する
-
-            name += L'/';
-        }
-
-        return filename == name;
-    });
-
-    if (it == dirInfoList.end())
-    {
-        // DoGetSecurityByName はディレクトリから存在チェックを始めるので
-        // ファイル名に対して "dir/file.txt/" のような検索を始める
-        // ここを通過するのは、その場合のみだと思う
-
-        traceW(L"not found in parent-dir");
-        return nullptr;
-    }
-
-    return *it;
-}
-#endif
-
-
 void AwsS3::unlockReportObjectCache(CALLER_ARG FILE* fp)
 {
     gObjectCache.report(CONT_CALLER fp);
@@ -222,8 +145,7 @@ int AwsS3::unlockDeleteOldObjects(CALLER_ARG std::chrono::system_clock::time_poi
 
 int AwsS3::unlockClearObjects(CALLER_ARG0)
 {
-    const auto now{ std::chrono::system_clock::now() };
-    return gObjectCache.deleteOldRecords(CONT_CALLER now);
+    return gObjectCache.deleteOldRecords(CONT_CALLER std::chrono::system_clock::now());
 }
 
 int AwsS3::unlockDeleteCacheByObjectKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey)
@@ -240,16 +162,60 @@ int AwsS3::unlockDeleteCacheByObjectKey(CALLER_ARG const WinCseLib::ObjectKey& a
 bool AwsS3::unlockListObjects_Display(CALLER_ARG
     const WinCseLib::ObjectKey& argObjKey, DirInfoListType* pDirInfoList /* nullable */)
 {
-    APP_ASSERT(argObjKey.valid());
+    NEW_LOG_BLOCK();
+    APP_ASSERT(argObjKey.meansDir());
 
-    return this->unlockListObjects(CONT_CALLER argObjKey, Purpose::Display, pDirInfoList);
+#if 0
+    if (!this->unlockListObjects(CONT_CALLER argObjKey, Purpose::Display, pDirInfoList))
+    {
+        traceW(L"fault: unlockListObjects");
+        return false;
+    }
+
+#else
+    DirInfoListType dirInfoList;
+
+    if (!this->unlockListObjects(CONT_CALLER argObjKey, Purpose::Display, &dirInfoList))
+    {
+        traceW(L"fault: unlockListObjects");
+        return false;
+    }
+
+    for (auto& dirInfo: dirInfoList)
+    {
+        if (!FA_IS_DIR(dirInfo->FileInfo.FileAttributes))
+        {
+            // ディレクトリにファイル名を付与して HeadObject のキャッシュを検索
+
+            const auto fileObjKey{ argObjKey.append(dirInfo->FileNameBuf) };
+
+            DirInfoType mergeDirInfo;
+
+            if (gObjectCache.getPositive_File(CONT_CALLER fileObjKey, &mergeDirInfo))
+            {
+                // HeadObject の結果が取れたとき
+                //
+                // --> メタ情報に更新日時などが記録されているので、xcopy のように
+                //     ファイル属性を扱う操作が行えるはず
+                // 
+                // --> *dirInfo = *mergeDirInfo としたほうが効率的だが、一応 メモリコピー
+
+                dirInfo->FileInfo = mergeDirInfo->FileInfo;
+            }
+        }
+    }
+
+    *pDirInfoList = std::move(dirInfoList);
+
+#endif
+    return true;
 }
 
 bool AwsS3::unlockHeadObject_File(CALLER_ARG
     const ObjectKey& argObjKey, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
 {
-    APP_ASSERT(argObjKey.meansFile());
     NEW_LOG_BLOCK();
+    APP_ASSERT(argObjKey.meansFile());
 
     traceW(L"argObjKey=%s", argObjKey.c_str());
 
@@ -265,32 +231,13 @@ bool AwsS3::unlockHeadObject_File(CALLER_ARG
 
     traceW(L"unlockHeadObject: not found");
 
-#if USE_FIND_PARENT
-    // 親ディレクトリから調べる
-
-    const auto dirInfo{ unlockFindInParentOfDisplay(CONT_CALLER argObjKey) };
-    if (dirInfo)
-    {
-        traceW(L"unlockFindInParentOfDisplay: found");
-
-        if (pFileInfo)
-        {
-            *pFileInfo = dirInfo->FileInfo;
-        }
-
-        return true;
-    }
-
-    traceW(L"unlockFindInParentOfDisplay: not found");
-#endif
-
     return false;
 }
 
 DirInfoType AwsS3::unlockListObjects_Dir(CALLER_ARG const ObjectKey& argObjKey)
 {
-    APP_ASSERT(argObjKey.meansDir());
     NEW_LOG_BLOCK();
+    APP_ASSERT(argObjKey.meansDir());
 
     traceW(L"argObjKey=%s", argObjKey.c_str());
 
@@ -308,18 +255,12 @@ DirInfoType AwsS3::unlockListObjects_Dir(CALLER_ARG const ObjectKey& argObjKey)
         // ディレクトリの場合は FSP_FSCTL_FILE_INFO に適当な値を埋める
         // ... 取得した要素の情報([0]) がファイルの場合もあるので、編集が必要
 
-        return makeDirInfo_dir(argObjKey, (*dirInfoList.begin())->FileInfo.LastWriteTime);
+        return makeDirInfo_dir(argObjKey.key(), (*dirInfoList.begin())->FileInfo.LastWriteTime);
     }
 
     traceW(L"unlockListObjects: not found");
 
-#if USE_FIND_PARENT
-    // 親ディレクトリから調べる
-
-    return this->unlockFindInParentOfDisplay(CONT_CALLER argObjKey);
-#else
     return nullptr;
-#endif
 }
 
 // -----------------------------------------------------------------------------------
@@ -338,7 +279,7 @@ bool AwsS3::headObject(CALLER_ARG const ObjectKey& argObjKey, FSP_FSCTL_FILE_INF
     StatsIncr(headObject);
     THREAD_SAFE();
     NEW_LOG_BLOCK();
-    APP_ASSERT(argObjKey.valid());
+    APP_ASSERT(argObjKey.hasKey());
 
     traceW(L"ObjectKey=%s", argObjKey.c_str());
 
@@ -382,7 +323,7 @@ bool AwsS3::listObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* 
 {
     StatsIncr(listObjects);
     THREAD_SAFE();
-    APP_ASSERT(argObjKey.valid());
+    APP_ASSERT(argObjKey.meansDir());
 
     return this->unlockListObjects_Display(CONT_CALLER argObjKey, pDirInfoList);
 }

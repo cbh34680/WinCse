@@ -130,7 +130,7 @@ void test3()
 {
     // レジストリ "HKLM:\SOFTWARE\Microsoft\Cryptography" から "MachineGuid" の値を取得
     std::string secureKeyStr;
-    GetCryptKeyFromRegistry(&secureKeyStr);
+    GetCryptKeyFromRegistryA(&secureKeyStr);
 
     // MachineGuid の値を AES の key とし、iv には key[0..16] を設定する
     std::vector<BYTE> aesKey{ secureKeyStr.begin(), secureKeyStr.end() };
@@ -773,9 +773,9 @@ int main()
     //cout.imbue(locale(""));
     cerr.imbue(locale(""));
 
-    test1();
+    //test1();
     //test2();
-    test3();
+    //test3();
     //test4();
     //test5();
     //test6();
@@ -793,6 +793,9 @@ int main()
     //test17();
     //test18();
     //test19();
+
+    int test20();
+    test20();
 
     return EXIT_SUCCESS;
 }

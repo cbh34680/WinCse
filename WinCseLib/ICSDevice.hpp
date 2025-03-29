@@ -59,7 +59,9 @@ public:
 	WINCSELIB_API bool operator>(const ObjectKey& other) const noexcept;
 
 	// ’·‚¢‚Ì‚Å cpp
+	WINCSELIB_API ObjectKey toFile() const noexcept;
 	WINCSELIB_API ObjectKey toDir() const noexcept;
+	WINCSELIB_API ObjectKey append(const std::wstring& arg) const noexcept;
 	WINCSELIB_API std::unique_ptr<ObjectKey> toParentDir() const;
 
 	// WC2MB() ‚ðŽg‚Á‚Ä‚¢‚é‚Ì‚Å cpp
@@ -74,6 +76,7 @@ public:
 	bool valid() const noexcept { return mHasBucket; }
 	bool invalid() const noexcept { return !mHasBucket; }
 	bool hasKey() const noexcept { return mHasKey; }
+	bool isBucket() const noexcept { return mHasBucket && !mHasKey; }
 	const std::wstring& str() const noexcept { return mBucketKey; }
 	const wchar_t* c_str() const noexcept { return mBucketKey.c_str(); }
 	bool meansDir() const noexcept { return mMeansDir; }
@@ -112,18 +115,18 @@ struct CSDeviceContext
 	WINCSELIB_API CSDeviceContext(const std::wstring& argCacheDataDir,
 		const WinCseLib::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo);
 
-	WINCSELIB_API bool getFilePathW(std::wstring* pPath) const;
-	WINCSELIB_API bool getFilePathA(std::string* pPath) const;
+	WINCSELIB_API bool getCacheFilePath(std::wstring* pPath) const;
 
 	bool isDir() const noexcept { return mIsDir; }
 	bool isFile() const noexcept { return !mIsDir; }
-	std::wstring getRemotePath() const noexcept { return mObjKey.str(); }
 
 	virtual ~CSDeviceContext() = default;
 };
 
-constexpr uint32_t CSDCTX_FLAGS_WRITE = 1;
-constexpr uint32_t CSDCTX_FLAGS_DELETE = 2;
+constexpr uint32_t CSDCTX_FLAGS_MODIFY			=     1;
+constexpr uint32_t CSDCTX_FLAGS_WRITE			= 2 + 1;
+constexpr uint32_t CSDCTX_FLAGS_OVERWRITE		= 4 + 1;
+constexpr uint32_t CSDCTX_FLAGS_SET_BASIC_INFO	= 8 + 1;
 
 struct ICSDevice : public ICSService
 {
@@ -131,18 +134,23 @@ struct ICSDevice : public ICSService
 
 	virtual void queryStats(WINCSE_DEVICE_STATS* pStats) = 0;
 
-	virtual bool headBucket(CALLER_ARG const std::wstring& argBucket) = 0;
+	virtual bool headBucket(CALLER_ARG const std::wstring& argBucket,
+		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) = 0;
 
 	virtual bool listBuckets(CALLER_ARG DirInfoListType* pDirInfoList,
 		const std::vector<std::wstring>& options) = 0;
 
-	virtual bool headObject(CALLER_ARG const ObjectKey& argObjKey, FSP_FSCTL_FILE_INFO* pFileInfo) = 0;
+	virtual DirInfoType getBucket(CALLER_ARG const std::wstring& bucketName) = 0;
 
-	virtual bool listObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* pDirInfoList) = 0;
+	virtual bool headObject(CALLER_ARG const ObjectKey& argObjKey,
+		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) = 0;
+
+	virtual bool listObjects(CALLER_ARG const ObjectKey& argObjKey,
+		DirInfoListType* pDirInfoList /* nullable */) = 0;
 
 	virtual CSDeviceContext* create(CALLER_ARG const ObjectKey& argObjKey,
-		const UINT32 CreateOptions, const UINT32 GrantedAccess, const UINT32 FileAttributes,
-		PSECURITY_DESCRIPTOR SecurityDescriptor, FSP_FSCTL_FILE_INFO* pFileInfo) = 0;
+		const FSP_FSCTL_FILE_INFO& fileInfo, const UINT32 CreateOptions,
+		const UINT32 GrantedAccess, const UINT32 FileAttributes) = 0;
 
 	virtual CSDeviceContext* open(CALLER_ARG const ObjectKey& argObjKey,
 		const UINT32 CreateOptions, const UINT32 GrantedAccess,
@@ -153,12 +161,12 @@ struct ICSDevice : public ICSService
 	virtual NTSTATUS readObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred) = 0;
 
-	virtual bool putObject(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
-		const char* sourceFile, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) = 0;
+	virtual bool deleteObject(CALLER_ARG const ObjectKey& argObjKey) = 0;
 
-	virtual void cleanup(CALLER_ARG CSDeviceContext* argCSDeviceContext, ULONG Flags) = 0;
+	virtual bool putObject(CALLER_ARG const ObjectKey& argObjKey,
+		const wchar_t* sourceFile, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) = 0;
 
-	virtual NTSTATUS getHandleFromContext(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
+	virtual NTSTATUS getHandleFromContext(CALLER_ARG CSDeviceContext* argCSDeviceContext,
 		const DWORD argDesiredAccess, const DWORD argCreationDisposition,
 		HANDLE* pHandle) = 0;
 };

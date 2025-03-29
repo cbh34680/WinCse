@@ -41,7 +41,7 @@ bool ObjectCache::getPositive_File(CALLER_ARG const ObjectKey& argObjKey, DirInf
     return true;
 }
 
-void ObjectCache::setPositive_File(CALLER_ARG const ObjectKey& argObjKey, DirInfoType& dirInfo)
+void ObjectCache::setPositive_File(CALLER_ARG const ObjectKey& argObjKey, const DirInfoType& dirInfo)
 {
     APP_ASSERT(dirInfo);
 
@@ -124,11 +124,11 @@ void ObjectCache::report(CALLER_ARG FILE* fp)
         fwprintf(fp, INDENT1 L"bucket=[%s] key=[%s] purpose=%s" LN,
             it.first.mObjKey.bucket().c_str(), it.first.mObjKey.key().c_str(), PurposeString(it.first.mPurpose));
 
-        fwprintf(fp, INDENT2 L"refCount=%d" LN, it.second.mRefCount);
-        fwprintf(fp, INDENT2 L"createCallChain=%s" LN, it.second.mCreateCallChain.c_str());
-        fwprintf(fp, INDENT2 L"accessCallChain=%s" LN, it.second.mAccessCallChain.c_str());
-        fwprintf(fp, INDENT2 L"createTime=%s" LN, TimePointToLocalTimeStringW(it.second.mCreateTime).c_str());
-        fwprintf(fp, INDENT2 L"accessTime=%s" LN, TimePointToLocalTimeStringW(it.second.mAccessTime).c_str());
+        fwprintf(fp, INDENT2 L"RefCount=%d" LN, it.second.mRefCount);
+        fwprintf(fp, INDENT2 L"CreateCallChain=%s" LN, it.second.mCreateCallChain.c_str());
+        fwprintf(fp, INDENT2 L"LastAccessCallChain=%s" LN, it.second.mLastAccessCallChain.c_str());
+        fwprintf(fp, INDENT2 L"CreateTime=%s" LN, TimePointToLocalTimeStringW(it.second.mCreateTime).c_str());
+        fwprintf(fp, INDENT2 L"LastAccessTime=%s" LN, TimePointToLocalTimeStringW(it.second.mLastAccessTime).c_str());
         fwprintf(fp, INDENT2 L"[dirInfoList]" LN);
 
         fwprintf(fp, INDENT3 L"dirInfoList.size=%zu" LN, it.second.mDirInfoList.size());
@@ -139,7 +139,9 @@ void ObjectCache::report(CALLER_ARG FILE* fp)
 
             fwprintf(fp, INDENT5 L"FileSize=%llu" LN, dirInfo->FileInfo.FileSize);
             fwprintf(fp, INDENT5 L"FileAttributes=%u" LN, dirInfo->FileInfo.FileAttributes);
-            fwprintf(fp, INDENT5 L"CreationTime=%s" LN, WinFileTime100nsToLocalTimeStringW(dirInfo->FileInfo.LastWriteTime).c_str());
+            fwprintf(fp, INDENT5 L"CreationTime=%s" LN, WinFileTime100nsToLocalTimeStringW(dirInfo->FileInfo.CreationTime).c_str());
+            fwprintf(fp, INDENT5 L"LastAccessTime=%s" LN, WinFileTime100nsToLocalTimeStringW(dirInfo->FileInfo.LastAccessTime).c_str());
+            fwprintf(fp, INDENT5 L"LastWriteTime=%s" LN, WinFileTime100nsToLocalTimeStringW(dirInfo->FileInfo.LastWriteTime).c_str());
         }
     }
 
@@ -152,10 +154,10 @@ void ObjectCache::report(CALLER_ARG FILE* fp)
             it.first.mObjKey.bucket().c_str(), it.first.mObjKey.key().c_str(), PurposeString(it.first.mPurpose));
 
         fwprintf(fp, INDENT2 L"refCount=%d" LN, it.second.mRefCount);
-        fwprintf(fp, INDENT2 L"createCallChain=%s" LN, it.second.mCreateCallChain.c_str());
-        fwprintf(fp, INDENT2 L"accessCallChain=%s" LN, it.second.mAccessCallChain.c_str());
-        fwprintf(fp, INDENT2 L"createTime=%s" LN, TimePointToLocalTimeStringW(it.second.mCreateTime).c_str());
-        fwprintf(fp, INDENT2 L"accessTime=%s" LN, TimePointToLocalTimeStringW(it.second.mAccessTime).c_str());
+        fwprintf(fp, INDENT2 L"CreateCallChain=%s" LN, it.second.mCreateCallChain.c_str());
+        fwprintf(fp, INDENT2 L"LastAccessCallChain=%s" LN, it.second.mLastAccessCallChain.c_str());
+        fwprintf(fp, INDENT2 L"CreateTime=%s" LN, TimePointToLocalTimeStringW(it.second.mCreateTime).c_str());
+        fwprintf(fp, INDENT2 L"LastAccessTime=%s" LN, TimePointToLocalTimeStringW(it.second.mLastAccessTime).c_str());
     }
 }
 
@@ -241,8 +243,8 @@ bool ObjectCache::getPositive(CALLER_ARG const ObjectKey& argObjKey,
 
     *pDirInfoList = it->second.mDirInfoList;
 
-    it->second.mAccessCallChain = CALL_CHAIN();
-    it->second.mAccessTime = std::chrono::system_clock::now();
+    it->second.mLastAccessCallChain = CALL_CHAIN();
+    it->second.mLastAccessTime = std::chrono::system_clock::now();
     it->second.mRefCount++;
     mGetPositive++;
 
@@ -250,7 +252,7 @@ bool ObjectCache::getPositive(CALLER_ARG const ObjectKey& argObjKey,
 }
 
 void ObjectCache::setPositive(CALLER_ARG const ObjectKey& argObjKey,
-    const Purpose argPurpose, DirInfoListType& dirInfoList)
+    const Purpose argPurpose, const DirInfoListType& dirInfoList)
 {
     APP_ASSERT(argObjKey.valid());
     APP_ASSERT(!dirInfoList.empty());
@@ -319,8 +321,8 @@ bool ObjectCache::isInNegative(CALLER_ARG const ObjectKey& argObjKey, const Purp
         return false;
     }
 
-    it->second.mAccessCallChain = CALL_CHAIN();
-    it->second.mAccessTime = std::chrono::system_clock::now();
+    it->second.mLastAccessCallChain = CALL_CHAIN();
+    it->second.mLastAccessTime = std::chrono::system_clock::now();
     it->second.mRefCount++;
     mGetNegative++;
 

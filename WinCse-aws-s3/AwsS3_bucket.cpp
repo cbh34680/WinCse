@@ -72,7 +72,7 @@ void AwsS3::clearBuckets(CALLER_ARG0)
     gBucketCache.clear(CONT_CALLER0);
 }
 
-bool AwsS3::reloadBukcetsIfNeed(CALLER_ARG std::chrono::system_clock::time_point threshold)
+bool AwsS3::reloadBukcetsIfNecessary(CALLER_ARG std::chrono::system_clock::time_point threshold)
 {
     THREAD_SAFE();
     NEW_LOG_BLOCK();
@@ -165,7 +165,7 @@ struct NotifRemoveBucketTask : public IOnDemandTask
     }
 };
 
-bool AwsS3::headBucket(CALLER_ARG const std::wstring& bucketName)
+bool AwsS3::headBucket(CALLER_ARG const std::wstring& bucketName, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
 {
     StatsIncr(headBucket);
 
@@ -213,9 +213,20 @@ bool AwsS3::headBucket(CALLER_ARG const std::wstring& bucketName)
         traceW(L"%s: no match bucket-region", bucketRegion.c_str());
 
         // 非表示になるバケットについて WinFsp に通知
+
         getWorker(L"delayed")->addTask(START_CALLER new NotifRemoveBucketTask{ mFileSystem, std::wstring(L"\\") + bucketName });
 
         return false;
+    }
+
+    if (pFileInfo)
+    {
+        NTSTATUS ntstatus = GetFileInfoInternal(mRefDir.handle(), pFileInfo);
+        if (!NT_SUCCESS(ntstatus))
+        {
+            traceW(L"fault: GetFileInfoInternal");
+            return false;
+        }
     }
 
     traceW(L"success");
@@ -279,9 +290,7 @@ bool AwsS3::listBuckets(CALLER_ARG DirInfoListType* pDirInfoList /* nullable */,
 
             const auto FileTime = UtcMillisToWinFileTime100ns(creationMillis);
 
-            // バケット一覧なので、他の場所と異なりバケット名をキーにする
-
-            auto dirInfo = makeDirInfo_dir(ObjectKey{ L"", bucketName }, FileTime);
+            auto dirInfo = makeDirInfo_dir(bucketName, FileTime);
             APP_ASSERT(dirInfo);
 
             // バケットは常に読み取り専用
@@ -358,6 +367,24 @@ bool AwsS3::listBuckets(CALLER_ARG DirInfoListType* pDirInfoList /* nullable */,
     }
 
     return ret;
+}
+
+DirInfoType AwsS3::getBucket(CALLER_ARG const std::wstring& bucketName)
+{
+    NEW_LOG_BLOCK();
+
+    DirInfoListType dirInfoList;
+
+    // 名前を指定してリストを取得
+
+    if (!this->listBuckets(CONT_CALLER &dirInfoList, { bucketName }))
+    {
+        return nullptr;
+    }
+
+    APP_ASSERT(dirInfoList.size() == 1);
+
+    return *dirInfoList.begin();
 }
 
 // EOF

@@ -54,6 +54,9 @@
     <ClCompile Include="AwsS3_obj_read.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
+    <ClCompile Include="AwsS3_obj_w.cpp.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AwsS3.hpp">

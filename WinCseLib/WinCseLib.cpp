@@ -134,13 +134,11 @@ void free_deleter(T* ptr)
 }
 
 // ファイル名から FSP_FSCTL_DIR_INFO のヒープ領域を生成し、いくつかのメンバを設定して返却
-DirInfoType makeDirInfo(const ObjectKey& argObjKey)
+DirInfoType makeDirInfo(const std::wstring& argFileName)
 {
-	const auto& key{ argObjKey.key() };
+	APP_ASSERT(!argFileName.empty());		// バケット名をキーに入れて利用することもあるので、hasKey では判定できない
 
-	APP_ASSERT(!key.empty());		// バケット名をキーに入れて利用することもあるので、hasKey では判定できない
-
-	const auto keyLen = key.length();
+	const auto keyLen = argFileName.length();
 	const auto keyLenBytes = keyLen * sizeof(WCHAR);
 	const auto offFileNameBuf = FIELD_OFFSET(FSP_FSCTL_DIR_INFO, FileNameBuf);
 	const auto dirInfoSize = offFileNameBuf + keyLenBytes;
@@ -152,7 +150,7 @@ DirInfoType makeDirInfo(const ObjectKey& argObjKey)
 	dirInfo->Size = (UINT16)dirInfoSize;
 
 	//dirInfo->FileInfo.IndexNumber = HashString(bucket.empty() ? key : bucket + L'/' + key);
-	dirInfo->FileInfo.IndexNumber = HashString(argObjKey.str());
+	dirInfo->FileInfo.IndexNumber = HashString(argFileName);
 
 	//
 	// 実行時にエラーとなる (Buffer is too small)
@@ -163,9 +161,34 @@ DirInfoType makeDirInfo(const ObjectKey& argObjKey)
 	// 
 	//wcscpy_s(dirInfo->FileNameBuf, wkeyLen, wkey.c_str());
 
-	memcpy(dirInfo->FileNameBuf, key.c_str(), keyLenBytes);
+	memcpy(dirInfo->FileNameBuf, argFileName.c_str(), keyLenBytes);
 
 	return DirInfoType(dirInfo, free_deleter<FSP_FSCTL_DIR_INFO>);
+}
+
+NTSTATUS HandleToSecurityInfo(HANDLE Handle,
+	PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize /* nullable */)
+{
+	NEW_LOG_BLOCK();
+
+	DWORD SecurityDescriptorSizeNeeded = 0;
+
+	if (0 != PSecurityDescriptorSize)
+	{
+		if (!::GetKernelObjectSecurity(Handle,
+			OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+			SecurityDescriptor, (DWORD)*PSecurityDescriptorSize, &SecurityDescriptorSizeNeeded))
+		{
+			*PSecurityDescriptorSize = SecurityDescriptorSizeNeeded;
+			return FspNtStatusFromWin32(::GetLastError());
+		}
+
+		traceW(L"SecurityDescriptorSizeNeeded: %u", SecurityDescriptorSizeNeeded);
+
+		*PSecurityDescriptorSize = SecurityDescriptorSizeNeeded;
+	}
+
+	return STATUS_SUCCESS;
 }
 
 // argKey                       parentDir       filename
@@ -178,7 +201,7 @@ DirInfoType makeDirInfo(const ObjectKey& argObjKey)
 // "dir/subdir/key.txt"    OK   "dir/subdir/"   "key.txt"
 // "dir/subdir/key.txt/"   OK   "dir/subdir/"   "key.txt/"
 
-bool SplitPath(const std::wstring& argKey, std::wstring* pParentDir /* nullable */, std::wstring* pFilename /* nullable */)
+bool SplitPath(const std::wstring& argKey, std::wstring* pParentDir /* nullable */, std::wstring* pFileName /* nullable */)
 {
 	// キーから親ディレクトリを取得
 
@@ -188,8 +211,8 @@ bool SplitPath(const std::wstring& argKey, std::wstring* pParentDir /* nullable 
 		return false;
 	}
 
-	auto filename{ tokens.back() };
-	if (filename.empty())
+	auto fileName{ tokens.back() };
+	if (fileName.empty())
 	{
 		return false;
 	}
@@ -222,7 +245,7 @@ bool SplitPath(const std::wstring& argKey, std::wstring* pParentDir /* nullable 
 		// SplitString() で "/" が除かれてしまうので、argKey に "dir/" や "dir/file.txt/"
 		// が指定されているときは filename に "/" を付与
 
-		filename += L'/';
+		fileName += L'/';
 	}
 
 	if (pParentDir)
@@ -230,9 +253,9 @@ bool SplitPath(const std::wstring& argKey, std::wstring* pParentDir /* nullable 
 		*pParentDir = std::move(parentDir);
 	}
 
-	if (pFilename)
+	if (pFileName)
 	{
-		*pFilename = std::move(filename);
+		*pFileName = std::move(fileName);
 	}
 
 	return true;
@@ -242,8 +265,6 @@ bool SplitPath(const std::wstring& argKey, std::wstring* pParentDir /* nullable 
 
 bool GetIniStringW(const std::wstring& confPath, const wchar_t* argSection, const wchar_t* keyName, std::wstring* pValue)
 {
-	LastErrorBackup _backup;
-
 	APP_ASSERT(argSection);
 	APP_ASSERT(argSection[0]);
 
@@ -264,8 +285,6 @@ bool GetIniStringW(const std::wstring& confPath, const wchar_t* argSection, cons
 
 bool GetIniStringA(const std::string& confPath, const char* argSection, const char* keyName, std::string* pValue)
 {
-	LastErrorBackup _backup;
-
 	APP_ASSERT(argSection);
 	APP_ASSERT(argSection[0]);
 
@@ -401,6 +420,25 @@ bool ObjectKey::operator>(const ObjectKey& other) const noexcept
 	return true;
 }
 
+ObjectKey ObjectKey::toFile() const noexcept
+{
+	//
+	// キーの後ろに "/" を付与したものを返却する
+	// キーがない場合は自分のコピーを返す			--> バケット名のみの場合
+	// そもそもディレクトリの場合もコピーを返す
+	//
+
+	if (mHasBucket && mHasKey)
+	{
+		if (mMeansDir)
+		{
+			return ObjectKey{ mBucket, mKey.substr(0, mKey.size() - 1) };
+		}
+	}
+
+	return *this;
+}
+
 ObjectKey ObjectKey::toDir() const noexcept
 {
 	//
@@ -436,6 +474,11 @@ std::unique_ptr<ObjectKey> ObjectKey::toParentDir() const
 	}
 
 	return nullptr;
+}
+
+ObjectKey ObjectKey::append(const std::wstring& arg) const noexcept
+{
+	return ObjectKey{ mBucket, mKey + arg };
 }
 
 std::string ObjectKey::bucketA() const
@@ -474,41 +517,21 @@ CSDeviceContext::CSDeviceContext(const std::wstring& argCacheDataDir,
 	}
 }
 
-bool CSDeviceContext::getFilePathW(std::wstring* pPath) const
+bool CSDeviceContext::getCacheFilePath(std::wstring* pPath) const
 {
-	std::wstring encPath;
-
-	if (!EncodeFileNameToLocalNameW(getRemotePath(), &encPath))
-	{
-		return false;
-	}
-	
-	*pPath = mCacheDataDir + L'\\' + encPath;
-
-	return true;
-}
-
-bool CSDeviceContext::getFilePathA(std::string* pPath) const
-{
-	std::wstring filePath;
-
-	if (!getFilePathW(&filePath))
-	{
-		return false;
-	}
-
-	*pPath = WC2MB(filePath);
-
-	return true;
+	return GetCacheFilePath(mCacheDataDir, mObjKey.str(), pPath);
 }
 
 //
 // FileHandle
 //
-bool FileHandle::setFileTime(UINT64 argCreationTime, UINT64 argLastWriteTime)
+BOOL FileHandle::setFileTime(const FSP_FSCTL_FILE_INFO& fileInfo)
 {
-	LastErrorBackup _backup;
+	return setFileTime(fileInfo.CreationTime, fileInfo.LastWriteTime);
+}
 
+BOOL FileHandle::setFileTime(UINT64 argCreationTime, UINT64 argLastWriteTime)
+{
 	APP_ASSERT(valid());
 
 	FILETIME ftCreation;
@@ -520,18 +543,39 @@ bool FileHandle::setFileTime(UINT64 argCreationTime, UINT64 argLastWriteTime)
 	FILETIME ftNow;
 	::GetSystemTimeAsFileTime(&ftNow);
 
-	if (!::SetFileTime(mHandle, &ftCreation, &ftNow, &ftLastWrite))
-	{
-		return false;
-	}
+	return ::SetFileTime(mHandle, &ftCreation, &ftNow, &ftLastWrite);
+}
 
-	return true;
+BOOL FileHandle::setBasicInfo(const FSP_FSCTL_FILE_INFO& fileInfo)
+{
+	return setBasicInfo(fileInfo.FileAttributes, fileInfo.CreationTime, fileInfo.LastWriteTime);
+}
+
+BOOL FileHandle::setBasicInfo(UINT32 argFileAttributes, UINT64 argCreationTime, UINT64 argLastWriteTime)
+{
+	APP_ASSERT(valid());
+
+	UINT32 FileAttributes = argFileAttributes;
+
+	if (INVALID_FILE_ATTRIBUTES == FileAttributes)
+		FileAttributes = 0;
+	else if (0 == FileAttributes)
+		FileAttributes = FILE_ATTRIBUTE_NORMAL;
+
+	FILE_BASIC_INFO BasicInfo = {};
+
+	BasicInfo.FileAttributes = FileAttributes;
+	BasicInfo.CreationTime.QuadPart = argCreationTime;
+	BasicInfo.LastAccessTime.QuadPart = GetCurrentWinFileTime100ns();
+	BasicInfo.LastWriteTime.QuadPart = argLastWriteTime;
+	//BasicInfo.ChangeTime = argChangeTime;
+
+	return ::SetFileInformationByHandle(mHandle,
+		FileBasicInfo, &BasicInfo, sizeof BasicInfo);
 }
 
 LONGLONG FileHandle::getFileSize()
 {
-	LastErrorBackup _backup;
-
 	APP_ASSERT(valid());
 
 	LARGE_INTEGER fileSize;

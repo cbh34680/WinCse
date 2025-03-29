@@ -12,7 +12,7 @@ static const wchar_t* CONFIGFILE_FNAME = L"WinCse.conf";
 // プログラム引数 "-u" から算出されたディレクトリから ini ファイルを読み
 // S3 クライアントを生成する
 //
-bool WinCse::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams)
+bool WinCse::PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams)
 {
 	StatsIncr(PreCreateFilesystem);
 
@@ -59,14 +59,6 @@ bool WinCse::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PAR
 		traceW(L"Detect credentials file path is %s", confPath.c_str());
 
 		const auto iniSection = mIniSection.c_str();
-
-		// 読み取り専用
-
-		const bool readonly = ::GetPrivateProfileIntW(iniSection, L"readonly", 0, confPath.c_str()) != 0;
-		if (readonly)
-		{
-			VolumeParams->ReadOnlyVolume = 1;
-		}
 
 		// 最大ファイルサイズ(MB)
 
@@ -149,7 +141,7 @@ bool WinCse::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PAR
 
 			traceW(L"%s::PreCreateFilesystem()", klassName.c_str());
 
-			if (!worker->PreCreateFilesystem(argWorkDir, VolumeParams))
+			if (!worker->PreCreateFilesystem(Service, argWorkDir, VolumeParams))
 			{
 				traceW(L"fault: PreCreateFilesystem");
 				return false;
@@ -165,7 +157,7 @@ bool WinCse::PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PAR
 
 			traceW(L"%s::PreCreateFilesystem()", klassName.c_str());
 
-			if (!services[i]->PreCreateFilesystem(argWorkDir, VolumeParams))
+			if (!services[i]->PreCreateFilesystem(Service, argWorkDir, VolumeParams))
 			{
 				traceW(L"fault: PreCreateFilesystem");
 				return false;

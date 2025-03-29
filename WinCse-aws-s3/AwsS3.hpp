@@ -56,6 +56,7 @@ public:
 class AwsS3 : public WinCseLib::ICSDevice
 {
 private:
+	FSP_SERVICE* mWinFspService = nullptr;
 	WINCSE_DEVICE_STATS* mStats = nullptr;
 	WINCSE_DEVICE_STATS mStats_{};
 
@@ -103,7 +104,7 @@ private:
 
 	// バケット操作関連
 	void clearBuckets(CALLER_ARG0);
-	bool reloadBukcetsIfNeed(CALLER_ARG std::chrono::system_clock::time_point threshold);
+	bool reloadBukcetsIfNecessary(CALLER_ARG std::chrono::system_clock::time_point threshold);
 	void reportBucketCache(CALLER_ARG FILE* fp);
 	std::wstring unlockGetBucketRegion(CALLER_ARG const std::wstring& bucketName);
 
@@ -134,12 +135,12 @@ private:
 	bool unlockHeadObject_File(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */);
 	DirInfoType unlockListObjects_Dir(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
-	DirInfoType unlockFindInParentOfDisplay(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
+	//DirInfoType unlockFindInParentOfDisplay(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
 	bool unlockListObjects_Display(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		DirInfoListType* pDirInfoList /* nullable */);
 
 	// Read 関連
-	bool syncFileAttributes(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+	NTSTATUS syncFileAttributes(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		const FSP_FSCTL_FILE_INFO& fileInfo, const std::wstring& localPath, bool* pNeedDownload);
 	NTSTATUS readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred);
@@ -167,14 +168,17 @@ public:
 		*pStats = *mStats;
 	}
 
-	bool PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
+	bool PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
 	bool OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
 	void OnSvcStop() override;
 
-	bool headBucket(CALLER_ARG const std::wstring& argBucket) override;
+	bool headBucket(CALLER_ARG const std::wstring& argBucket,
+		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) override;
 
 	bool listBuckets(CALLER_ARG DirInfoListType* pDirInfoList /* nullable */,
 		const std::vector<std::wstring>& options) override;
+
+	DirInfoType getBucket(CALLER_ARG const std::wstring& bucketName) override;
 
 	bool headObject(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) override;
@@ -182,12 +186,14 @@ public:
 	bool listObjects(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		DirInfoListType* pDirInfoList /* nullable */) override;
 
+	bool deleteObject(CALLER_ARG const WinCseLib::ObjectKey& argObjKey) override;
+
 	bool putObject(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
-		const char* sourceFile, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) override;
+		const wchar_t* sourceFile /* nullable */, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) override;
 
 	WinCseLib::CSDeviceContext* create(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
-		const UINT32 CreateOptions, const UINT32 GrantedAccess, const UINT32 FileAttributes,
-		PSECURITY_DESCRIPTOR SecurityDescriptor, FSP_FSCTL_FILE_INFO* pFileInfo) override;
+		const FSP_FSCTL_FILE_INFO& fileInfo, const UINT32 CreateOptions,
+		const UINT32 GrantedAccess, const UINT32 FileAttributes) override;
 
 	WinCseLib::CSDeviceContext* open(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		const UINT32 CreateOptions, const UINT32 GrantedAccess, const FSP_FSCTL_FILE_INFO& FileInfo) override;
@@ -197,17 +203,15 @@ public:
 	NTSTATUS readObject(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred) override;
 
-	void cleanup(CALLER_ARG WinCseLib::CSDeviceContext* ctx, ULONG Flags) override;
-
 	NTSTATUS getHandleFromContext(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
 		const DWORD argDesiredAccess, const DWORD argCreationDisposition,
 		HANDLE* pHandle) override;
 
 private:
 	// ファイル/ディレクトリに特化
-	DirInfoType makeDirInfo_attr(const WinCseLib::ObjectKey& argObjKey, const UINT64 argFileTime, const UINT32 argFileAttributes);
-	DirInfoType makeDirInfo_byName(const WinCseLib::ObjectKey& argObjKey, const UINT64 argFileTime);
-	DirInfoType makeDirInfo_dir(const WinCseLib::ObjectKey& argObjKey, const UINT64 argFileTime);
+	DirInfoType makeDirInfo_attr(const std::wstring& argFileName, const UINT64 argFileTime, const UINT32 argFileAttributes);
+	DirInfoType makeDirInfo_byName(const std::wstring& argFileName, const UINT64 argFileTime);
+	DirInfoType makeDirInfo_dir(const std::wstring& argFileName, const UINT64 argFileTime);
 };
 
 template<typename T>

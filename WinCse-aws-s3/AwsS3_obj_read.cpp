@@ -18,8 +18,8 @@ NTSTATUS AwsS3::readObject(CALLER_ARG WinCseLib::CSDeviceContext* ctx,
     APP_ASSERT(ctx);
     APP_ASSERT(ctx->isFile());
 
-    return readObject_Simple(CONT_CALLER ctx, Buffer, Offset, Length, PBytesTransferred);
-    //return readObject_Multipart(CONT_CALLER ctx, Buffer, Offset, Length, PBytesTransferred);
+    //return readObject_Simple(CONT_CALLER ctx, Buffer, Offset, Length, PBytesTransferred);
+    return readObject_Multipart(CONT_CALLER ctx, Buffer, Offset, Length, PBytesTransferred);
 }
 
 //
@@ -197,7 +197,7 @@ int64_t AwsS3::prepareLocalCacheFile(CALLER_ARG
     return bytesWritten;
 }
 
-bool AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
+NTSTATUS AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
     const FSP_FSCTL_FILE_INFO& remoteInfo, const std::wstring& localPath,
     bool* pNeedDownload)
 {
@@ -234,6 +234,8 @@ bool AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
     bool syncTime = false;
     bool truncateFile = false;
     bool needDownload = false;
+    DWORD lastError = ERROR_SUCCESS;
+    NTSTATUS ntstatus = STATUS_UNSUCCESSFUL;
 
     FileHandle hFile = ::CreateFileW
     (
@@ -246,7 +248,7 @@ bool AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
         NULL
     );
 
-    auto lerr = ::GetLastError();
+    lastError = ::GetLastError();
 
     if (hFile.valid())
     {
@@ -254,10 +256,11 @@ bool AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
 
         // ローカル・ファイルが存在する
 
-        if (!HandleToFileInfo(hFile.handle(), &localInfo))
+        ntstatus = GetFileInfoInternal(hFile.handle(), &localInfo);
+        if (!NT_SUCCESS(ntstatus))
         {
-            traceW(L"fault: HandleToFileInfo");
-            return false;
+            traceW(L"fault: GetFileInfoInternal");
+            return ntstatus;
         }
 
         traceW(L"localInfo FileSize=%llu LastWriteTime=%llu", localInfo.FileSize, localInfo.LastWriteTime);
@@ -300,12 +303,12 @@ bool AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
     }
     else
     {
-        if (lerr != ERROR_FILE_NOT_FOUND)
+        if (lastError != ERROR_FILE_NOT_FOUND)
         {
             // 想定しないエラー
 
-            traceW(L"fault: CreateFileW lerr=%lu", lerr);
-            return false;
+            traceW(L"fault: CreateFileW lerr=%lu", lastError);
+            return FspNtStatusFromWin32(lastError);
         }
 
         traceW(L"not exists: local");
@@ -352,10 +355,10 @@ bool AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
 
         if (hFile.invalid())
         {
-            lerr = ::GetLastError();
-            traceW(L"fault: CreateFileW lerr=%lu", lerr);
+            lastError = ::GetLastError();
+            traceW(L"fault: CreateFileW lerr=%lu", lastError);
 
-            return false;
+            return FspNtStatusFromWin32(lastError);
         }
 
         // 更新日時を同期
@@ -364,16 +367,17 @@ bool AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
 
         if (!hFile.setFileTime(remoteInfo.CreationTime, remoteInfo.LastWriteTime))
         {
-            lerr = ::GetLastError();
-            traceW(L"fault: setFileTime lerr=%lu", lerr);
+            lastError = ::GetLastError();
+            traceW(L"fault: setFileTime lerr=%lu", lastError);
 
-            return false;
+            return FspNtStatusFromWin32(lastError);
         }
 
-        if (!HandleToFileInfo(hFile.handle(), &localInfo))
+        ntstatus = GetFileInfoInternal(hFile.handle(), &localInfo);
+        if (!NT_SUCCESS(ntstatus))
         {
-            traceW(L"fault: HandleToFileInfo");
-            return false;
+            traceW(L"fault: GetFileInfoInternal");
+            return ntstatus;
         }
     }
 
@@ -387,7 +391,7 @@ bool AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
 
     *pNeedDownload = needDownload;
 
-    return true;
+    return STATUS_SUCCESS;
 }
 
 // EOF

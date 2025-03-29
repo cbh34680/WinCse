@@ -34,11 +34,6 @@ private:
 	WinCseLib::FileHandle mRefFile;
 	WinCseLib::FileHandle mRefDir;
 
-	NTSTATUS FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCTL_FILE_INFO* pFileInfo);
-
-	NTSTATUS HandleToInfo(CALLER_ARG HANDLE handle, PUINT32 PFileAttributes /* nullable */,
-		PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize /* nullable */);
-
 	struct ResourceSweeper
 	{
 		WinCse* mThat;
@@ -53,6 +48,17 @@ private:
 	}
 	mResourceSweeper;
 
+	enum class FileNameType
+	{
+		RootDirectory,
+		DirectoryObject,
+		FileObject,
+		Bucket,
+	};
+	NTSTATUS getFileInfoByName(CALLER_ARG const wchar_t* fileName, FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pType /* nullable */, WinCseLib::ObjectKey* pObjKey /* nullable */);
+
+	NTSTATUS FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCTL_FILE_INFO* pFileInfo);
+
 protected:
 	bool isFileNameIgnored(const std::wstring& FileName);
 
@@ -64,7 +70,7 @@ public:
 	~WinCse();
 
 	// WinFsp Ç©ÇÁåƒÇ—èoÇ≥ÇÍÇÈä÷êî
-	bool PreCreateFilesystem(const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
+	bool PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
 	bool OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
 	void OnSvcStop() override;
 

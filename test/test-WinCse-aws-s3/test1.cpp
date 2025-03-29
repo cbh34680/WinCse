@@ -151,7 +151,7 @@ int test1(int argc, wchar_t** argv)
 
         FSP_FSCTL_VOLUME_PARAMS vp{ };
 
-        cs->PreCreateFilesystem(argv[2], &vp);
+        cs->PreCreateFilesystem(nullptr, argv[2], &vp);
 
         test1_1(cs);
 

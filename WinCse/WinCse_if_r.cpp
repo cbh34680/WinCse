@@ -1,154 +1,8 @@
 #include "WinCseLib.h"
 #include "WinCse.hpp"
-#include <sstream>
-#include <filesystem>
 
 using namespace WinCseLib;
 
-
-struct ListObjectsTask : public IOnDemandTask
-{
-	IgnoreDuplicates getIgnoreDuplicates() const noexcept override { return IgnoreDuplicates::Yes; }
-	Priority getPriority() const noexcept override { return Priority::Low; }
-
-	ICSDevice* mCSDevice;
-	const ObjectKey mObjectKey;
-
-	ListObjectsTask(ICSDevice* arg, const ObjectKey& argObjKey) :
-		mCSDevice(arg), mObjectKey(argObjKey) { }
-
-	std::wstring synonymString() const noexcept override
-	{
-		std::wstringstream ss;
-		ss << L"ListObjectsTask; ";
-		ss << mObjectKey.bucket();
-		ss << "; ";
-		ss << mObjectKey.key();
-		
-		return ss.str();
-	}
-
-	void run(CALLER_ARG0) override
-	{
-		NEW_LOG_BLOCK();
-
-		traceW(L"Request ListObjects");
-
-		mCSDevice->listObjects(CONT_CALLER mObjectKey, nullptr);
-	}
-};
-
-NTSTATUS WinCse::DoGetSecurityByName(
-	const wchar_t* FileName, PUINT32 PFileAttributes,
-	PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize)
-{
-	StatsIncr(DoGetSecurityByName);
-
-	NEW_LOG_BLOCK();
-	APP_ASSERT(FileName);
-	APP_ASSERT(FileName[0] == L'\\');
-
-	traceW(L"FileName: \"%s\"", FileName);
-
-	if (isFileNameIgnored(FileName))
-	{
-		// "desktop.ini" などは無視させる
-
-		traceW(L"ignore pattern");
-		return STATUS_OBJECT_NAME_NOT_FOUND;
-	}
-
-	bool isDir = false;
-	bool isFile = false;
-
-	if (wcscmp(FileName, L"\\") == 0)
-	{
-		// "\" へのアクセスは参照用ディレクトリの情報を提供
-
-		isDir = true;
-		traceW(L"detect directory(1)");
-	}
-	else
-	{
-		// ここを通過するときは FileName が "\bucket\key" のようになるはず
-
-		const ObjectKey objKey{ ObjectKey::fromWinPath(FileName) };
-		if (!objKey.valid())
-		{
-			traceW(L"illegal FileName: \"%s\"", FileName);
-			return STATUS_OBJECT_NAME_INVALID;
-		}
-
-		if (objKey.hasKey())
-		{
-			// "\bucket\dir" のパターン
-
-			if (mCSDevice->headObject(START_CALLER objKey.toDir(), nullptr))
-			{
-				// ディレクトリを採用
-
-				isDir = true;
-				traceW(L"detect directory(2)");
-
-				// ディレクトリ内のオブジェクトを先読みし、キャッシュを作成しておく
-				// 優先度は低く、無視できる
-
-				getWorker(L"delayed")->addTask
-				(
-					START_CALLER
-					new ListObjectsTask{ mCSDevice, objKey.toDir() }
-				);
-			}
-			else
-			{
-				// "\bucket\dir\file.txt" のパターン
-
-				if (mCSDevice->headObject(START_CALLER objKey, nullptr))
-				{
-					// ファイルを採用
-
-					isFile = true;
-					traceW(L"detect file");
-				}
-			}
-		}
-		else // !objKey.HasKey
-		{
-			// "\bucket" のパターン
-
-			if (mCSDevice->headBucket(START_CALLER objKey.bucket()))
-			{
-				// ディレクトリを採用
-
-				isDir = true;
-				traceW(L"detect directory(3)");
-
-				// ディレクトリ内のオブジェクトを先読みし、キャッシュを作成しておく
-				// 優先度は低く、無視できる
-
-				getWorker(L"delayed")->addTask
-				(
-					START_CALLER
-					new ListObjectsTask
-					{
-						mCSDevice,
-						ObjectKey{ objKey.bucket(), L"" }
-					}
-				);
-			}
-		}
-	}
-
-	if (!isDir && !isFile)
-	{
-		traceW(L"not found");
-		return STATUS_OBJECT_NAME_NOT_FOUND;
-	}
-
-	const HANDLE handle = isFile ? mRefFile.handle() : mRefDir.handle();
-
-	return HandleToInfo(START_CALLER handle, PFileAttributes, SecurityDescriptor, PSecurityDescriptorSize);
-}
 
 NTSTATUS WinCse::DoGetFileInfo(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO* FileInfo)
 {
@@ -170,17 +24,14 @@ NTSTATUS WinCse::DoGetSecurity(PTFS_FILE_CONTEXT* FileContext,
 	StatsIncr(DoGetSecurity);
 
 	NEW_LOG_BLOCK();
-	APP_ASSERT(FileContext && SecurityDescriptor && PSecurityDescriptorSize);
+	APP_ASSERT(FileContext);
 
 	traceW(L"FileName: \"%s\"", FileContext->FileName);
-	traceW(L"FileAttributes: %u", FileContext->FileInfo.FileAttributes);
 
 	const bool isDir = FA_IS_DIR(FileContext->FileInfo.FileAttributes);
-	traceW(L"isDir=%s", BOOL_CSTRW(isDir));
+	const HANDLE Handle = isDir ? mRefDir.handle() : mRefFile.handle();
 
-	const HANDLE handle = isDir ? mRefDir.handle() : mRefFile.handle();
-
-	return HandleToInfo(START_CALLER handle, nullptr, SecurityDescriptor, PSecurityDescriptorSize);
+	return HandleToSecurityInfo(Handle, SecurityDescriptor, PSecurityDescriptorSize);
 }
 
 NTSTATUS WinCse::DoRead(PTFS_FILE_CONTEXT* FileContext,
@@ -239,7 +90,7 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 		{
 			traceW(L"not fouund/1");
 
-			return STATUS_OBJECT_NAME_NOT_FOUND;
+			return STATUS_OBJECT_NAME_INVALID;
 		}
 
 		APP_ASSERT(!dirInfoList.empty());
@@ -264,7 +115,7 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 		{
 			traceW(L"not found/2");
 
-			return STATUS_OBJECT_NAME_NOT_FOUND;
+			return STATUS_OBJECT_NAME_INVALID;
 		}
 
 		APP_ASSERT(!dirInfoList.empty());
@@ -281,6 +132,11 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 		{
 			for (const auto& dirInfo: dirInfoList)
 			{
+				if (isFileNameIgnored(dirInfo->FileNameBuf))
+				{
+					continue;
+				}
+
 				if (pRe)
 				{
 					if (!std::regex_match(dirInfo->FileNameBuf, *pRe))
