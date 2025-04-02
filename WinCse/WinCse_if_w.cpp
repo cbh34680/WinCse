@@ -4,6 +4,10 @@
 
 using namespace WinCseLib;
 
+// ---------------------------------------------------------------------------
+//
+// 既にファイルが開いている状態のもの
+//
 
 NTSTATUS WinCse::DoSetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize, BOOLEAN SetAllocationSize,
 	FSP_FSCTL_FILE_INFO *FileInfo)
@@ -13,7 +17,7 @@ NTSTATUS WinCse::DoSetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize, B
 	APP_ASSERT(FileContext && FileInfo);
 	APP_ASSERT(!FA_IS_DIR(FileContext->FileInfo.FileAttributes));		// ファイルのみ
 
-	traceW(L"NewSize=%llu SetAllocationSize=%s", NewSize, BOOL_CSTRW(SetAllocationSize));
+	traceW(L"FileName=%s, NewSize=%llu, SetAllocationSize=%s", FileContext->FileName, NewSize, BOOL_CSTRW(SetAllocationSize));
 
 	CSDeviceContext* ctx = (CSDeviceContext*)FileContext->UParam;
 	APP_ASSERT(ctx);
@@ -58,6 +62,8 @@ NTSTATUS WinCse::DoSetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize, B
 		}
 	}
 
+	ctx->mFlags |= CSDCTX_FLAGS_SET_FILE_SIZE;
+
 	return GetFileInfoInternal(Handle, FileInfo);
 }
 
@@ -67,6 +73,8 @@ NTSTATUS WinCse::DoFlush(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO *Fi
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext && FileInfo);
 	APP_ASSERT(!FA_IS_DIR(FileContext->FileInfo.FileAttributes));		// ファイルのみ
+
+	traceW(L"FileName=%s", FileContext->FileName);
 
 	CSDeviceContext* ctx = (CSDeviceContext*)FileContext->UParam;
 	APP_ASSERT(ctx);
@@ -92,7 +100,7 @@ NTSTATUS WinCse::DoFlush(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO *Fi
 
 // ---------------------------------------------------------------------------
 //
-// getHandleFromContext() が必要なもの
+// CreateFile() が必要なもの
 //
 
 NTSTATUS WinCse::DoOverwrite(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttributes,
@@ -103,17 +111,17 @@ NTSTATUS WinCse::DoOverwrite(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttribut
 	APP_ASSERT(FileContext && FileInfo);
 	APP_ASSERT(!FA_IS_DIR(FileContext->FileInfo.FileAttributes));		// ファイルのみ
 
-	traceW(L"FileAttributes=%u ReplaceFileAttributes=%s AllocationSize=%llu",
-		FileAttributes, BOOL_CSTRW(ReplaceFileAttributes), AllocationSize);
+	traceW(L"FileName=%s, FileAttributes=%u, ReplaceFileAttributes=%s, AllocationSize=%llu",
+		FileContext->FileName, FileAttributes, BOOL_CSTRW(ReplaceFileAttributes), AllocationSize);
 
 	CSDeviceContext* ctx = (CSDeviceContext*)FileContext->UParam;
 	APP_ASSERT(ctx);
 	APP_ASSERT(ctx->isFile());
 
-	//
 	// ローカルにキャッシュが存在しない場合もあるので、DoDelete() と同じで
 	// 他とは異なり、ここでは CREATE_ALWAYS になる
 	//
+	// --> 上書きなので、既存データを意識する必要がない
 
 	HANDLE Handle = INVALID_HANDLE_VALUE;
 	NTSTATUS ntstatus = mCSDevice->getHandleFromContext(START_CALLER ctx, 0, CREATE_ALWAYS, &Handle);
@@ -181,60 +189,11 @@ NTSTATUS WinCse::DoWrite(PTFS_FILE_CONTEXT* FileContext, PVOID Buffer, UINT64 Of
 	APP_ASSERT(FileContext && Buffer && PBytesTransferred && FileInfo);
 	APP_ASSERT(!FA_IS_DIR(FileContext->FileInfo.FileAttributes));		// ファイルのみ
 
-	traceW(L"Offset=%llu Length=%lu WriteToEndOfFile=%s ConstrainedIo=%s",
-		Offset, Length, BOOL_CSTRW(WriteToEndOfFile), BOOL_CSTRW(ConstrainedIo));
+	traceW(L"FileName=%s, Offset=%llu, Length=%lu, WriteToEndOfFile=%s, ConstrainedIo=%s",
+		FileContext->FileName, Offset, Length, BOOL_CSTRW(WriteToEndOfFile), BOOL_CSTRW(ConstrainedIo));
 
-	CSDeviceContext* ctx = (CSDeviceContext*)FileContext->UParam;
-	APP_ASSERT(ctx);
-	APP_ASSERT(ctx->isFile());
-
-	HANDLE Handle = INVALID_HANDLE_VALUE;
-	NTSTATUS ntstatus = mCSDevice->getHandleFromContext(START_CALLER ctx, 0, OPEN_EXISTING, &Handle);
-	if (!NT_SUCCESS(ntstatus))
-	{
-		traceW(L"fault: getHandleFromContext");
-		return ntstatus;
-	}
-
-	if (ConstrainedIo)
-	{
-		LARGE_INTEGER FileSize;
-
-		if (!::GetFileSizeEx(Handle, &FileSize))
-		{
-			const auto lerr = ::GetLastError();
-			traceW(L"fault: GetFileSizeEx lerr=%lu", lerr);
-
-			return FspNtStatusFromWin32(lerr);
-		}
-
-		if (Offset >= (UINT64)FileSize.QuadPart)
-		{
-			return STATUS_SUCCESS;
-		}
-
-		if (Offset + Length > (UINT64)FileSize.QuadPart)
-		{
-			Length = (ULONG)((UINT64)FileSize.QuadPart - Offset);
-		}
-	}
-
-	OVERLAPPED Overlapped{};
-
-	Overlapped.Offset = (DWORD)Offset;
-	Overlapped.OffsetHigh = (DWORD)(Offset >> 32);
-
-	if (!::WriteFile(Handle, Buffer, Length, PBytesTransferred, &Overlapped))
-	{
-		const auto lerr = ::GetLastError();
-		traceW(L"fault: WriteFile lerr=%lu", lerr);
-
-		return FspNtStatusFromWin32(lerr);
-	}
-
-	ctx->mFlags |= CSDCTX_FLAGS_WRITE;
-
-	return GetFileInfoInternal(Handle, FileInfo);
+	return mCSDevice->writeObject(START_CALLER (CSDeviceContext*)FileContext->UParam,
+		Buffer, Offset, Length, WriteToEndOfFile, ConstrainedIo, PBytesTransferred, FileInfo);
 }
 
 // ---------------------------------------------------------------------------
@@ -249,7 +208,7 @@ NTSTATUS WinCse::DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOO
 	APP_ASSERT(FileContext);
 	APP_ASSERT(!mReadonlyVolume);			// おそらくシェルで削除操作が止められている
 
-	traceW(L"FileName=\"%s\" DeleteFile=%s", FileName, BOOL_CSTRW(argDeleteFile));
+	traceW(L"FileName=%s, DeleteFile=%s", FileName, BOOL_CSTRW(argDeleteFile));
 
 	CSDeviceContext* ctx = (CSDeviceContext*)FileContext->UParam;
 	APP_ASSERT(ctx);
@@ -266,22 +225,6 @@ NTSTATUS WinCse::DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOO
 			return STATUS_OBJECT_NAME_INVALID;
 		}
 
-#if DELETE_ONLY_EMPTY_DIR
-		const auto it = std::find_if(dirInfoList.begin(), dirInfoList.end(), [](const auto& dirInfo)
-		{
-			return wcscmp(dirInfo->FileNameBuf, L".") != 0 && wcscmp(dirInfo->FileNameBuf, L"..") != 0;
-		});
-
-		if (it != dirInfoList.end())
-		{
-			// 空のディレクトリ以外は削除不可
-
-			traceW(L"dir not empty");
-			return STATUS_CANNOT_DELETE;
-			//return STATUS_DIRECTORY_NOT_EMPTY;
-		}
-
-#else
 		const auto it = std::find_if(dirInfoList.begin(), dirInfoList.end(), [](const auto& dirInfo)
 		{
 			return wcscmp(dirInfo->FileNameBuf, L".") != 0
@@ -297,12 +240,9 @@ NTSTATUS WinCse::DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOO
 			return STATUS_CANNOT_DELETE;
 			//return STATUS_DIRECTORY_NOT_EMPTY;
 		}
-
-#endif
 	}
 	else if (ctx->isFile())
 	{
-		//
 		// キャッシュ・ファイルを削除
 		// 
 		// remove() などで直接削除するのではなく、削除フラグを設定したファイルを作成し
@@ -310,7 +250,6 @@ NTSTATUS WinCse::DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOO
 		//
 		// このため、キャッシュ・ファイルが存在しない場合は作成しなければ
 		// ならないので、他とは異なり OPEN_ALWAYS になっている
-		//
 
 		HANDLE Handle = INVALID_HANDLE_VALUE;
 		NTSTATUS ntstatus = mCSDevice->getHandleFromContext(START_CALLER ctx, 0, OPEN_ALWAYS, &Handle);
@@ -350,8 +289,8 @@ NTSTATUS WinCse::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, const UINT32 arg
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext && FileInfo);
 
-	traceW(L"FileAttributes=%u CreationTime=%llu LastAccessTime=%llu LastWriteTime=%llu",
-		argFileAttributes, argCreationTime, argLastAccessTime, argLastWriteTime);
+	traceW(L"FileName=%s, FileAttributes=%u, CreationTime=%llu, LastAccessTime=%llu, LastWriteTime=%llu",
+		FileContext->FileName, argFileAttributes, argCreationTime, argLastAccessTime, argLastWriteTime);
 
 	CSDeviceContext* ctx = (CSDeviceContext*)FileContext->UParam;
 	APP_ASSERT(ctx);
@@ -360,6 +299,8 @@ NTSTATUS WinCse::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, const UINT32 arg
 	if (ctx->isFile())
 	{
 		// ローカルにキャッシュが存在している場合のみ属性を変更する
+		//
+		// --> robocopy /COPY:T 対策
 
 		HANDLE Handle = INVALID_HANDLE_VALUE;
 		NTSTATUS ntstatus = mCSDevice->getHandleFromContext(START_CALLER ctx, 0, OPEN_EXISTING, &Handle);
@@ -374,9 +315,7 @@ NTSTATUS WinCse::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, const UINT32 arg
 			else if (0 == FileAttributes)
 				FileAttributes = FILE_ATTRIBUTE_NORMAL;
 
-#if SET_ATTRIBUTES_LOCAL_FILE
-			BasicInfo.FileAttributes = FileAttributes;
-#endif
+			//BasicInfo.FileAttributes = FileAttributes;
 			BasicInfo.CreationTime.QuadPart = argCreationTime;
 			BasicInfo.LastAccessTime.QuadPart = argLastAccessTime;
 			BasicInfo.LastWriteTime.QuadPart = argLastWriteTime;
@@ -389,10 +328,9 @@ NTSTATUS WinCse::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, const UINT32 arg
 			ntstatus = GetFileInfoInternal(Handle, FileInfo);
 			if (!NT_SUCCESS(ntstatus))
 			{
+				traceW(L"fault: GetFileInfoInternal");
 				return ntstatus;
 			}
-
-			ctx->mFlags |= CSDCTX_FLAGS_SET_BASIC_INFO;
 
 			return STATUS_SUCCESS;
 		}
@@ -406,7 +344,13 @@ NTSTATUS WinCse::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, const UINT32 arg
 		}
 	}
 
-	return GetFileInfoInternal(ctx->isFile() ? mRefFile.handle() : mRefDir.handle(), FileInfo);
+	// 本当は STATUS_INVALID_DEVICE_REQUEST としたいが、robocopy が失敗するので
+	// 全て無視する
+
+	const bool isDir = FA_IS_DIR(FileContext->FileInfo.FileAttributes);
+	const HANDLE Handle = isDir ? mRefDir.handle() : mRefFile.handle();
+
+	return GetFileInfoInternal(Handle, FileInfo);
 }
 
 NTSTATUS WinCse::DoSetSecurity(PTFS_FILE_CONTEXT* FileContext,
@@ -416,8 +360,11 @@ NTSTATUS WinCse::DoSetSecurity(PTFS_FILE_CONTEXT* FileContext,
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext && ModificationDescriptor);
 
+	traceW(L"FileName=%s", FileContext->FileName);
+
+	return STATUS_ACCESS_DENIED;
 	//return STATUS_INVALID_DEVICE_REQUEST;
-	return STATUS_SUCCESS;
+	//return STATUS_SUCCESS;
 }
 
 NTSTATUS WinCse::DoRename(PTFS_FILE_CONTEXT* FileContext,
@@ -426,7 +373,7 @@ NTSTATUS WinCse::DoRename(PTFS_FILE_CONTEXT* FileContext,
 	StatsIncr(DoRename);
 	NEW_LOG_BLOCK();
 
-	traceW(L"FileName=\"%s\" NewFileName=\"%s\" ReplaceIfExists=%s",
+	traceW(L"FileName=%s, NewFileName=%s, ReplaceIfExists=%s",
 		FileName, NewFileName, BOOL_CSTRW(ReplaceIfExists));
 
 	return STATUS_INVALID_DEVICE_REQUEST;

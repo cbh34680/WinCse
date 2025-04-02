@@ -68,9 +68,9 @@ static bool decryptIfNecessary(const std::string& secureKeyStr, std::string* pIn
 
                 // 入力が '\0' 終端であることを前提に char* から std::string を初期化する
 
-                str = (char*)decrypted.data();
-
-                *pInOut = std::move(str);
+                //str = (char*)decrypted.data();
+                //*pInOut = std::move(str);
+                *pInOut = std::string((char*)decrypted.data());
             }
         }
     }
@@ -121,7 +121,7 @@ bool AwsS3::PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir,
         const std::wstring confPath{ workDir + L'\\' + CONFIGFILE_FNAME };
         const std::string confPathA{ WC2MB(confPath) };
 
-        traceW(L"Detect credentials file path is %s", confPath.c_str());
+        //traceW(L"Detect credentials file path is %s", confPath.c_str());
 
         const wchar_t* iniSection = mIniSection.c_str();
         const auto iniSectionA{ WC2MB(mIniSection) };
@@ -180,24 +180,11 @@ bool AwsS3::PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir,
             }
         }
 
-        // 最大表示バケット数
-
-        const int maxBuckets = (int)::GetPrivateProfileIntW(iniSection, L"max_buckets", -1, confPath.c_str());
-
-        // 最大表示オブジェクト数
-
-        const int maxObjects = (int)::GetPrivateProfileIntW(iniSection, L"max_objects", 1000, confPath.c_str());
-
         // 読み取り専用
 
-        const bool readonly = ::GetPrivateProfileIntW(iniSection, L"readonly", 0, confPath.c_str()) != 0;
-        if (readonly)
+        if (VolumeParams->ReadOnlyVolume)
         {
             mDefaultFileAttributes |= FILE_ATTRIBUTE_READONLY;
-
-            // ボリュームの設定
-
-            VolumeParams->ReadOnlyVolume = 1;
         }
 
         // 属性参照用ファイル/ディレクトリの準備
@@ -286,6 +273,19 @@ bool AwsS3::PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir,
             return false;
         }
 
+        // 調整パラメータ
+
+        const auto* confPathCstr = confPath.c_str();
+
+        mConfig.maxDisplayBuckets       = GetIniIntW(confPathCstr, iniSection, L"max_display_buckets",         0,   0, INT_MAX - 1);
+        mConfig.maxDisplayObjects       = GetIniIntW(confPathCstr, iniSection, L"max_display_objects",      1000,   0, INT_MAX - 1);
+        mConfig.bucketCacheExpiryMin    = GetIniIntW(confPathCstr, iniSection, L"bucket_cache_expiry_min",    20,   1,        1440);
+        mConfig.objectCacheExpiryMin    = GetIniIntW(confPathCstr, iniSection, L"object_cache_expiry_min",     3,   1,          60);
+        mConfig.cacheFileRetentionMin   = GetIniIntW(confPathCstr, iniSection, L"cache_file_retention_min",  360,   1,       10080);
+
+        mConfig.deleteAfterUpload       = ::GetPrivateProfileIntW(iniSection, L"delete_after_upload",   0, confPathCstr) != 0;
+        mConfig.strictFileTimestamp     = ::GetPrivateProfileIntW(iniSection, L"strict_file_timestamp", 0, confPathCstr) != 0;
+
         // メンバに保存して終了
 
         mWinFspService = Service;
@@ -293,8 +293,6 @@ bool AwsS3::PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir,
         mWorkDir = workDir;
         mCacheDataDir = cacheDataDir;
         mCacheReportDir = cacheReportDir;
-        mMaxBuckets = maxBuckets;
-        mMaxObjects = maxObjects;
         mRegion = MB2WC(str_region);
 
         ret = true;

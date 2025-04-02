@@ -11,7 +11,10 @@ NTSTATUS WinCse::DoGetFileInfo(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_IN
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext && FileInfo);
 
-	traceW(L"FileName: \"%s\"", FileContext->FileName);
+	if (wcscmp(FileContext->FileName, L"\\") != 0)
+	{
+		traceW(L"FileName=%s", FileContext->FileName);
+	}
 
 	*FileInfo = FileContext->FileInfo;
 
@@ -26,7 +29,10 @@ NTSTATUS WinCse::DoGetSecurity(PTFS_FILE_CONTEXT* FileContext,
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext);
 
-	traceW(L"FileName: \"%s\"", FileContext->FileName);
+	if (wcscmp(FileContext->FileName, L"\\") != 0)
+	{
+		traceW(L"FileName=%s", FileContext->FileName);
+	}
 
 	const bool isDir = FA_IS_DIR(FileContext->FileInfo.FileAttributes);
 	const HANDLE Handle = isDir ? mRefDir.handle() : mRefFile.handle();
@@ -42,9 +48,8 @@ NTSTATUS WinCse::DoRead(PTFS_FILE_CONTEXT* FileContext,
 	APP_ASSERT(FileContext && Buffer && PBytesTransferred);
 	APP_ASSERT(!FA_IS_DIR(FileContext->FileInfo.FileAttributes));		// ファイルのみ
 
-	traceW(L"FileName: \"%s\"", FileContext->FileName);
-	traceW(L"FileAttributes: %u", FileContext->FileInfo.FileAttributes);
-	traceW(L"Size=%llu Offset=%llu", FileContext->FileInfo.FileSize, Offset);
+	traceW(L"FileName=%s, FileAttributes=%u, Size=%llu, Offset=%llu",
+		FileContext->FileName, FileContext->FileInfo.FileAttributes, FileContext->FileInfo.FileSize, Offset);
 
 	//APP_ASSERT(Offset <= FileContext->FileInfo.FileSize);
 
@@ -62,7 +67,10 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext && Buffer && PBytesTransferred);
 
-	traceW(L"FileName: \"%s\"", FileContext->FileName);
+	if (wcscmp(FileContext->FileName, L"\\") != 0)
+	{
+		traceW(L"FileName=%s", FileContext->FileName);
+	}
 
 	APP_ASSERT(FA_IS_DIR(FileContext->FileInfo.FileAttributes));
 
@@ -86,7 +94,7 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 	{
 		// "\" へのアクセスはバケット一覧を提供
 
-		if (!mCSDevice->listBuckets(START_CALLER &dirInfoList, {}))
+		if (!mCSDevice->listBuckets(START_CALLER &dirInfoList))
 		{
 			traceW(L"not fouund/1");
 
@@ -94,7 +102,7 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 		}
 
 		APP_ASSERT(!dirInfoList.empty());
-		traceW(L"bucket count: %zu", dirInfoList.size());
+		//traceW(L"bucket count: %zu", dirInfoList.size());
 	}
 	else
 	{
@@ -103,7 +111,7 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 		const ObjectKey objKey{ ObjectKey::fromWinPath(FileName) };
 		if (!objKey.valid())
 		{
-			traceW(L"illegal FileName: \"%s\"", FileName);
+			traceW(L"invalid FileName=%s", FileName);
 
 			return STATUS_OBJECT_NAME_INVALID;
 		}
@@ -119,7 +127,7 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 		}
 
 		APP_ASSERT(!dirInfoList.empty());
-		traceW(L"object count: %zu", dirInfoList.size());
+		//traceW(L"object count: %zu", dirInfoList.size());
 	}
 
 	if (!dirInfoList.empty())
@@ -132,7 +140,7 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 		{
 			for (const auto& dirInfo: dirInfoList)
 			{
-				if (isFileNameIgnored(dirInfo->FileNameBuf))
+				if (shouldIgnoreFileName(dirInfo->FileNameBuf))
 				{
 					continue;
 				}

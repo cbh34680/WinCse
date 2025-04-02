@@ -24,9 +24,6 @@
     <ClCompile Include="AwsS3_obj_list.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="AwsS3_obj_r_simple.cpp">
-      <Filter>ソース ファイル</Filter>
-    </ClCompile>
     <ClCompile Include="AwsS3_svc.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
@@ -45,16 +42,25 @@
     <ClCompile Include="AwsS3_svc_init.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="AwsS3_obj_r_multipart.cpp">
-      <Filter>ソース ファイル</Filter>
-    </ClCompile>
     <ClCompile Include="AwsS3_obj_open.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="AwsS3_obj_read.cpp">
+    <ClCompile Include="AwsS3_obj_rw.cpp.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="AwsS3_obj_w.cpp.cpp">
+    <ClCompile Include="AwsS3_obj_clist.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="AwsS3_schedule.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="AwsS3_obj_prepare_m.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="AwsS3_obj_prepare_s.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="AwsS3_obj_prepare.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
   </ItemGroup>

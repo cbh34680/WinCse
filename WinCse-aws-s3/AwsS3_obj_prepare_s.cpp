@@ -1,34 +1,21 @@
 #include "AwsS3.hpp"
-#include <filesystem>
-
 
 using namespace WinCseLib;
 
 
-//
-// WinFsp の Read() により呼び出され、Offset から Lengh のファイル・データを返却する
-// ここでは最初に呼び出されたときに s3 からファイルをダウンロードしてキャッシュとした上で
-// そのファイルをオープンし、その後は HANDLE を使いまわす
-//
-NTSTATUS AwsS3::readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
-    PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred)
+NTSTATUS AwsS3::prepareLocalFile_Simple(CALLER_ARG OpenContext* ctx)
 {
     NEW_LOG_BLOCK();
 
-    OpenContext* ctx = dynamic_cast<OpenContext*>(argCSDeviceContext);
-    APP_ASSERT(ctx);
-    APP_ASSERT(ctx->isFile());
-
-    traceW(L"mObjKey=%s", ctx->mObjKey.c_str());
+    //traceW(L"mObjKey=%s", ctx->mObjKey.c_str());
 
     const auto remotePath{ ctx->mObjKey.str() };
 
-    traceW(L"ctx=%p HANDLE=%p, Offset=%llu Length=%lu remotePath=%s",
-        ctx, ctx->mFile.handle(), Offset, Length, remotePath.c_str());
+    //traceW(L"ctx=%p HANDLE=%p, Offset=%llu Length=%lu remotePath=%s", ctx, ctx->mFile.handle(), Offset, Length, remotePath.c_str());
 
     // ファイル名への参照を登録
 
-    UnprotectedShare<CreateFileShared> unsafeShare(&mGuardCreateFile, remotePath);  // 名前への参照を登録
+    UnprotectedShare<PrepareLocalCacheFileShared> unsafeShare(&mGuardPrepareLocalCache, remotePath);  // 名前への参照を登録
     {
         const auto safeShare{ unsafeShare.lock() };                                 // 名前のロック
 
@@ -36,8 +23,7 @@ NTSTATUS AwsS3::readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDe
         {
             // AwsS3::open() 後の初回の呼び出し
 
-            traceW(L"init mLocalFile: HANDLE=%p, Offset=%llu Length=%lu remotePath=%s",
-                ctx->mFile.handle(), Offset, Length, remotePath.c_str());
+            //traceW(L"init mLocalFile: HANDLE=%p, Offset=%llu Length=%lu remotePath=%s", ctx->mFile.handle(), Offset, Length, remotePath.c_str());
 
             std::wstring localPath;
 
@@ -52,14 +38,14 @@ NTSTATUS AwsS3::readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDe
 
             bool needDownload = false;
 
-            NTSTATUS ntstatus = syncFileAttributes(CONT_CALLER ctx->mObjKey, ctx->mFileInfo, localPath, &needDownload);
+            NTSTATUS ntstatus = syncFileAttributes(CONT_CALLER ctx->mFileInfo, localPath, &needDownload);
             if (!NT_SUCCESS(ntstatus))
             {
                 traceW(L"fault: syncFileAttributes");
                 return ntstatus;
             }
 
-            traceW(L"needDownload: %s", BOOL_CSTRW(needDownload));
+            //traceW(L"needDownload: %s", BOOL_CSTRW(needDownload));
 
             if (needDownload)
             {
@@ -74,11 +60,11 @@ NTSTATUS AwsS3::readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDe
                     0                   // Length
                 };
 
-                const auto bytesWritten = this->prepareLocalCacheFile(CONT_CALLER ctx->mObjKey, outputParams);
+                const auto bytesWritten = this->getObjectAndWriteToFile(CONT_CALLER ctx->mObjKey, outputParams);
 
                 if (bytesWritten < 0)
                 {
-                    traceW(L"fault: prepareLocalCacheFile_Simple bytesWritten=%lld", bytesWritten);
+                    traceW(L"fault: getObjectAndWriteToFile_Simple bytesWritten=%lld", bytesWritten);
                     //return STATUS_IO_DEVICE_ERROR;
                     return FspNtStatusFromWin32(ERROR_IO_DEVICE);
                 }
@@ -87,6 +73,8 @@ NTSTATUS AwsS3::readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDe
             {
                 if (ctx->mFileInfo.FileSize == 0)
                 {
+                    // syncFileAttributes() でトランケート済
+
                     //return STATUS_END_OF_FILE;
                     return FspNtStatusFromWin32(ERROR_HANDLE_EOF);
                 }
@@ -110,18 +98,6 @@ NTSTATUS AwsS3::readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDe
 
             if (needDownload)
             {
-#if SET_ATTRIBUTES_LOCAL_FILE
-                // ファイル属性を同期
-
-                if (!ctx->mFile.setBasicInfo(ctx->mFileInfo))
-                {
-                    const auto lerr = ::GetLastError();
-                    traceW(L"fault: setBasicInfo lerr=%lu", lerr);
-
-                    return FspNtStatusFromWin32(lerr);
-                }
-
-#else
                 // ファイル日付の同期
 
                 if (!ctx->mFile.setFileTime(ctx->mFileInfo))
@@ -131,8 +107,6 @@ NTSTATUS AwsS3::readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDe
 
                     return FspNtStatusFromWin32(lerr);
                 }
-
-#endif
             }
             else
             {
@@ -170,24 +144,6 @@ NTSTATUS AwsS3::readObject_Simple(CALLER_ARG WinCseLib::CSDeviceContext* argCSDe
     }   // 名前のロックを解除 (safeShare の生存期間)
 
     APP_ASSERT(ctx->mFile.valid());
-
-    // Offset, Length によりファイルを読む
-
-    OVERLAPPED Overlapped{};
-
-    Overlapped.Offset = (DWORD)Offset;
-    Overlapped.OffsetHigh = (DWORD)(Offset >> 32);
-
-    if (!::ReadFile(ctx->mFile.handle(), Buffer, Length, PBytesTransferred, &Overlapped))
-    {
-        const auto lerr = ::GetLastError();
-        traceW(L"fault: ReadFile lerr=%lu", lerr);
-
-        return FspNtStatusFromWin32(lerr);
-    }
-
-    traceW(L"success: HANDLE=%p, Offset=%llu Length=%lu, PBytesTransferred=%lu, diffOffset=%llu",
-        ctx->mFile.handle(), Offset, Length, *PBytesTransferred);
 
     return STATUS_SUCCESS;
 }

@@ -30,7 +30,7 @@ extern "C"
 static void test1_1(ICSDevice* cs)
 {
     DirInfoListType buckets;
-    if (cs->listBuckets(START_CALLER &buckets, {}))
+    if (cs->listBuckets(START_CALLER &buckets))
     {
         for (const auto& bucket: buckets)
         {

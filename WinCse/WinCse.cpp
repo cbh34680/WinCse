@@ -5,6 +5,7 @@
 
 using namespace WinCseLib;
 
+static const wchar_t* const DEFAULT_IGNORE_PATTERNS = LR"(\b(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif)|\.DS_Store)$)";
 
 WinCse::WinCse(WINCSE_DRIVER_STATS* argStats,
 	const std::wstring& argTempDir, const std::wstring& argIniSection,
@@ -13,9 +14,8 @@ WinCse::WinCse(WINCSE_DRIVER_STATS* argStats,
 	mStats(argStats),
 	mTempDir(argTempDir), mIniSection(argIniSection),
 	mCSDevice(argCSDevice),
-	mMaxFileSize(-1),
 	mResourceSweeper(this),
-	mIgnoredFileNamePatterns{ LR"(\b(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif)|\.DS_Store)$)", std::regex_constants::icase }
+	mIgnoreFileNamePatterns{ DEFAULT_IGNORE_PATTERNS, std::regex_constants::icase }
 {
 	NEW_LOG_BLOCK();
 
@@ -38,17 +38,17 @@ WinCse::~WinCse()
 	traceW(L"all done.");
 }
 
-bool WinCse::isFileNameIgnored(const std::wstring& arg)
+bool WinCse::shouldIgnoreFileName(const std::wstring& arg)
 {
 	// desktop.ini などリクエストが増え過ぎるものは無視する
 
-	if (mIgnoredFileNamePatterns.mark_count() == 0)
+	if (mIgnoreFileNamePatterns.mark_count() == 0)
 	{
 		// 正規表現が設定されていない
 		return false;
 	}
 
-	return std::regex_search(arg, mIgnoredFileNamePatterns);
+	return std::regex_search(arg, mIgnoreFileNamePatterns);
 }
 
 //
@@ -86,10 +86,7 @@ static std::mutex gGuard;
 void WinCse::ResourceSweeper::add(PTFS_FILE_CONTEXT* FileContext)
 {
 	THREAD_SAFE();
-	NEW_LOG_BLOCK();
 	APP_ASSERT(mOpenAddrs.find(FileContext) == mOpenAddrs.end());
-
-	traceW(L"add address=%p", FileContext);
 
 	mOpenAddrs.insert(FileContext);
 }
@@ -97,11 +94,7 @@ void WinCse::ResourceSweeper::add(PTFS_FILE_CONTEXT* FileContext)
 void WinCse::ResourceSweeper::remove(PTFS_FILE_CONTEXT* FileContext)
 {
 	THREAD_SAFE();
-	NEW_LOG_BLOCK();
-	auto it{ mOpenAddrs.find(FileContext) };
-	APP_ASSERT(it != mOpenAddrs.end());
-
-	traceW(L"remove address=%p", FileContext);
+	APP_ASSERT(mOpenAddrs.find(FileContext) != mOpenAddrs.end());
 
 	mOpenAddrs.erase(FileContext);
 }

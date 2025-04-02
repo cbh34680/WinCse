@@ -12,11 +12,11 @@ CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
     StatsIncr(create);
     NEW_LOG_BLOCK();
 
-    traceW(L"argObjKey=%s", argObjKey.c_str());
+    //traceW(L"argObjKey=%s", argObjKey.c_str());
 
     const auto remotePath{ argObjKey.str() };
 
-    UnprotectedShare<CreateFileShared> unsafeShare(&mGuardCreateFile, remotePath);  // 名前への参照を登録
+    UnprotectedShare<PrepareLocalCacheFileShared> unsafeShare(&mGuardPrepareLocalCache, remotePath);  // 名前への参照を登録
     {
         const auto safeShare{ unsafeShare.lock() };                                 // 名前のロック
 
@@ -32,10 +32,11 @@ CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
 
             if (!GetCacheFilePath(mCacheDataDir, argObjKey.str(), &localPath))
             {
+                traceW(L"fault: GetCacheFilePath");
                 return nullptr;
             }
 
-            traceW(L"localPath=%s", localPath.c_str());
+            //traceW(L"localPath=%s", localPath.c_str());
 
             UINT32 FileAttributes = argFileAttributes;
             ULONG CreateFlags = 0;
@@ -82,7 +83,6 @@ CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
             if (!hFile.setFileTime(fileInfo))
             {
                 traceW(L"fault: setLocalTimeTime");
-
                 return nullptr;
             }
         }
@@ -128,19 +128,44 @@ void AwsS3::close(CALLER_ARG WinCseLib::CSDeviceContext* ctx)
     NEW_LOG_BLOCK();
     APP_ASSERT(ctx);
 
-    traceW(L"close mObjKey=%s", ctx->mObjKey.c_str());
+    //traceW(L"close mObjKey=%s", ctx->mObjKey.c_str());
 
     if (ctx->mFile.valid() && ctx->mFlags & CSDCTX_FLAGS_MODIFY)
     {
-        // cleanup() で削除されるファイルはクローズされているので
+        // DoCleanup() で削除されるファイルはクローズされているので
         // ここを通過するのはアップロードする必要のあるファイルのみとなっているはず
 
         APP_ASSERT(ctx->isFile());
         APP_ASSERT(ctx->mObjKey.meansFile());
 
-        const auto fileSize = ctx->mFile.getFileSize();
+        // キャッシュ・ファイル名
 
-        traceW(L"fileSize=%lld", fileSize);
+        std::wstring localPath;
+        if (!ctx->getCacheFilePath(&localPath))
+        {
+            traceW(L"fault: getCacheFilePath");
+            return;
+        }
+
+        // 閉じる前に属性情報を取得
+
+        if (!::FlushFileBuffers(ctx->mFile.handle()))
+        {
+            APP_ASSERT(0);
+
+            const auto lerr = ::GetLastError();
+
+            traceW(L"fault: FlushFileBuffers, lerr=%lu", lerr);
+            return;
+        }
+
+        FSP_FSCTL_FILE_INFO fileInfo;
+        NTSTATUS ntstatus = GetFileInfoInternal(ctx->mFile.handle(), &fileInfo);
+        if (!NT_SUCCESS(ntstatus))
+        {
+            traceW(L"fault: GetFileInfoInternal");
+            return;
+        }
 
         // 閉じておかないと putObject() にある Aws::FStream が失敗する
 
@@ -148,37 +173,50 @@ void AwsS3::close(CALLER_ARG WinCseLib::CSDeviceContext* ctx)
 
         const auto remotePath{ ctx->mObjKey.str() };
 
-        UnprotectedShare<CreateFileShared> unsafeShare(&mGuardCreateFile, remotePath);  // 名前への参照を登録
+        UnprotectedShare<PrepareLocalCacheFileShared> unsafeShare(&mGuardPrepareLocalCache, remotePath);  // 名前への参照を登録
         {
             const auto safeShare{ unsafeShare.lock() };                                 // 名前のロック
 
-            if (fileSize < FILESIZE_1GiB * 5)
+            if (fileInfo.FileSize < FILESIZE_1GiB * 5)
             {
-                std::wstring localPath;
-
-                if (ctx->getCacheFilePath(&localPath))
+                if (!putObject(CONT_CALLER ctx->mObjKey, fileInfo, localPath.c_str()))
                 {
-                    if (!putObject(CONT_CALLER ctx->mObjKey, localPath.c_str(), nullptr))
-                    {
-                        traceW(L"fault: putObject");
-                    }
-
-                    headObject(CONT_CALLER ctx->mObjKey, nullptr);
+                    traceW(L"fault: putObject");
+                    return;
                 }
-                else
+
+                // putObject でメモリ・キャッシュが削除されているので、改めて取得
+                // --> 必須ではないが、作成直後に属性が参照されることに対応
+
+                if (!headObject_File(CONT_CALLER ctx->mObjKey, nullptr))
                 {
-                    traceW(L"fault: getCacheFilePath");
+                    traceW(L"fault: headObject_File");
+                    return;
                 }
             }
             else
             {
                 traceW(L"fault: too big");
+                return;
             }
 
         }   // 名前のロックを解除 (safeShare の生存期間)
-    }
 
-    delete ctx;
+        if (mConfig.deleteAfterUpload)
+        {
+            traceW(L"delete local cache: %s", localPath.c_str());
+
+            if (!::DeleteFile(localPath.c_str()))
+            {
+                const auto lerr = ::GetLastError();
+                traceW(L"fault: DeleteFile lerr=%lu", lerr);
+
+                return;
+            }
+
+            //traceW(L"success");
+        }
+    }
 }
 
     // EOF

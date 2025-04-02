@@ -72,7 +72,7 @@ bool Logger::internalInit(const std::wstring& argTempDir, const std::wstring& ar
 #define FORMAT_DT	"%02d:%02d:%02d.%03d"
 #define FORMAT_ERR	"%-3lu"
 #define FORMAT_SRC	"%-32s"
-#define FORMAT_FUNC	"%-36s"
+#define FORMAT_FUNC	"%-40s"
 
 #define FORMAT1		FORMAT_DT "\t" FORMAT_ERR "\t" FORMAT_SRC "\t" FORMAT_FUNC "\t"
 #define FORMAT2		"\n"
@@ -111,7 +111,7 @@ void Logger::traceW_impl(const int indent, const wchar_t* fullPath, const int li
 	std::vector<wchar_t> vbuf(bufsiz);
 	wchar_t* buf = vbuf.data();
 
-	auto remain = bufsiz;
+	size_t remain = bufsiz;
 	remain -= swprintf(&buf[bufsiz - remain], remain, L"" FORMAT1, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, err, src.c_str(), func);
 
 	wchar_t* pos = &buf[bufsiz - remain];

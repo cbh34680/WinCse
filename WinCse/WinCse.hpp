@@ -14,7 +14,6 @@ private:
 
 	const std::wstring mTempDir;
 	const std::wstring mIniSection;
-	int mMaxFileSize;
 
 	// Worker 取得
 	std::unordered_map<std::wstring, WinCseLib::IWorker*> mWorkers;
@@ -25,7 +24,7 @@ private:
 	}
 
 	// 無視するファイル名の正規表現
-	std::wregex mIgnoredFileNamePatterns;
+	std::wregex mIgnoreFileNamePatterns;
 
 	// 作業用ディレクトリ (プログラム引数 "-u" から算出される)
 	std::wstring mWorkDir;
@@ -55,12 +54,12 @@ private:
 		FileObject,
 		Bucket,
 	};
-	NTSTATUS getFileInfoByName(CALLER_ARG const wchar_t* fileName, FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pType /* nullable */, WinCseLib::ObjectKey* pObjKey /* nullable */);
+	NTSTATUS getFileInfoByName(CALLER_ARG const wchar_t* fileName, FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pType /* nullable */);
 
 	NTSTATUS FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCTL_FILE_INFO* pFileInfo);
 
 protected:
-	bool isFileNameIgnored(const std::wstring& FileName);
+	bool shouldIgnoreFileName(const std::wstring& FileName);
 
 public:
 	WinCse(

@@ -60,31 +60,37 @@ bool WinCse::PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir
 
 		const auto iniSection = mIniSection.c_str();
 
-		// 最大ファイルサイズ(MB)
+		// 読み取り専用
 
-		const int maxFileSize = (int)::GetPrivateProfileIntW(iniSection, L"max_filesize_mb", 4, confPath.c_str());
+		const bool readonly = ::GetPrivateProfileIntW(iniSection, L"readonly", 0, confPath.c_str()) != 0;
+		if (readonly)
+		{
+			// ボリュームの設定
+
+			VolumeParams->ReadOnlyVolume = 1;
+		}
 
 		// 無視するファイル名のパターン
 
-		std::wstring re_ignored_patterns;
-		GetIniStringW(confPath.c_str(), iniSection, L"re_ignored_patterns", &re_ignored_patterns);
+		std::wstring re_ignore_patterns;
+		GetIniStringW(confPath.c_str(), iniSection, L"re_ignore_patterns", &re_ignore_patterns);
 
-		if (!re_ignored_patterns.empty())
+		if (!re_ignore_patterns.empty())
 		{
 			try
 			{
 				// conf で指定された正規表現パターンの整合性テスト
 				// 不正なパターンの場合は例外で catch されるので反映されない
 
-				std::wregex reTest{ re_ignored_patterns, std::regex_constants::icase };
+				std::wregex reTest{ re_ignore_patterns, std::regex_constants::icase };
 
 				// OK
-				mIgnoredFileNamePatterns = std::move(reTest);
+				mIgnoreFileNamePatterns = std::move(reTest);
 			}
 			catch (const std::regex_error& ex)
 			{
 				traceA("regex_error: %s", ex.what());
-				traceW(L"%s: ignored, set default patterns", re_ignored_patterns.c_str());
+				traceW(L"%s: ignored, set default patterns", re_ignore_patterns.c_str());
 			}
 		}
 
@@ -127,7 +133,6 @@ bool WinCse::PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir
 
 		// メンバに保存
 
-		mMaxFileSize = maxFileSize;
 		mWorkDir = workDir;
 
 		traceW(L"INFO: TempDir=%s, WorkDir=%s", mTempDir.c_str(), mWorkDir.c_str());

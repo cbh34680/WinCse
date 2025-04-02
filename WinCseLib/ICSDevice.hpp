@@ -8,12 +8,16 @@ typedef struct
 	long OnSvcStop;
 
 	long headBucket;
+	long getBucket;
 	long listBuckets;
-	long headObject;
+
+	long headObject_File;
+	long headObject_Dir;
 	long listObjects;
 	long create;
 	long open;
 	long readObject;
+	long writeObject;
 	long close;
 	long cleanup;
 }
@@ -106,9 +110,9 @@ public:
 struct CSDeviceContext
 {
 	const std::wstring mCacheDataDir;
-	ObjectKey mObjKey;
-	const FSP_FSCTL_FILE_INFO mFileInfo;
-	const bool mIsDir;
+	const ObjectKey mObjKey;
+
+	FSP_FSCTL_FILE_INFO mFileInfo;
 	FileHandle mFile;
 	uint32_t mFlags = 0U;
 
@@ -117,16 +121,17 @@ struct CSDeviceContext
 
 	WINCSELIB_API bool getCacheFilePath(std::wstring* pPath) const;
 
-	bool isDir() const noexcept { return mIsDir; }
-	bool isFile() const noexcept { return !mIsDir; }
+	WINCSELIB_API bool isDir() const noexcept;
+	bool isFile() const noexcept { return !isDir(); }
 
 	virtual ~CSDeviceContext() = default;
 };
 
-constexpr uint32_t CSDCTX_FLAGS_MODIFY			=     1;
-constexpr uint32_t CSDCTX_FLAGS_WRITE			= 2 + 1;
-constexpr uint32_t CSDCTX_FLAGS_OVERWRITE		= 4 + 1;
-constexpr uint32_t CSDCTX_FLAGS_SET_BASIC_INFO	= 8 + 1;
+constexpr uint32_t CSDCTX_FLAGS_MODIFY			= 1;
+constexpr uint32_t CSDCTX_FLAGS_READ			= 2;
+constexpr uint32_t CSDCTX_FLAGS_WRITE			= CSDCTX_FLAGS_MODIFY | (0x0100 << 0);
+constexpr uint32_t CSDCTX_FLAGS_OVERWRITE		= CSDCTX_FLAGS_MODIFY | (0x0100 << 1);
+constexpr uint32_t CSDCTX_FLAGS_SET_FILE_SIZE	= CSDCTX_FLAGS_MODIFY | (0x0100 << 2);
 
 struct ICSDevice : public ICSService
 {
@@ -137,12 +142,25 @@ struct ICSDevice : public ICSService
 	virtual bool headBucket(CALLER_ARG const std::wstring& argBucket,
 		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) = 0;
 
-	virtual bool listBuckets(CALLER_ARG DirInfoListType* pDirInfoList,
-		const std::vector<std::wstring>& options) = 0;
-
-	virtual DirInfoType getBucket(CALLER_ARG const std::wstring& bucketName) = 0;
+	virtual DirInfoType getBucket(CALLER_ARG const std::wstring& argBucket) = 0;
+	virtual bool listBuckets(CALLER_ARG DirInfoListType* pDirInfoList) = 0;
 
 	virtual bool headObject(CALLER_ARG const ObjectKey& argObjKey,
+		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
+	{
+		if (argObjKey.valid())
+		{
+			return argObjKey.meansDir()
+				? headObject_Dir(CONT_CALLER argObjKey, pFileInfo)
+				: headObject_File(CONT_CALLER argObjKey, pFileInfo);
+		}
+
+		return false;
+	}
+
+	virtual bool headObject_File(CALLER_ARG const ObjectKey& argObjKey,
+		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) = 0;
+	virtual bool headObject_Dir(CALLER_ARG const ObjectKey& argObjKey,
 		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) = 0;
 
 	virtual bool listObjects(CALLER_ARG const ObjectKey& argObjKey,
@@ -161,14 +179,18 @@ struct ICSDevice : public ICSService
 	virtual NTSTATUS readObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred) = 0;
 
+	virtual NTSTATUS writeObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
+		PVOID Buffer, UINT64 Offset, ULONG Length, BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
+		PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO *FileInfo) = 0;
+
 	virtual bool deleteObject(CALLER_ARG const ObjectKey& argObjKey) = 0;
 
 	virtual bool putObject(CALLER_ARG const ObjectKey& argObjKey,
-		const wchar_t* sourceFile, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) = 0;
+		const FSP_FSCTL_FILE_INFO& argFileInfo,
+		const wchar_t* sourceFile /* nullable */) = 0;
 
 	virtual NTSTATUS getHandleFromContext(CALLER_ARG CSDeviceContext* argCSDeviceContext,
-		const DWORD argDesiredAccess, const DWORD argCreationDisposition,
-		HANDLE* pHandle) = 0;
+		const DWORD argDesiredAccess, const DWORD argCreationDisposition, PHANDLE pHandle) = 0;
 };
 
 } // namespace WinCseLib

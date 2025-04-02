@@ -169,8 +169,6 @@ DirInfoType makeDirInfo(const std::wstring& argFileName)
 NTSTATUS HandleToSecurityInfo(HANDLE Handle,
 	PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize /* nullable */)
 {
-	NEW_LOG_BLOCK();
-
 	DWORD SecurityDescriptorSizeNeeded = 0;
 
 	if (0 != PSecurityDescriptorSize)
@@ -182,8 +180,6 @@ NTSTATUS HandleToSecurityInfo(HANDLE Handle,
 			*PSecurityDescriptorSize = SecurityDescriptorSizeNeeded;
 			return FspNtStatusFromWin32(::GetLastError());
 		}
-
-		traceW(L"SecurityDescriptorSizeNeeded: %u", SecurityDescriptorSizeNeeded);
 
 		*PSecurityDescriptorSize = SecurityDescriptorSizeNeeded;
 	}
@@ -263,8 +259,31 @@ bool SplitPath(const std::wstring& argKey, std::wstring* pParentDir /* nullable 
 
 #define INI_LINE_BUFSIZ		(1024)
 
+int GetIniIntW(const std::wstring& confPath, const wchar_t* argSection, const wchar_t* keyName, const int defaultValue, const int minValue, const int maxValue)
+{
+	LastErrorBackup _backup;
+
+	APP_ASSERT(argSection);
+	APP_ASSERT(argSection[0]);
+
+	int ret = ::GetPrivateProfileIntW(argSection, keyName, defaultValue, confPath.c_str());
+	if (ret < minValue)
+	{
+		ret = minValue;
+	}
+	else if (ret > maxValue)
+	{
+		ret = maxValue;
+	}
+
+	return ret;
+}
+
+
 bool GetIniStringW(const std::wstring& confPath, const wchar_t* argSection, const wchar_t* keyName, std::wstring* pValue)
 {
+	LastErrorBackup _backup;
+
 	APP_ASSERT(argSection);
 	APP_ASSERT(argSection[0]);
 
@@ -285,6 +304,8 @@ bool GetIniStringW(const std::wstring& confPath, const wchar_t* argSection, cons
 
 bool GetIniStringA(const std::string& confPath, const char* argSection, const char* keyName, std::string* pValue)
 {
+	LastErrorBackup _backup;
+
 	APP_ASSERT(argSection);
 	APP_ASSERT(argSection[0]);
 
@@ -502,19 +523,15 @@ std::string ObjectKey::strA() const
 CSDeviceContext::CSDeviceContext(const std::wstring& argCacheDataDir,
 	const WinCseLib::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo)
 	:
-	mCacheDataDir(argCacheDataDir), mFileInfo(argFileInfo),
-	mIsDir(FA_IS_DIR(mFileInfo.FileAttributes))
+	mCacheDataDir(argCacheDataDir),
+	mFileInfo(argFileInfo),
+	mObjKey(FA_IS_DIR(argFileInfo.FileAttributes) ? argObjKey.toDir() : argObjKey)
 {
-	if (mIsDir)
-	{
-		// ディレクトリの場合は '/' を付与する
+}
 
-		mObjKey = argObjKey.toDir();
-	}
-	else
-	{
-		mObjKey = argObjKey;
-	}
+bool CSDeviceContext::isDir() const noexcept
+{
+	return FA_IS_DIR(mFileInfo.FileAttributes);
 }
 
 bool CSDeviceContext::getCacheFilePath(std::wstring* pPath) const

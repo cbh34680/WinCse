@@ -5,7 +5,7 @@ class TimerWorker : public ScheduledWorker
 protected:
 	int getThreadPriority() const noexcept override
 	{
-		return THREAD_PRIORITY_LOWEST;
+		return THREAD_PRIORITY_BELOW_NORMAL;
 	}
 
 	DWORD getTimePeriodMillis() const noexcept override

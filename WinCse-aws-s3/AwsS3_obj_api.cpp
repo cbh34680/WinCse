@@ -1,6 +1,5 @@
 #include "AwsS3.hpp"
 
-
 using namespace WinCseLib;
 
 
@@ -9,7 +8,7 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
     NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.meansFile());
 
-    traceW(L"argObjKey=%s", argObjKey.c_str());
+    //traceW(L"argObjKey=%s", argObjKey.c_str());
 
     Aws::S3::Model::HeadObjectRequest request;
     request.SetBucket(argObjKey.bucketA());
@@ -50,40 +49,22 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
         creationTime = std::stoull(metadata.at("wincse-creation-time"));
     }
 
-    if (metadata.find("wincse-last-access-time") != metadata.end())
-    {
-        lastAccessTime = std::stoull(metadata.at("wincse-last-access-time"));
-    }
+    //if (metadata.find("wincse-last-access-time") != metadata.end())
+    //{
+    //    lastAccessTime = std::stoull(metadata.at("wincse-last-access-time"));
+    //}
 
     if (metadata.find("wincse-last-write-time") != metadata.end())
     {
         lastWriteTime = std::stoull(metadata.at("wincse-last-write-time"));
     }
 
-#if SET_ATTRIBUTES_LOCAL_FILE
-    if (metadata.find("wincse-file-attributes") != metadata.end())
-    {
-        fileAttributes |= std::stoul(metadata.at("wincse-file-attributes"));
-    }
-    else
-    {
-        if (argObjKey.meansHidden())
-        {
-            // 隠しファイル
-
-            fileAttributes |= FILE_ATTRIBUTE_HIDDEN;
-        }
-    }
-
-#else
     if (argObjKey.meansHidden())
     {
         // 隠しファイル
 
         fileAttributes |= FILE_ATTRIBUTE_HIDDEN;
     }
-
-#endif
 
     if (fileAttributes == 0)
     {
@@ -147,8 +128,7 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
         }
     }
 
-    traceW(L"purpose=%s, argObjKey=%s, delimiter=%s, limit=%d",
-        PurposeString(argPurpose), argObjKey.c_str(), BOOL_CSTRW(delimiter), limit);
+    //traceW(L"purpose=%s, argObjKey=%s, delimiter=%s, limit=%d", PurposeString(argPurpose), argObjKey.c_str(), BOOL_CSTRW(delimiter), limit);
 
     DirInfoListType dirInfoList;
 
@@ -172,7 +152,6 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
     }
 
     UINT64 commonPrefixTime = UINT64_MAX;
-    //std::set<std::wstring> already;
     std::set<std::wstring> dirNames;
 
     Aws::String continuationToken;                              // Used for pagination.
@@ -194,10 +173,9 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
 
         const auto& result = outcome.GetResult();
 
-        //
         // ディレクトリ・エントリのため最初に一番古いタイムスタンプを収集
         // * CommonPrefix にはタイムスタンプがないため
-        //
+
         for (const auto& it : result.GetContents())
         {
             const auto lastModified = UtcMillisToWinFileTime100ns(it.GetLastModified().Millis());
@@ -216,10 +194,11 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
         }
 
         // ディレクトリの収集
+
         for (const auto& it : result.GetCommonPrefixes())
         {
             const auto fullPath{ MB2WC(it.GetPrefix()) };
-            traceW(L"GetCommonPrefixes: %s", fullPath.c_str());
+            //traceW(L"GetCommonPrefixes: %s", fullPath.c_str());
 
             // Prefix 部分を取り除く
             // 
@@ -244,23 +223,8 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
 
             APP_ASSERT(!key.empty());
 
-#if 0
-            {
-                // 大文字小文字を同一視した上で、同じ名前があったら無視する
-                // 
-                // --> Windows では同じディレクトリとして扱われるため
+            // ディレクトリと同じファイル名は無視するために保存
 
-                auto keyUpper{ ToUpper(key) };
-
-                if (std::find(already.begin(), already.end(), keyUpper) != already.end())
-                {
-                    traceW(L"%s: already added", keyUpper.c_str());
-                    continue;
-                }
-
-                already.insert(keyUpper);
-            }
-#endif
             dirNames.insert(key);
 
             dirInfoList.push_back(makeDirInfo_dir(key, commonPrefixTime));
@@ -273,11 +237,11 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
                 }
             }
 
-            if (mMaxObjects > 0)
+            if (mConfig.maxDisplayObjects > 0)
             {
-                if (dirInfoList.size() >= mMaxObjects)
+                if (dirInfoList.size() >= mConfig.maxDisplayObjects)
                 {
-                    traceW(L"warning: over max-objects(%d)", mMaxObjects);
+                    traceW(L"warning: over max-objects(%d)", mConfig.maxDisplayObjects);
 
                     goto exit;
                 }
@@ -290,7 +254,7 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
             bool isDir = false;
 
             const auto fullPath{ MB2WC(it.GetKey()) };
-            traceW(L"GetContents: %s", fullPath.c_str());
+            //traceW(L"GetContents: %s", fullPath.c_str());
 
             // Prefix 部分を取り除く
             // 
@@ -317,21 +281,6 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
 
             APP_ASSERT(!key.empty());
 
-#if 0
-            {
-                // 大文字小文字を同一視した上で、同じ名前があったら無視する
-
-                std::wstring keyUpper{ ToUpper(key) };
-
-                if (std::find(already.begin(), already.end(), keyUpper) != already.end())
-                {
-                    traceW(L"%s: already added", keyUpper.c_str());
-                    continue;
-                }
-
-                already.insert(keyUpper);
-            }
-#endif
             if (dirNames.find(key) != dirNames.end())
             {
                 // ディレクトリと同じ名前のファイルは無視
@@ -387,13 +336,13 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
                 }
             }
 
-            if (mMaxObjects > 0)
+            if (mConfig.maxDisplayObjects > 0)
             {
-                if (dirInfoList.size() >= mMaxObjects)
+                if (dirInfoList.size() >= mConfig.maxDisplayObjects)
                 {
                     // 結果リストが ini ファイルで指定した最大値に到達
 
-                    traceW(L"warning: over max-objects(%d)", mMaxObjects);
+                    traceW(L"warning: over max-objects(%d)", mConfig.maxDisplayObjects);
 
                     goto exit;
                 }
@@ -447,33 +396,11 @@ exit:
             dirInfoList.erase(itCurr);
             dirInfoList.insert(dirInfoList.begin(), save);
         }
-
-        // ディレクトリ -> ファイルの順に追加されているので並び替えは不要
-        // 
-        //bool compareDirInfo(const DirInfoType& a, const DirInfoType& b);
-        //std::sort(dirInfoList.begin(), dirInfoList.end(), compareDirInfo);
     }
 
     *pDirInfoList = dirInfoList;
 
     return !dirInfoList.empty();
 }
-
-/*
-#define IS_FA_DIR(ptr)        (ptr->FileInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-
-bool compareDirInfo(const DirInfoType& a, const DirInfoType& b)
-{
-    if (IS_FA_DIR(a) && !IS_FA_DIR(b))
-    {
-        return true;
-    }
-    if (!IS_FA_DIR(a) && IS_FA_DIR(b))
-    {
-        return false;
-    }
-    return wcscmp(a->FileNameBuf, b->FileNameBuf) < 0;
-}
-*/
 
 // EOF

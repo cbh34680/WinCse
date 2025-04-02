@@ -1,25 +1,17 @@
 #include "AwsS3.hpp"
 
-
 using namespace WinCseLib;
 
-
-//
-// WinFsp の Read() により呼び出され、Offset から Lengh のファイル・データを返却する
-// ここでは最初に呼び出されたときに s3 からファイルをダウンロードしてキャッシュとした上で
-// そのファイルをオープンし、その後は HANDLE を使いまわす
-//
-NTSTATUS AwsS3::readObject(CALLER_ARG WinCseLib::CSDeviceContext* ctx,
-    PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred)
+NTSTATUS AwsS3::prepareLocalFile(CALLER_ARG OpenContext* ctx)
 {
-    StatsIncr(readObject);
-    NEW_LOG_BLOCK();
-
-    APP_ASSERT(ctx);
-    APP_ASSERT(ctx->isFile());
-
-    //return readObject_Simple(CONT_CALLER ctx, Buffer, Offset, Length, PBytesTransferred);
-    return readObject_Multipart(CONT_CALLER ctx, Buffer, Offset, Length, PBytesTransferred);
+    if (ctx->mFileInfo.FileSize <= PART_LENGTH_BYTE)
+    {
+        return this->prepareLocalFile_Simple(CONT_CALLER ctx);
+    }
+    else
+    {
+        return this->prepareLocalFile_Multipart(CONT_CALLER ctx);
+    }
 }
 
 //
@@ -92,7 +84,7 @@ static int64_t outputObjectResultToFile(CALLER_ARG
             return -1LL;
         }
 
-        traceW(L"%lld bytes read", bytesRead);
+        //traceW(L"%lld bytes read", bytesRead);
 
         // ファイルにデータを書き込む
 
@@ -101,7 +93,7 @@ static int64_t outputObjectResultToFile(CALLER_ARG
 
         while (remainingWrite > 0)
         {
-            traceW(L"%lld bytes remaining", remainingWrite);
+            //traceW(L"%lld bytes remaining", remainingWrite);
 
             DWORD bytesWritten = 0;
             if (!::WriteFile(hFile.handle(), pos, (DWORD)remainingWrite, &bytesWritten, NULL))
@@ -112,7 +104,7 @@ static int64_t outputObjectResultToFile(CALLER_ARG
                 return -1LL;
             }
 
-            traceW(L"%lld bytes written", bytesWritten);
+            //traceW(L"%lld bytes written", bytesWritten);
 
             pos += bytesWritten;
             remainingWrite -= bytesWritten;
@@ -121,7 +113,7 @@ static int64_t outputObjectResultToFile(CALLER_ARG
         remainingTotal -= bytesRead;
     }
 
-    traceW(L"return %lld", inputSize);
+    //traceW(L"return %lld", inputSize);
 
     return inputSize;
 }
@@ -134,12 +126,13 @@ static int64_t outputObjectResultToFile(CALLER_ARG
 //      -1 以下     書き出しオフセット指定なし
 //      それ以外    CreateFile 後に SetFilePointerEx が実行される
 //
-int64_t AwsS3::prepareLocalCacheFile(CALLER_ARG
+
+int64_t AwsS3::getObjectAndWriteToFile(CALLER_ARG
     const ObjectKey& argObjKey, const FileOutputParams& argOutputParams)
 {
     NEW_LOG_BLOCK();
 
-    traceW(L"argObjKey=%s meta=%s", argObjKey.c_str(), argOutputParams.str().c_str());
+    //traceW(L"argObjKey=%s meta=%s", argObjKey.c_str(), argOutputParams.str().c_str());
 
     std::stringstream ss;
 
@@ -155,7 +148,7 @@ int64_t AwsS3::prepareLocalCacheFile(CALLER_ARG
     }
 
     const std::string range{ ss.str() };
-    traceA("range=%s", range.c_str());
+    //traceA("range=%s", range.c_str());
 
     namespace chrono = std::chrono;
     const chrono::steady_clock::time_point start{ chrono::steady_clock::now() };
@@ -191,15 +184,13 @@ int64_t AwsS3::prepareLocalCacheFile(CALLER_ARG
     const chrono::steady_clock::time_point end{ chrono::steady_clock::now() };
     const auto duration{ std::chrono::duration_cast<std::chrono::milliseconds>(end - start) };
 
-    traceW(L"DOWNLOADTIME argObjKey=%s size=%lld duration=%lld",
-        argObjKey.c_str(), bytesWritten, duration.count());
+    //traceW(L"DOWNLOADTIME argObjKey=%s size=%lld duration=%lld", argObjKey.c_str(), bytesWritten, duration.count());
 
     return bytesWritten;
 }
 
-NTSTATUS AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
-    const FSP_FSCTL_FILE_INFO& remoteInfo, const std::wstring& localPath,
-    bool* pNeedDownload)
+NTSTATUS syncFileAttributes(CALLER_ARG const FSP_FSCTL_FILE_INFO& remoteInfo,
+    const std::wstring& localPath, bool* pNeedDownload)
 {
     //
     // リモートのファイル属性をローカルのキャッシュ・ファイルに反映する
@@ -208,9 +199,9 @@ NTSTATUS AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
     NEW_LOG_BLOCK();
     APP_ASSERT(pNeedDownload);
 
-    traceW(L"argObjKey=%s localPath=%s", argObjKey.c_str(), localPath.c_str());
-    traceW(L"remoteInfo FileSize=%llu LastWriteTime=%llu", remoteInfo.FileSize, remoteInfo.LastWriteTime);
-    traceW(L"localInfo CreationTime=%llu LastWriteTime=%llu", remoteInfo.CreationTime, remoteInfo.LastWriteTime);
+    //traceW(L"argObjKey=%s localPath=%s", argObjKey.c_str(), localPath.c_str());
+    //traceW(L"remoteInfo FileSize=%llu LastWriteTime=%llu", remoteInfo.FileSize, remoteInfo.LastWriteTime);
+    //traceW(L"localInfo CreationTime=%llu LastWriteTime=%llu", remoteInfo.CreationTime, remoteInfo.LastWriteTime);
 
     FSP_FSCTL_FILE_INFO localInfo{};
 
@@ -252,7 +243,7 @@ NTSTATUS AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
 
     if (hFile.valid())
     {
-        traceW(L"exists: local");
+        //traceW(L"exists: local");
 
         // ローカル・ファイルが存在する
 
@@ -263,15 +254,16 @@ NTSTATUS AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
             return ntstatus;
         }
 
-        traceW(L"localInfo FileSize=%llu LastWriteTime=%llu", localInfo.FileSize, localInfo.LastWriteTime);
-        traceW(L"localInfo CreationTime=%llu LastWriteTime=%llu", localInfo.CreationTime, localInfo.LastWriteTime);
+        //traceW(L"localInfo FileSize=%llu LastWriteTime=%llu", localInfo.FileSize, localInfo.LastWriteTime);
+        //traceW(L"localInfo CreationTime=%llu LastWriteTime=%llu", localInfo.CreationTime, localInfo.LastWriteTime);
 
         if (remoteInfo.FileSize == localInfo.FileSize &&
+            localInfo.CreationTime == remoteInfo.CreationTime &&
             localInfo.LastWriteTime == remoteInfo.LastWriteTime)
         {
             // --> 全て同じなので処理不要
 
-            traceW(L"same file, skip");
+            traceW(L"same file, skip, localPath=%s", localPath.c_str());
         }
         else
         {
@@ -311,7 +303,7 @@ NTSTATUS AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
             return FspNtStatusFromWin32(lastError);
         }
 
-        traceW(L"not exists: local");
+        //traceW(L"not exists: local");
 
         // ローカル・ファイルが存在しない
 
@@ -329,9 +321,8 @@ NTSTATUS AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
         }
     }
 
-    traceW(L"syncRemoteTime = %s", BOOL_CSTRW(syncTime));
-    traceW(L"truncateLocal = %s", BOOL_CSTRW(truncateFile));
-    traceW(L"needDownload = %s", BOOL_CSTRW(needDownload));
+    traceW(L"syncRemoteTime=%s, truncateLocal=%s, needDownload=%s",
+        BOOL_CSTRW(syncTime), BOOL_CSTRW(truncateFile), BOOL_CSTRW(needDownload));
 
     if (syncTime && truncateFile)
     {
@@ -345,7 +336,7 @@ NTSTATUS AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
         hFile = ::CreateFileW
         (
             localPath.c_str(),
-            GENERIC_WRITE,
+            FILE_WRITE_ATTRIBUTES, //GENERIC_WRITE,
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
             NULL,
             truncateFile ? CREATE_ALWAYS : OPEN_EXISTING,
@@ -363,7 +354,7 @@ NTSTATUS AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
 
         // 更新日時を同期
 
-        traceW(L"setFileTime");
+        //traceW(L"setFileTime");
 
         if (!hFile.setFileTime(remoteInfo.CreationTime, remoteInfo.LastWriteTime))
         {
@@ -378,6 +369,15 @@ NTSTATUS AwsS3::syncFileAttributes(CALLER_ARG const ObjectKey& argObjKey,
         {
             traceW(L"fault: GetFileInfoInternal");
             return ntstatus;
+        }
+
+        if (truncateFile)
+        {
+            traceW(L"truncate localPath=%s", localPath.c_str());
+        }
+        else
+        {
+            traceW(L"sync localPath=%s", localPath.c_str());
         }
     }
 

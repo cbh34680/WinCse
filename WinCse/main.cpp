@@ -289,10 +289,15 @@ int wmain(int argc, wchar_t** argv)
     setlocale(LC_ALL, "");
     ::SetConsoleOutputCP(CP_UTF8);
 
+    std::wcout << L"[External Libraries]" << std::endl;
+    std::wcout << L"WinFsp: 2.0.23075" << std::endl;
+    std::wcout << L"aws-sdk-cpp: Commit 475d367" << std::endl;
+
 #ifdef _DEBUG
     ::_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
-    std::wcout << L"Build: 2025/02/25 16:30 JST" << std::endl;
+    std::wcout << L"[WinCse]" << std::endl;
+    std::wcout << L"Build: 2025/04/02 17:10 JST" << std::endl;
 
 #if WINFSP_PASSTHROUGH
     std::wcout << L"Type: passthrough" << std::endl;
@@ -514,8 +519,9 @@ static void writeStats(
             fputs("[CSDevice Stats]\n", fp);
             fprintf(fp, "\t" "OnSvcStart: %ld\n", devStats->OnSvcStart);
             fprintf(fp, "\t" "OnSvcStop: %ld\n", devStats->OnSvcStop);
-            fprintf(fp, "\t" "headBucket: %ld\n", devStats->headBucket);
-            fprintf(fp, "\t" "headObject: %ld\n", devStats->headObject);
+            //fprintf(fp, "\t" "headBucket: %ld\n", devStats->headBucket);
+            fprintf(fp, "\t" "headObject_Dir: %ld\n", devStats->headObject_Dir);
+            fprintf(fp, "\t" "headObject_File: %ld\n", devStats->headObject_File);
             fprintf(fp, "\t" "listBuckets: %ld\n", devStats->listBuckets);
             fprintf(fp, "\t" "listObjects: %ld\n", devStats->listObjects);
             fprintf(fp, "\t" "create: %ld\n", devStats->create);

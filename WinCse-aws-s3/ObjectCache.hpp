@@ -143,9 +143,9 @@ public:
 
 	void addNegative_File(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
 
-	int deleteOldRecords(CALLER_ARG std::chrono::system_clock::time_point threshold);
+	int deleteByTime(CALLER_ARG std::chrono::system_clock::time_point threshold);
 
-	int deleteByObjectKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
+	int deleteByKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
 };
 
 // EOF

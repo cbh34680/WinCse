@@ -75,7 +75,7 @@ const wchar_t* PurposeString(const Purpose p)
 };
 
 template <typename T>
-int eraseCacheBy(const std::function<bool(const typename T::iterator&)>& shouldErase, T& cache)
+int deleteBy(const std::function<bool(const typename T::iterator&)>& shouldErase, T& cache)
 {
     int count = 0;
 
@@ -161,28 +161,28 @@ void ObjectCache::report(CALLER_ARG FILE* fp)
     }
 }
 
-int ObjectCache::deleteOldRecords(CALLER_ARG std::chrono::system_clock::time_point threshold)
+int ObjectCache::deleteByTime(CALLER_ARG std::chrono::system_clock::time_point threshold)
 {
-    NEW_LOG_BLOCK();
+    //NEW_LOG_BLOCK();
 
     const auto OldAccessTime = [&threshold](const auto& it)
     {
         return it->second.mCreateTime < threshold;
     };
 
-    const int delPositive = eraseCacheBy(OldAccessTime, mPositive);
-    const int delNegative = eraseCacheBy(OldAccessTime, mNegative);
+    const int delPositive = deleteBy(OldAccessTime, mPositive);
+    const int delNegative = deleteBy(OldAccessTime, mNegative);
 
-    traceW(L"delete records: Positive=%d Negative=%d", delPositive, delNegative);
+    //traceW(L"delete records: Positive=%d Negative=%d", delPositive, delNegative);
 
     return delPositive + delNegative;
 }
 
-int ObjectCache::deleteByObjectKey(CALLER_ARG const ObjectKey& argObjKey)
+int ObjectCache::deleteByKey(CALLER_ARG const ObjectKey& argObjKey)
 {
     NEW_LOG_BLOCK();
 
-    traceW(L"argObjKey=%s", argObjKey.c_str());
+    //traceW(L"argObjKey=%s", argObjKey.c_str());
 
     const auto EqualObjKey = [&argObjKey](const auto& it)
     {
@@ -191,10 +191,10 @@ int ObjectCache::deleteByObjectKey(CALLER_ARG const ObjectKey& argObjKey)
 
     // 引数と一致するものをキャッシュから削除
 
-    const int delPositive = eraseCacheBy(EqualObjKey, mPositive);
-    const int delNegative = eraseCacheBy(EqualObjKey, mNegative);
+    const int delPositive = deleteBy(EqualObjKey, mPositive);
+    const int delNegative = deleteBy(EqualObjKey, mNegative);
 
-    traceW(L"delete records: Positive=%d Negative=%d", delPositive, delNegative);
+    //traceW(L"delete records: Positive=%d Negative=%d", delPositive, delNegative);
 
     int delPositiveP = 0;
     int delNegativeP = 0;
@@ -211,10 +211,10 @@ int ObjectCache::deleteByObjectKey(CALLER_ARG const ObjectKey& argObjKey)
 
         // 引数の親ディレクトリをキャッシュから削除
 
-        delPositiveP = eraseCacheBy(EqualParentDir, mPositive);
-        delNegativeP = eraseCacheBy(EqualParentDir, mNegative);
+        delPositiveP = deleteBy(EqualParentDir, mPositive);
+        delNegativeP = deleteBy(EqualParentDir, mNegative);
 
-        traceW(L"delete records: PositiveP=%d NegativeP=%d", delPositiveP, delNegativeP);
+        //traceW(L"delete records: PositiveP=%d NegativeP=%d", delPositiveP, delNegativeP);
     }
     else
     {

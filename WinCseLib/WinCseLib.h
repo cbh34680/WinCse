@@ -6,11 +6,6 @@
 #endif
 #endif
 
-
-#define SET_ATTRIBUTES_LOCAL_FILE		(0)
-#define DELETE_ONLY_EMPTY_DIR           (0)
-
-
 #ifdef WINCSELIB_EXPORTS
 #define WINCSELIB_API __declspec(dllexport)
 #else
@@ -233,6 +228,7 @@ WINCSELIB_API std::vector<std::wstring> SplitString(const std::wstring& input, c
 WINCSELIB_API std::wstring JoinStrings(const std::vector<std::wstring>& tokens, const wchar_t sep, const bool ignoreEmpty);
 WINCSELIB_API std::wstring ToUpper(const std::wstring& input);
 
+WINCSELIB_API int GetIniIntW(const std::wstring& confPath, const wchar_t* argSection, const wchar_t* keyName, const int defaultValue, const int minValue, const int maxValue);
 WINCSELIB_API bool GetIniStringW(const std::wstring& confPath, const wchar_t* argSection, const wchar_t* keyName, std::wstring* pValue);
 WINCSELIB_API bool GetIniStringA(const std::string& confPath, const char* argSection, const char* keyName, std::string* pValue);
 
@@ -353,7 +349,6 @@ WINCSELIB_API int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINFSP_I
 // É}ÉNÉçíËã`
 //
 #define NEW_LOG_BLOCK() \
-	::SetLastError(ERROR_SUCCESS); \
 	WinCseLib::LogBlock logBlock_(__FILEW__, __LINE__, __FUNCTIONW__)
 
 #define LOG_BLOCK()		logBlock_

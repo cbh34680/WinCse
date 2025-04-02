@@ -62,12 +62,13 @@ WINFSP_IF* gWinFspIf;
 #if !WINFSP_PASSTHROUGH
 WinCseLib::ICSDriver* CSDriver()
 {
+    ::SetLastError(ERROR_SUCCESS);
+
     return gWinFspIf->pDriver;
 }
 #endif
 
 static const FSP_FILE_SYSTEM_INTERFACE* getPtfsInterface();
-
 
 /*static*/ NTSTATUS GetFileInfoInternal(HANDLE Handle, FSP_FSCTL_FILE_INFO *FileInfo)
 {

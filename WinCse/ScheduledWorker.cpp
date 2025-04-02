@@ -124,7 +124,7 @@ void ScheduledWorker::listenEvent(const int threadIndex)
 
 	for (int loopCount=0; ; loopCount++)
 	{
-		traceW(L"%s(%d): wait for signal ...", klassNameCstr, threadIndex);
+		//traceW(L"%s(%d): wait for signal ...", klassNameCstr, threadIndex);
 		const auto reason = ::WaitForSingleObject(mEvent.handle(), timePeriod);	// 1 分間隔
 
 		bool breakLoop = false;
@@ -143,7 +143,7 @@ void ScheduledWorker::listenEvent(const int threadIndex)
 				{
 					// タイムアウトでの処理
 
-					traceW(L"%s(%d): wait for signal: timeout occurred", klassNameCstr, threadIndex);
+					//traceW(L"%s(%d): wait for signal: timeout occurred", klassNameCstr, threadIndex);
 					break;
 				}
 
@@ -176,9 +176,9 @@ void ScheduledWorker::listenEvent(const int threadIndex)
 			{
 				try
 				{
-					traceW(L"%s(%d): run idle task ...", klassNameCstr, threadIndex);
+					//traceW(L"%s(%d): run idle task ...", klassNameCstr, threadIndex);
 					task->run(std::wstring(task->mCaller) + L"->" + __FUNCTIONW__);
-					traceW(L"%s(%d): run idle task done", klassNameCstr, threadIndex);
+					//traceW(L"%s(%d): run idle task done", klassNameCstr, threadIndex);
 				}
 				catch (const std::exception& ex)
 				{
@@ -208,7 +208,7 @@ bool ScheduledWorker::addTypedTask(CALLER_ARG WinCseLib::IScheduledTask* argTask
 	APP_ASSERT(argTask);
 
 #if ENABLE_WORKER
-	argTask->mCaller = wcsdup(CALL_CHAIN().c_str());
+	argTask->mCaller = _wcsdup(CALL_CHAIN().c_str());
 	mTasks.emplace_back(argTask);
 
 	return true;

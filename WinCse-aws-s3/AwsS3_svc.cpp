@@ -1,133 +1,9 @@
 #include "AwsS3.hpp"
 #include <iomanip>
-#include <filesystem>
+//#include <filesystem>
 
 using namespace WinCseLib;
 
-
-struct ListBucketsTask : public IOnDemandTask
-{
-    IgnoreDuplicates getIgnoreDuplicates() const noexcept override { return IgnoreDuplicates::Yes; }
-    Priority getPriority() const noexcept override { return Priority::Low; }
-
-    AwsS3* mAwsS3;
-
-    ListBucketsTask(AwsS3* argAwsS3) : mAwsS3(argAwsS3) { }
-
-    std::wstring synonymString() const noexcept override
-    {
-        return L"ListBucketsTask";
-    }
-
-    void run(CALLER_ARG0) override
-    {
-        NEW_LOG_BLOCK();
-
-        traceW(L"call ListBuckets");
-
-        mAwsS3->listBuckets(CONT_CALLER nullptr, {});
-    }
-};
-
-struct TimerTask : public IScheduledTask
-{
-    AwsS3* mAwsS3;
-
-    TimerTask(AwsS3* argAwsS3) : mAwsS3(argAwsS3) { }
-
-    bool shouldRun(int i) const noexcept override
-    {
-        // 1 分間隔で run() を実行
-
-        return true;
-    }
-
-    void run(CALLER_ARG0) override
-    {
-        mAwsS3->onTimer(CONT_CALLER0);
-    }
-};
-
-void AwsS3::onTimer(CALLER_ARG0)
-{
-    NEW_LOG_BLOCK();
-
-    // TimerTask から呼び出され、メモリの古いものを削除
-
-    const auto now{ std::chrono::system_clock::now() };
-
-    const auto numDelete = this->deleteOldObjects(CONT_CALLER now - std::chrono::minutes(3));
-    traceW(L"delete %d records", numDelete);
-
-    traceW(L"done.");
-}
-
-struct IdleTask : public IScheduledTask
-{
-    AwsS3* mAwsS3;
-
-    IdleTask(AwsS3* argAwsS3) : mAwsS3(argAwsS3) { }
-
-    bool shouldRun(int i) const noexcept override
-    {
-        // 30 分間隔で run() を実行
-
-        return i % 30 == 0;
-    }
-
-    void run(CALLER_ARG0) override
-    {
-        mAwsS3->onIdle(CONT_CALLER0);
-    }
-};
-
-void AwsS3::onIdle(CALLER_ARG0)
-{
-    NEW_LOG_BLOCK();
-
-    // IdleTask から呼び出され、メモリやファイルの古いものを削除
-
-    const auto now{ std::chrono::system_clock::now() };
-
-    // バケット・キャッシュの再作成
-
-    this->reloadBukcetsIfNecessary(CONT_CALLER now - std::chrono::minutes(20));
-
-    // ファイル・キャッシュ
-    //
-    // 最終アクセス日時から 6 時間以上経過したキャッシュ・ファイルを削除する
-
-    APP_ASSERT(std::filesystem::is_directory(mCacheDataDir));
-
-    const auto duration = now.time_since_epoch();
-    const uint64_t nowMillis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-
-    forEachFiles(mCacheDataDir, [this, nowMillis, &LOG_BLOCK()](const auto& wfd, const auto& fullPath)
-    {
-        APP_ASSERT(!FA_IS_DIR(wfd.dwFileAttributes));
-
-        const auto lastAccessTime = WinFileTimeToUtcMillis(wfd.ftLastAccessTime);
-        const auto diffMillis = nowMillis - lastAccessTime;
-
-        traceW(L"cache file=\"%s\" nowMillis=%llu lastAccessTime=%llu diffMillis=%llu",
-            wfd.cFileName, nowMillis, lastAccessTime, diffMillis);
-
-        if (diffMillis > TIMEMILLIS_1HOURull * 6)
-        {
-            if (::DeleteFile(fullPath.c_str()))
-            {
-                traceW(L"%s: removed", fullPath.c_str());
-            }
-            else
-            {
-                const auto lerr = ::GetLastError();
-                traceW(L"%s: remove error, lerr=%lu", fullPath.c_str(), lerr);
-            }
-        }
-    });
-
-    traceW(L"done.");
-}
 
 static std::atomic<bool> gEndWorkerFlag;
 static std::thread* gNotifWorker;
@@ -154,17 +30,9 @@ bool AwsS3::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 
     mFileSystem = FileSystem;
 
-    // バケット一覧の先読み
+    // 長くなったので、外だし
 
-    getWorker(L"delayed")->addTask(START_CALLER new ListBucketsTask{ this });
-
-    // 定期実行タスクを登録
-
-    getWorker(L"timer")->addTask(START_CALLER new TimerTask{ this });
-
-    // アイドル時のタスクを登録
-
-    getWorker(L"idle")->addTask(START_CALLER new IdleTask{ this });
+    addTasks(START_CALLER0);
 
     // 外部からの通知待ちイベントの生成
 
@@ -249,6 +117,7 @@ void AwsS3::OnSvcStop()
 
     if (gNotifWorker)
     {
+        traceW(L"join thread");
         gNotifWorker->join();
 
         delete gNotifWorker;
@@ -274,8 +143,8 @@ void AwsS3::OnSvcStop()
         mSDKOptions.reset();
     }
 
-    mRefFile.close();
-    mRefDir.close();
+    //mRefFile.close();
+    //mRefDir.close();
 }
 
 void AwsS3::notifListener()
@@ -348,6 +217,8 @@ void AwsS3::notifListener()
 
                     fclose(fp);
                     fp = nullptr;
+
+                    traceW(L">>>>> REPORT OUTPUT=%s <<<<<", path.c_str());
                 }
 
                 break;
@@ -355,11 +226,14 @@ void AwsS3::notifListener()
 
             case 1:     // clear-cache
             {
-                clearObjects(START_CALLER0);
+                clearBucketCache(START_CALLER0);
+                clearObjectCache(START_CALLER0);
+                onIdle(START_CALLER0);
+                onTimer(START_CALLER0);
 
-                //FspFileSystemStopDispatcher(mFileSystem);
-                //FspFileSystemDelete(mFileSystem);
-                //FspServiceStop(mWinFspService);
+                //reloadBucketCache(START_CALLER std::chrono::system_clock::now());
+
+                traceW(L">>>>> CACHE CLEAN <<<<<");
 
                 break;
             }

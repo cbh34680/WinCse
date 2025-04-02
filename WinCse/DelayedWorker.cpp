@@ -106,7 +106,7 @@ void DelayedWorker::listenEvent(const int threadIndex)
 
 	while (1)
 	{
-		traceW(L"(%d): wait for signal ...", threadIndex);
+		//traceW(L"(%d): wait for signal ...", threadIndex);
 		const auto reason = ::WaitForSingleObject(mEvent.handle(), INFINITE);
 
 		bool breakLoop = false;
@@ -125,7 +125,7 @@ void DelayedWorker::listenEvent(const int threadIndex)
 				{
 					// SetEvent の実行
 
-					traceW(L"(%d): wait for signal: catch signal", threadIndex);
+					//traceW(L"(%d): wait for signal: catch signal", threadIndex);
 					break;
 				}
 
@@ -155,15 +155,15 @@ void DelayedWorker::listenEvent(const int threadIndex)
 			auto task{ dequeueTask() };
 			if (!task)
 			{
-				traceW(L"(%d): no more oneshot-tasks", threadIndex);
+				//traceW(L"(%d): no more oneshot-tasks", threadIndex);
 				break;
 			}
 
 			try
 			{
-				traceW(L"(%d): run oneshot task ...", threadIndex);
+				//traceW(L"(%d): run oneshot task ...", threadIndex);
 				task->run(std::wstring(task->mCaller) + L"->" + __FUNCTIONW__);
-				traceW(L"(%d): run oneshot task done", threadIndex);
+				//traceW(L"(%d): run oneshot task done", threadIndex);
 
 				// 処理するごとに他のスレッドに回す
 				//::SwitchToThread();
@@ -191,6 +191,9 @@ void DelayedWorker::listenEvent(const int threadIndex)
 			break;
 		}
 
+		const auto klassName{ getDerivedClassNamesW(task.get()) };
+
+		traceW(L"cancel task=%s", klassName.c_str());
 		task->cancelled(std::wstring(task->mCaller) + L"->" + __FUNCTIONW__);
 	}
 
@@ -279,7 +282,9 @@ bool DelayedWorker::addTypedTask(CALLER_ARG WinCseLib::IOnDemandTask* argTask)
 		}
 		else
 		{
-			traceW(L"[%s]: task ignored", taskName.c_str());
+			const auto klassName{ getDerivedClassNamesW(argTask) };
+
+			traceW(L"%s: %s: task ignored", klassName.c_str(), taskName.c_str());
 
 			mTaskSkipCount++;
 		}

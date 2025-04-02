@@ -48,8 +48,8 @@ AwsS3::~AwsS3()
 
     // 必要ないが、デバッグ時のメモリ・リーク調査の邪魔になるので
 
-    clearBuckets(START_CALLER0);
-    clearObjects(START_CALLER0);
+    clearBucketCache(START_CALLER0);
+    clearObjectCache(START_CALLER0);
 
     mRefFile.close();
     mRefDir.close();
@@ -112,8 +112,7 @@ DirInfoType AwsS3::makeDirInfo_dir(const std::wstring& argFileName, const UINT64
 
 NTSTATUS AwsS3::getHandleFromContext(CALLER_ARG
     WinCseLib::CSDeviceContext* argCSDeviceContext,
-    const DWORD argDesiredAccess, const DWORD argCreationDisposition,
-    HANDLE* pHandle)
+    const DWORD argDesiredAccess, const DWORD argCreationDisposition, PHANDLE pHandle)
 {
     NEW_LOG_BLOCK();
 
@@ -129,7 +128,7 @@ NTSTATUS AwsS3::getHandleFromContext(CALLER_ARG
 
     // ファイル名への参照を登録
 
-    UnprotectedShare<CreateFileShared> unsafeShare(&mGuardCreateFile, remotePath);  // 名前への参照を登録
+    UnprotectedShare<PrepareLocalCacheFileShared> unsafeShare(&mGuardPrepareLocalCache, remotePath);  // 名前への参照を登録
     {
         const auto safeShare{ unsafeShare.lock() };                                 // 名前のロック
 
