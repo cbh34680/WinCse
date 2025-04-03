@@ -142,7 +142,6 @@ struct ICSDevice : public ICSService
 	virtual bool headBucket(CALLER_ARG const std::wstring& argBucket,
 		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) = 0;
 
-	virtual DirInfoType getBucket(CALLER_ARG const std::wstring& argBucket) = 0;
 	virtual bool listBuckets(CALLER_ARG DirInfoListType* pDirInfoList) = 0;
 
 	virtual bool headObject(CALLER_ARG const ObjectKey& argObjKey,

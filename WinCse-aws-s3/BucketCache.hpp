@@ -4,43 +4,42 @@ class BucketCache
 {
 private:
 	DirInfoListType mList;
+	std::unordered_map<std::wstring, std::wstring> mBucketRegions;
+
 	std::wstring mLastSetCallChain;
 	std::wstring mLastGetCallChain;
+	std::wstring mLastClearCallChain;
+
 	std::chrono::system_clock::time_point mLastSetTime;
 	std::chrono::system_clock::time_point mLastGetTime;
+	std::chrono::system_clock::time_point mLastClearTime;
+
 	unsigned mCountGet = 0;
 	unsigned mCountSet = 0;
+	unsigned mCountClear = 0;
 
-	std::unordered_map<std::wstring, std::wstring> mRegionMap;
+	unsigned mCountGetNegative = 0;
+	unsigned mCountSetNegative = 0;
 
 protected:
 public:
 	std::chrono::system_clock::time_point getLastSetTime(CALLER_ARG0) const;
 
-	bool findRegion(CALLER_ARG const std::wstring& bucketName, std::wstring* bucketRegion);
+	std::wstring getBucketRegion(CALLER_ARG const std::wstring& argBucketName);
+	void addBucketRegion(CALLER_ARG const std::wstring& argBucketName, const std::wstring& argRegion);
 
-	void updateRegion(CALLER_ARG const std::wstring& bucketName, const std::wstring& bucketRegion);
-
-	void clear(CALLER_ARG0)
-	{
-		mList.clear();
-	}
+	void clear(CALLER_ARG0);
 
 	bool empty(CALLER_ARG0)
 	{
 		return mList.empty();
 	}
 
-	void save(CALLER_ARG
-		const DirInfoListType& dirInfoList);
-
-	void load(CALLER_ARG const std::wstring& region,
-		DirInfoListType& dirInfoList);
-
-	DirInfoType find(CALLER_ARG const std::wstring& argBucket);
+	void set(CALLER_ARG const DirInfoListType& argDirInfoList);
+	DirInfoListType get(CALLER_ARG0);
+	DirInfoType find(CALLER_ARG const std::wstring& argBucketName);
 
 	void report(CALLER_ARG FILE* fp);
-
 };
 
 // EOF

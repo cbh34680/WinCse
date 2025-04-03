@@ -4,7 +4,7 @@
 
 using namespace WinCseLib;
 
-
+/*
 struct NotifRemoveBucketTask : public IOnDemandTask
 {
     IgnoreDuplicates getIgnoreDuplicates() const noexcept override { return IgnoreDuplicates::Yes; }
@@ -25,7 +25,7 @@ struct NotifRemoveBucketTask : public IOnDemandTask
     {
         NEW_LOG_BLOCK();
 
-        traceW(L"exec FspFileSystemNotify**");
+        traceW(L"*** exec FspFileSystemNotify mFileName=%s ***", mFileName.c_str());
 
         NTSTATUS ntstatus = FspFileSystemNotifyBegin(mFileSystem, 1000UL);
         if (NT_SUCCESS(ntstatus))
@@ -57,23 +57,19 @@ struct NotifRemoveBucketTask : public IOnDemandTask
         }
     }
 };
-
+*/
 
 static BucketCache gBucketCache;
 
-std::wstring AwsS3::unsafeGetBucketRegion(CALLER_ARG const std::wstring& bucketName)
+std::wstring AwsS3::getBucketLocation(CALLER_ARG const std::wstring& bucketName)
 {
     //NEW_LOG_BLOCK();
 
-    std::wstring bucketRegion;
+    std::wstring bucketRegion{ gBucketCache.getBucketRegion(CONT_CALLER bucketName) };
 
     //traceW(L"bucketName: %s", bucketName.c_str());
 
-    if (gBucketCache.findRegion(CONT_CALLER bucketName, &bucketRegion))
-    {
-        //traceW(L"hit in cache, region is %s", bucketRegion.c_str());
-    }
-    else
+    if (bucketRegion.empty())
     {
         // キャッシュに存在しない
 
@@ -106,59 +102,48 @@ std::wstring AwsS3::unsafeGetBucketRegion(CALLER_ARG const std::wstring& bucketN
             //traceW(L"error, fall back region is %s", bucketRegion.c_str());
         }
 
-        gBucketCache.updateRegion(CONT_CALLER bucketName, bucketRegion);
+        gBucketCache.addBucketRegion(CONT_CALLER bucketName, bucketRegion);
+    }
+    else
+    {
+        //traceW(L"hit in cache, region is %s", bucketRegion.c_str());
     }
 
     return bucketRegion;
 }
 
-bool AwsS3::unsafeHeadBucket(CALLER_ARG const std::wstring& bucketName, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
+bool AwsS3::unsafeHeadBucket(CALLER_ARG const std::wstring& argBucketName, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
 {
     NEW_LOG_BLOCK();
-    APP_ASSERT(!bucketName.empty());
-    APP_ASSERT(bucketName.back() != L'/');
+    APP_ASSERT(!argBucketName.empty());
+    APP_ASSERT(argBucketName.back() != L'/');
 
     //traceW(L"bucket: %s", bucketName.c_str());
 
-    if (!isInBucketFilters(bucketName))
+    if (!isInBucketFilters(argBucketName))
     {
         // バケットフィルタに合致しない
-        traceW(L"%s: is not in filters, skip", bucketName.c_str());
+
+        traceW(L"%s: is not in filters, skip", argBucketName.c_str());
 
         return false;
     }
 
     // キャッシュから探す
-    const auto bucket{ gBucketCache.find(CONT_CALLER bucketName) };
-    if (bucket)
-    {
-        //traceW(L"hit in buckets cache");
-    }
-    else
-    {
-        //traceW(L"warn: no match");
 
-        Aws::S3::Model::HeadBucketRequest request;
-        request.SetBucket(WC2MB(bucketName));
+    const auto bucket{ gBucketCache.find(CONT_CALLER argBucketName) };
+    if (!bucket)
+    {
+        // キャッシュに見つからない
 
-        const auto outcome = mClient->HeadBucket(request);
-        if (!outcomeIsSuccess(outcome))
-        {
-            traceW(L"fault: HeadBucket");
-            return false;
-        }
+        traceW(L"not found");
+        return false;
     }
 
-    const std::wstring bucketRegion{ this->unsafeGetBucketRegion(CONT_CALLER bucketName) };
+    const std::wstring bucketRegion{ this->getBucketLocation(CONT_CALLER argBucketName) };
     if (bucketRegion != mRegion)
     {
-        // バケットのリージョンが異なるので拒否
-
         traceW(L"%s: no match bucket-region", bucketRegion.c_str());
-
-        // 非表示になるバケットについて WinFsp に通知
-
-        getWorker(L"delayed")->addTask(START_CALLER new NotifRemoveBucketTask{ mFileSystem, std::wstring(L"\\") + bucketName });
 
         return false;
     }
@@ -186,6 +171,18 @@ bool AwsS3::unsafeListBuckets(CALLER_ARG DirInfoListType* pDirInfoList /* nullab
 
     if (gBucketCache.empty(CONT_CALLER0))
     {
+        const auto now{ std::chrono::system_clock::now() };
+        const auto lastSetTime{ gBucketCache.getLastSetTime(CONT_CALLER0) };
+        const auto elapsed = std::chrono::duration_cast<std::chrono::minutes>(now - lastSetTime);
+
+        if (elapsed.count() < mConfig.bucketCacheExpiryMin)
+        {
+            // バケット一覧が空である状況のキャッシュ有効期限内
+
+            traceW(L"empty buckets, short time cache");
+            return true;
+        }
+
         //traceW(L"cache empty");
 
         // バケット一覧の取得
@@ -213,22 +210,14 @@ bool AwsS3::unsafeListBuckets(CALLER_ARG DirInfoListType* pDirInfoList /* nullab
                 continue;
             }
 
-            std::wstring bucketRegion;
-            if (gBucketCache.findRegion(CONT_CALLER bucketName, &bucketRegion))
-            {
-                // 異なるリージョンのバケットは無視
-
-                if (bucketRegion != mRegion)
-                {
-                    //traceW(L"%s: no match region, skip", bucketRegion.c_str());
-                    continue;
-                }
-            }
+            // バケットの作成日時を取得
 
             const auto creationMillis{ bucket.GetCreationDate().Millis() };
             traceW(L"bucketName=%s, CreationDate=%s", bucketName.c_str(), UtcMilliToLocalTimeStringW(creationMillis).c_str());
 
             const auto FileTime = UtcMillisToWinFileTime100ns(creationMillis);
+
+            // ディレクトリ・エントリを生成
 
             auto dirInfo = makeDirInfo_dir(bucketName, FileTime);
             APP_ASSERT(dirInfo);
@@ -238,6 +227,8 @@ bool AwsS3::unsafeListBuckets(CALLER_ARG DirInfoListType* pDirInfoList /* nullab
             dirInfo->FileInfo.FileAttributes |= FILE_ATTRIBUTE_READONLY;
 
             dirInfoList.emplace_back(dirInfo);
+
+            // 最大バケット表示数の確認
 
             if (mConfig.maxDisplayBuckets > 0)
             {
@@ -251,62 +242,59 @@ bool AwsS3::unsafeListBuckets(CALLER_ARG DirInfoListType* pDirInfoList /* nullab
         //traceW(L"update cache");
 
         // キャッシュにコピー
-        gBucketCache.save(CONT_CALLER dirInfoList);
+
+        gBucketCache.set(CONT_CALLER dirInfoList);
     }
     else
     {
         // キャッシュからコピー
-        gBucketCache.load(CONT_CALLER mRegion, dirInfoList);
+
+        dirInfoList = gBucketCache.get(CONT_CALLER0);
 
         //traceW(L"use cache: size=%zu", dirInfoList.size());
     }
 
-    bool ret = false;
-
     if (pDirInfoList)
     {
-        if (options.empty())
+        for (auto it=dirInfoList.begin(); it!=dirInfoList.end(); )
         {
-            // 抽出条件がないので、全て提供
+            const std::wstring bucketName{ (*it)->FileNameBuf };
 
-            *pDirInfoList = std::move(dirInfoList);
-            ret = true;
-        }
-        else
-        {
-            // 抽出条件に一致するものを提供
+            // リージョン・キャッシュから異なるリージョンであるか調べる
 
-            DirInfoListType optsDirInfoList;
+            const std::wstring bucketRegion{ gBucketCache.getBucketRegion(CONT_CALLER bucketName) };
 
-            for (const auto& dirInfo : dirInfoList)
+            if (!bucketRegion.empty())
             {
-                const std::wstring bucketName{ dirInfo->FileNameBuf };
-                const auto it = std::find(options.begin(), options.end(), bucketName);
-
-                if (it != options.end())
+                if (bucketRegion != mRegion)
                 {
-                    optsDirInfoList.push_back(dirInfo);
-                }
+                    // リージョンが異なる場合は HIDDEN 属性を付与
+                    //
+                    // --> headBucket() でリージョンを取得しているので、バケット・キャッシュ作成時ではできない
 
-                if (optsDirInfoList.size() == options.size())
-                {
-                    break;
+                    (*it)->FileInfo.FileAttributes |= FILE_ATTRIBUTE_HIDDEN;
                 }
             }
 
-            if (!optsDirInfoList.empty())
+            if (!options.empty())
             {
-                *pDirInfoList = std::move(optsDirInfoList);
-                ret = true;
+                const auto itOpts{ std::find(options.begin(), options.end(), bucketName) };
+                if (itOpts == options.end())
+                {
+                    // 検索抽出条件に一致しない場合は取り除く
+
+                    it = dirInfoList.erase(it);
+                    continue;
+                }
             }
+
+            ++it;
         }
-    }
-    else
-    {
-        ret = !dirInfoList.empty();
+
+        *pDirInfoList = std::move(dirInfoList);
     }
 
-    return ret;
+    return true;
 }
 
 // -----------------------------------------------------------------------------------
@@ -321,12 +309,13 @@ bool AwsS3::unsafeListBuckets(CALLER_ARG DirInfoListType* pDirInfoList /* nullab
 static std::mutex gGuard;
 #define THREAD_SAFE() std::lock_guard<std::mutex> lock_(gGuard)
 
-bool AwsS3::headBucket(CALLER_ARG const std::wstring& bucketName, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
+
+bool AwsS3::headBucket(CALLER_ARG const std::wstring& argBucketName, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
 {
     StatsIncr(headBucket);
     THREAD_SAFE();
 
-    return this->unsafeHeadBucket(CONT_CALLER bucketName, pFileInfo);
+    return this->unsafeHeadBucket(CONT_CALLER argBucketName, pFileInfo);
 }
 
 bool AwsS3::listBuckets(CALLER_ARG DirInfoListType* pDirInfoList /* nullable */)
@@ -335,25 +324,6 @@ bool AwsS3::listBuckets(CALLER_ARG DirInfoListType* pDirInfoList /* nullable */)
     THREAD_SAFE();
 
     return this->unsafeListBuckets(CONT_CALLER pDirInfoList, {});
-}
-
-DirInfoType AwsS3::getBucket(CALLER_ARG const std::wstring& bucketName)
-{
-    StatsIncr(getBucket);
-    THREAD_SAFE();
-
-    DirInfoListType dirInfoList;
-
-    // 名前を指定してリストを取得
-
-    if (!this->unsafeListBuckets(CONT_CALLER &dirInfoList, { bucketName }))
-    {
-        return nullptr;
-    }
-
-    APP_ASSERT(dirInfoList.size() == 1);
-
-    return *dirInfoList.begin();
 }
 
 void AwsS3::clearBucketCache(CALLER_ARG0)
@@ -367,13 +337,14 @@ void AwsS3::reportBucketCache(CALLER_ARG FILE* fp)
 {
     THREAD_SAFE();
 
+    // キャッシュのレポート
+
     gBucketCache.report(CONT_CALLER fp);
 }
 
 bool AwsS3::reloadBucketCache(CALLER_ARG std::chrono::system_clock::time_point threshold)
 {
     THREAD_SAFE();
-    //NEW_LOG_BLOCK();
 
     const auto lastSetTime = gBucketCache.getLastSetTime(CONT_CALLER0);
 

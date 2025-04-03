@@ -519,7 +519,7 @@ static void writeStats(
             fputs("[CSDevice Stats]\n", fp);
             fprintf(fp, "\t" "OnSvcStart: %ld\n", devStats->OnSvcStart);
             fprintf(fp, "\t" "OnSvcStop: %ld\n", devStats->OnSvcStop);
-            //fprintf(fp, "\t" "headBucket: %ld\n", devStats->headBucket);
+            fprintf(fp, "\t" "headBucket: %ld\n", devStats->headBucket);
             fprintf(fp, "\t" "headObject_Dir: %ld\n", devStats->headObject_Dir);
             fprintf(fp, "\t" "headObject_File: %ld\n", devStats->headObject_File);
             fprintf(fp, "\t" "listBuckets: %ld\n", devStats->listBuckets);

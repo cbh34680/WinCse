@@ -577,11 +577,6 @@ region=${region}
 ; default: Not set
 #bucket_filters=my-bucket-1,my-bucket-2*
 
-; Maximum number of display buckets.
-; valid range: 0 - INT_MAX
-; default: 0 (No restrictions)
-#max_display_buckets=0
-
 ; Delete the cache files after the upload is completed.
 ; valid value: 0 or non-zero
 ; default: 0 (Do not delete)
@@ -595,23 +590,28 @@ region=${region}
 ;!
 ;! Changing the following values will affect the response.
 ;!
+; Maximum number of display buckets.
+; valid range: 0 (No restrictions) to INT_MAX
+; default: 8
+#max_display_buckets=8
+
 ; Maximum number of display objects.
-; valid range: 0 - INT_MAX
+; valid range: 0 to INT_MAX
 ; default: 1000
 #max_display_objects=1000
 
 ; Bucket cache expiration period.
-; valid range: 1 - 1440 (1 day)
+; valid range: 1 to 1440 (1 day)
 ; default: 20
 #bucket_cache_expiry_min=20
 
 ; Object cache expiration period.
-; valid range: 1 - 60 (1 hour)
+; valid range: 1 to 60 (1 hour)
 ; default: 3
 #object_cache_expiry_min=3
 
 ; The duration for retaining cache files.
-; valid range: 1 - 10080 (1 week)
+; valid range: 1 to 10080 (1 week)
 ; default: 360 (6 hours)
 #cache_file_retention_min=360
 

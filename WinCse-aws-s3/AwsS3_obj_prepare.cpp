@@ -4,6 +4,7 @@ using namespace WinCseLib;
 
 NTSTATUS AwsS3::prepareLocalFile(CALLER_ARG OpenContext* ctx)
 {
+#if 1
     if (ctx->mFileInfo.FileSize <= PART_LENGTH_BYTE)
     {
         return this->prepareLocalFile_Simple(CONT_CALLER ctx);
@@ -12,6 +13,11 @@ NTSTATUS AwsS3::prepareLocalFile(CALLER_ARG OpenContext* ctx)
     {
         return this->prepareLocalFile_Multipart(CONT_CALLER ctx);
     }
+
+#else
+    return this->prepareLocalFile_Multipart(CONT_CALLER ctx);
+
+#endif
 }
 
 //

@@ -279,7 +279,6 @@ int GetIniIntW(const std::wstring& confPath, const wchar_t* argSection, const wc
 	return ret;
 }
 
-
 bool GetIniStringW(const std::wstring& confPath, const wchar_t* argSection, const wchar_t* keyName, std::wstring* pValue)
 {
 	LastErrorBackup _backup;

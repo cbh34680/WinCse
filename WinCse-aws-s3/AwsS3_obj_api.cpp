@@ -89,44 +89,11 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
 // ListObjectsV2 API を実行し結果を引数のポインタの指す変数に保存する
 // 引数の条件に合致するオブジェクトが見つからないときは false を返却
 //
-bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
-    const ObjectKey& argObjKey, DirInfoListType* pDirInfoList)
+bool AwsS3::apicallListObjectsV2(CALLER_ARG const ObjectKey& argObjKey, const bool argDelimiter, const int argLimit, DirInfoListType* pDirInfoList)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(pDirInfoList);
     APP_ASSERT(argObjKey.valid());
-
-    bool delimiter = false;
-    int limit = 0;
-
-    switch (argPurpose)
-    {
-        case Purpose::CheckDirExists:
-        {
-            // ディレクトリの存在確認の為にだけ呼ばれるはず
-
-            APP_ASSERT(argObjKey.hasKey());
-            APP_ASSERT(argObjKey.meansDir());
-
-            limit = 1;
-
-            break;
-        }
-        case Purpose::Display:
-        {
-            // DoReadDirectory() からのみ呼び出されるはず
-
-            APP_ASSERT(argObjKey.meansDir());
-
-            delimiter = true;
-
-            break;
-        }
-        default:
-        {
-            APP_ASSERT(0);
-        }
-    }
 
     //traceW(L"purpose=%s, argObjKey=%s, delimiter=%s, limit=%d", PurposeString(argPurpose), argObjKey.c_str(), BOOL_CSTRW(delimiter), limit);
 
@@ -135,14 +102,14 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
     Aws::S3::Model::ListObjectsV2Request request;
     request.SetBucket(argObjKey.bucketA());
 
-    if (delimiter)
+    if (argDelimiter)
     {
         request.WithDelimiter("/");
     }
 
-    if (limit > 0)
+    if (argLimit > 0)
     {
-        request.SetMaxKeys(limit);
+        request.SetMaxKeys(argLimit);
     }
 
     const auto argKeyLen = argObjKey.key().length();
@@ -229,9 +196,9 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
 
             dirInfoList.push_back(makeDirInfo_dir(key, commonPrefixTime));
 
-            if (limit > 0)
+            if (argLimit > 0)
             {
-                if (dirInfoList.size() >= limit)
+                if (dirInfoList.size() >= argLimit)
                 {
                     goto exit;
                 }
@@ -326,9 +293,9 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
 
             dirInfoList.emplace_back(dirInfo);
 
-            if (limit > 0)
+            if (argLimit > 0)
             {
-                if (dirInfoList.size() >= limit)
+                if (dirInfoList.size() >= argLimit)
                 {
                     // 結果リストが引数で指定した limit に到達
 
@@ -353,54 +320,9 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const Purpose argPurpose,
     } while (!continuationToken.empty());
 
 exit:
-    if (argPurpose == Purpose::Display && !dirInfoList.empty())
-    {
-        //
-        // 表示用のリストであり、空ではないので cmd と同じ動きをさせるため
-        // ".", ".." が存在しない場合に追加する
-        //
-
-        // "C:\WORK" のようにドライブ直下のディレクトリでは ".." が表示されない動作に合わせる
-
-        if (argObjKey.hasKey())
-        {
-            const auto itParent = std::find_if(dirInfoList.begin(), dirInfoList.end(), [](const auto& dirInfo)
-            {
-                return wcscmp(dirInfo->FileNameBuf, L"..") == 0;
-            });
-
-            if (itParent == dirInfoList.end())
-            {
-                dirInfoList.insert(dirInfoList.begin(), makeDirInfo_dir(L"..", commonPrefixTime));
-            }
-            else
-            {
-                const auto save{ *itParent };
-                dirInfoList.erase(itParent);
-                dirInfoList.insert(dirInfoList.begin(), save);
-            }
-        }
-
-        const auto itCurr = std::find_if(dirInfoList.begin(), dirInfoList.end(), [](const auto& dirInfo)
-        {
-            return wcscmp(dirInfo->FileNameBuf, L".") == 0;
-        });
-
-        if (itCurr == dirInfoList.end())
-        {
-            dirInfoList.insert(dirInfoList.begin(), makeDirInfo_dir(L".", commonPrefixTime));
-        }
-        else
-        {
-            const auto save{ *itCurr };
-            dirInfoList.erase(itCurr);
-            dirInfoList.insert(dirInfoList.begin(), save);
-        }
-    }
-
     *pDirInfoList = dirInfoList;
 
-    return !dirInfoList.empty();
+    return true;
 }
 
 // EOF

@@ -61,11 +61,8 @@ NTSTATUS WinCse::getFileInfoByName(CALLER_ARG const wchar_t* fileName, FSP_FSCTL
 		{
 			// "\bucket" ‚Ìƒpƒ^[ƒ“
 
-			const DirInfoType dirInfo = mCSDevice->getBucket(CONT_CALLER objKey.bucket());
-			if (dirInfo)
+			if (mCSDevice->headBucket(CONT_CALLER objKey.bucket(), pFileInfo))
 			{
-				*pFileInfo = dirInfo->FileInfo;
-
 				if (pType)
 				{
 					*pType = FileNameType::Bucket;
@@ -75,6 +72,9 @@ NTSTATUS WinCse::getFileInfoByName(CALLER_ARG const wchar_t* fileName, FSP_FSCTL
 			}
 		}
 	}
+
+	NEW_LOG_BLOCK();
+	traceW(L"not found: fileName=%s", fileName);
 
 	return FspNtStatusFromWin32(ERROR_FILE_NOT_FOUND);
 }
@@ -123,7 +123,7 @@ NTSTATUS WinCse::DoGetSecurityByName(
 	{
 		case FileNameType::DirectoryObject:
 		{
-			traceW(L"FileName=%s is DIRECTORY", FileName);
+			traceW(L"FileName=%s [DIRECTORY]", FileName);
 
 			[[fallthrough]];
 		}
@@ -136,7 +136,7 @@ NTSTATUS WinCse::DoGetSecurityByName(
 
 		case FileNameType::FileObject:
 		{
-			traceW(L"FileName=%s is FILE", FileName);
+			traceW(L"FileName=%s [FILE]", FileName);
 
 			Handle = mRefFile.handle();
 			break;

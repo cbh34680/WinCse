@@ -15,12 +15,17 @@ using namespace WinCseLib;
 
 void BucketCache::report(CALLER_ARG FILE* fp)
 {
-    fwprintf(fp, L"LastSetCallChain=%s" LN, mLastSetCallChain.c_str());
     fwprintf(fp, L"LastGetCallChain=%s" LN, mLastGetCallChain.c_str());
-    fwprintf(fp, L"LastSetTime=%s" LN, TimePointToLocalTimeStringW(mLastSetTime).c_str());
+    fwprintf(fp, L"LastSetCallChain=%s" LN, mLastSetCallChain.c_str());
+    fwprintf(fp, L"LastClearCallChain=%s" LN, mLastClearCallChain.c_str());
+
     fwprintf(fp, L"LastGetTime=%s" LN, TimePointToLocalTimeStringW(mLastGetTime).c_str());
+    fwprintf(fp, L"LastSetTime=%s" LN, TimePointToLocalTimeStringW(mLastSetTime).c_str());
+    fwprintf(fp, L"LastClearTime=%s" LN, TimePointToLocalTimeStringW(mLastClearTime).c_str());
+
     fwprintf(fp, L"CountGet=%d" LN, mCountGet);
     fwprintf(fp, L"CountSet=%d" LN, mCountSet);
+    fwprintf(fp, L"CountClear=%d" LN, mCountClear);
 
     fwprintf(fp, L"[BucketNames]" LN);
     fwprintf(fp, INDENT1 L"List.size=%zu" LN, mList.size());
@@ -31,9 +36,9 @@ void BucketCache::report(CALLER_ARG FILE* fp)
     }
 
     fwprintf(fp, INDENT1 L"[Region Map]" LN);
-    fwprintf(fp, INDENT2 L"RegionMap.size=%zu" LN, mRegionMap.size());
+    fwprintf(fp, INDENT2 L"BucketRegions.size=%zu" LN, mBucketRegions.size());
 
-    for (const auto& it: mRegionMap)
+    for (const auto& it: mBucketRegions)
     {
         fwprintf(fp, INDENT3 L"bucket=[%s] region=[%s]" LN, it.first.c_str(), it.second.c_str());
     }
@@ -44,52 +49,55 @@ std::chrono::system_clock::time_point BucketCache::getLastSetTime(CALLER_ARG0) c
     return mLastSetTime;
 }
 
-void BucketCache::save(CALLER_ARG
-    const DirInfoListType& dirInfoList)
+void BucketCache::set(CALLER_ARG const DirInfoListType& argDirInfoList)
 {
-    mList = dirInfoList;
+    NEW_LOG_BLOCK();
+
+    traceW(L"* argDirInfoList.size()=%zu", argDirInfoList.size());
+
     mLastSetTime = std::chrono::system_clock::now();
     mLastSetCallChain = CALL_CHAIN();
     mCountSet++;
+
+    mList = argDirInfoList;
 }
 
-void BucketCache::load(CALLER_ARG const std::wstring& region, 
-    DirInfoListType& dirInfoList)
+DirInfoListType BucketCache::get(CALLER_ARG0)
 {
-    const auto& regionMap{ mRegionMap };
-
-    DirInfoListType newList;
-
-    std::copy_if(mList.begin(), mList.end(),
-        std::back_inserter(newList), [&regionMap, &region](const auto& dirInfo)
-    {
-        const auto it{ regionMap.find(dirInfo->FileNameBuf) };
-
-        if (it != regionMap.end())
-        {
-            if (it->second != region)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    });
-
-    dirInfoList = std::move(newList);
-
     mLastGetTime = std::chrono::system_clock::now();
     mLastGetCallChain = CALL_CHAIN();
     mCountGet++;
+
+    return mList;
 }
 
-DirInfoType BucketCache::find(CALLER_ARG const std::wstring& bucketName)
+void BucketCache::clear(CALLER_ARG0)
 {
-    APP_ASSERT(!bucketName.empty());
+    NEW_LOG_BLOCK();
 
-    const auto it = std::find_if(mList.begin(), mList.end(), [&bucketName](const auto& dirInfo)
+    traceW(L"* mList.size()=%zu", mList.size());
+
+    mList.clear();
+
+    mLastSetTime = std::chrono::system_clock::time_point{};
+    mLastGetTime = std::chrono::system_clock::time_point{};
+    mLastSetCallChain = L"";
+    mLastGetCallChain = L"";
+    mCountSet = 0;
+    mCountGet = 0;
+
+    mLastClearTime = std::chrono::system_clock::now();
+    mLastClearCallChain = CALL_CHAIN();
+    mCountClear++;
+}
+
+DirInfoType BucketCache::find(CALLER_ARG const std::wstring& argBucketName)
+{
+    APP_ASSERT(!argBucketName.empty());
+
+    const auto it = std::find_if(mList.begin(), mList.end(), [&argBucketName](const auto& dirInfo)
     {
-        return bucketName == dirInfo->FileNameBuf;
+        return argBucketName == dirInfo->FileNameBuf;
     });
 
     if (it == mList.end())
@@ -104,28 +112,28 @@ DirInfoType BucketCache::find(CALLER_ARG const std::wstring& bucketName)
     return *it;
 }
 
-bool BucketCache::findRegion(CALLER_ARG const std::wstring& bucketName, std::wstring* pBucketRegion)
+std::wstring BucketCache::getBucketRegion(CALLER_ARG const std::wstring& argBucketName)
 {
-    APP_ASSERT(!bucketName.empty());
-    APP_ASSERT(pBucketRegion);
+    APP_ASSERT(!argBucketName.empty());
 
-    const auto it{ mRegionMap.find(bucketName) };
-    if (it == mRegionMap.end())
+    const auto it{ mBucketRegions.find(argBucketName) };
+    if (it == mBucketRegions.end())
     {
-        return false;
+        return L"";
     }
 
-    *pBucketRegion = it->second.c_str();
-
-    return true;
+    return it->second.c_str();
 }
 
-void BucketCache::updateRegion(CALLER_ARG const std::wstring& bucketName, const std::wstring& bucketRegion)
+void BucketCache::addBucketRegion(CALLER_ARG const std::wstring& argBucketName, const std::wstring& argRegion)
 {
-    APP_ASSERT(!bucketName.empty());
-    APP_ASSERT(!bucketRegion.empty());
+    NEW_LOG_BLOCK();
+    APP_ASSERT(!argBucketName.empty());
+    APP_ASSERT(!argRegion.empty());
 
-    mRegionMap[bucketName] = bucketRegion;
+    traceW(L"* argBucketName=%s, argRegion=%s", argBucketName.c_str(), argRegion.c_str());
+
+    mBucketRegions[argBucketName] = argRegion;
 }
 
 // EOF

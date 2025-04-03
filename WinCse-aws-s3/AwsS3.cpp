@@ -128,7 +128,7 @@ NTSTATUS AwsS3::getHandleFromContext(CALLER_ARG
 
     // ファイル名への参照を登録
 
-    UnprotectedShare<PrepareLocalCacheFileShared> unsafeShare(&mGuardPrepareLocalCache, remotePath);  // 名前への参照を登録
+    UnprotectedShare<PrepareLocalFileShare> unsafeShare(&mPrepareLocalFileShare, remotePath);  // 名前への参照を登録
     {
         const auto safeShare{ unsafeShare.lock() };                                 // 名前のロック
 

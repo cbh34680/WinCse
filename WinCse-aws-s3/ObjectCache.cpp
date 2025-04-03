@@ -104,11 +104,17 @@ int deleteBy(const std::function<bool(const typename T::iterator&)>& shouldErase
 
 // ---------------------------------------------------------------------------
 //
-// 以降は直接メンバ変数を操作するもの
+// 以降はメンバ変数を操作するもの
 //
+
+static std::mutex gGuard;
+#define THREAD_SAFE() std::lock_guard<std::mutex> lock_(gGuard)
+
 
 void ObjectCache::report(CALLER_ARG FILE* fp)
 {
+    THREAD_SAFE();
+
     fwprintf(fp, L"GetPositive=%d" LN, mGetPositive);
     fwprintf(fp, L"SetPositive=%d" LN, mSetPositive);
     fwprintf(fp, L"UpdPositive=%d" LN, mUpdPositive);
@@ -163,7 +169,8 @@ void ObjectCache::report(CALLER_ARG FILE* fp)
 
 int ObjectCache::deleteByTime(CALLER_ARG std::chrono::system_clock::time_point threshold)
 {
-    //NEW_LOG_BLOCK();
+    THREAD_SAFE();
+    NEW_LOG_BLOCK();
 
     const auto OldAccessTime = [&threshold](const auto& it)
     {
@@ -173,16 +180,17 @@ int ObjectCache::deleteByTime(CALLER_ARG std::chrono::system_clock::time_point t
     const int delPositive = deleteBy(OldAccessTime, mPositive);
     const int delNegative = deleteBy(OldAccessTime, mNegative);
 
-    //traceW(L"delete records: Positive=%d Negative=%d", delPositive, delNegative);
+    traceW(L"* delete records: Positive=%d Negative=%d", delPositive, delNegative);
 
     return delPositive + delNegative;
 }
 
 int ObjectCache::deleteByKey(CALLER_ARG const ObjectKey& argObjKey)
 {
+    THREAD_SAFE();
     NEW_LOG_BLOCK();
 
-    //traceW(L"argObjKey=%s", argObjKey.c_str());
+    traceW(L"* argObjKey=%s", argObjKey.c_str());
 
     const auto EqualObjKey = [&argObjKey](const auto& it)
     {
@@ -230,6 +238,7 @@ int ObjectCache::deleteByKey(CALLER_ARG const ObjectKey& argObjKey)
 bool ObjectCache::getPositive(CALLER_ARG const ObjectKey& argObjKey,
     const Purpose argPurpose, DirInfoListType* pDirInfoList)
 {
+    THREAD_SAFE();
     APP_ASSERT(argObjKey.valid());
     APP_ASSERT(pDirInfoList);
 
@@ -254,8 +263,9 @@ bool ObjectCache::getPositive(CALLER_ARG const ObjectKey& argObjKey,
 void ObjectCache::setPositive(CALLER_ARG const ObjectKey& argObjKey,
     const Purpose argPurpose, const DirInfoListType& dirInfoList)
 {
+    THREAD_SAFE();
+    NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.valid());
-    APP_ASSERT(!dirInfoList.empty());
 
     switch (argPurpose)
     {
@@ -265,9 +275,21 @@ void ObjectCache::setPositive(CALLER_ARG const ObjectKey& argObjKey,
 
             APP_ASSERT(argObjKey.meansDir());
             APP_ASSERT(argObjKey.hasKey());
+            APP_ASSERT(dirInfoList.size() == 1);
 
             break;
         }
+
+        case Purpose::CheckFileExists:
+        {
+            // ファイルの存在確認の為にだけ呼ばれるはず
+
+            APP_ASSERT(argObjKey.meansFile());
+            APP_ASSERT(dirInfoList.size() == 1);
+
+            break;
+        }
+
         case Purpose::Display:
         {
             // DoReadDirectory() からのみ呼び出されるはず
@@ -276,14 +298,7 @@ void ObjectCache::setPositive(CALLER_ARG const ObjectKey& argObjKey,
 
             break;
         }
-        case Purpose::CheckFileExists:
-        {
-            // ファイルの存在確認の為にだけ呼ばれるはず
 
-            APP_ASSERT(argObjKey.meansFile());
-
-            break;
-        }
         default:
         {
             APP_ASSERT(0);
@@ -304,6 +319,7 @@ void ObjectCache::setPositive(CALLER_ARG const ObjectKey& argObjKey,
         mUpdPositive++;
     }
 
+    traceW(L"* argObjKey=%s, argPurpose=%s", argObjKey.c_str(), PurposeString(argPurpose));
     mPositive.emplace(cacheKey, cacheVal);
 }
 
@@ -311,6 +327,7 @@ void ObjectCache::setPositive(CALLER_ARG const ObjectKey& argObjKey,
 
 bool ObjectCache::isInNegative(CALLER_ARG const ObjectKey& argObjKey, const Purpose argPurpose)
 {
+    THREAD_SAFE();
     APP_ASSERT(argObjKey.valid());
 
     const ObjectCacheKey cacheKey{ argObjKey, argPurpose };
@@ -331,6 +348,8 @@ bool ObjectCache::isInNegative(CALLER_ARG const ObjectKey& argObjKey, const Purp
 
 void ObjectCache::addNegative(CALLER_ARG const WinCseLib::ObjectKey& argObjKey, const Purpose argPurpose)
 {
+    THREAD_SAFE();
+    NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.valid());
 
     const ObjectCacheKey cacheKey{ argObjKey, argPurpose };
@@ -345,6 +364,7 @@ void ObjectCache::addNegative(CALLER_ARG const WinCseLib::ObjectKey& argObjKey, 
         mUpdNegative++;
     }
 
+    traceW(L"* argObjKey=%s, argPurpose=%s", argObjKey.c_str(), PurposeString(argPurpose));
     mNegative.emplace(cacheKey, cacheVal);
 }
 

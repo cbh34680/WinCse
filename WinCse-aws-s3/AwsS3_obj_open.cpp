@@ -16,9 +16,9 @@ CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
 
     const auto remotePath{ argObjKey.str() };
 
-    UnprotectedShare<PrepareLocalCacheFileShared> unsafeShare(&mGuardPrepareLocalCache, remotePath);  // 名前への参照を登録
+    UnprotectedShare<PrepareLocalFileShare> unsafeShare(&mPrepareLocalFileShare, remotePath);   // 名前への参照を登録
     {
-        const auto safeShare{ unsafeShare.lock() };                                 // 名前のロック
+        const auto safeShare{ unsafeShare.lock() }; // 名前のロック
 
         FileHandle hFile;
 
@@ -173,34 +173,28 @@ void AwsS3::close(CALLER_ARG WinCseLib::CSDeviceContext* ctx)
 
         const auto remotePath{ ctx->mObjKey.str() };
 
-        UnprotectedShare<PrepareLocalCacheFileShared> unsafeShare(&mGuardPrepareLocalCache, remotePath);  // 名前への参照を登録
+        if (fileInfo.FileSize < FILESIZE_1GiB * 5)
         {
-            const auto safeShare{ unsafeShare.lock() };                                 // 名前のロック
-
-            if (fileInfo.FileSize < FILESIZE_1GiB * 5)
+            if (!putObject(CONT_CALLER ctx->mObjKey, fileInfo, localPath.c_str()))
             {
-                if (!putObject(CONT_CALLER ctx->mObjKey, fileInfo, localPath.c_str()))
-                {
-                    traceW(L"fault: putObject");
-                    return;
-                }
-
-                // putObject でメモリ・キャッシュが削除されているので、改めて取得
-                // --> 必須ではないが、作成直後に属性が参照されることに対応
-
-                if (!headObject_File(CONT_CALLER ctx->mObjKey, nullptr))
-                {
-                    traceW(L"fault: headObject_File");
-                    return;
-                }
-            }
-            else
-            {
-                traceW(L"fault: too big");
+                traceW(L"fault: putObject");
                 return;
             }
+        }
+        else
+        {
+            traceW(L"fault: too big");
+            return;
+        }
 
-        }   // 名前のロックを解除 (safeShare の生存期間)
+        // putObject でメモリ・キャッシュが削除されているので、改めて取得
+        // --> 必須ではないが、作成直後に属性が参照されることに対応
+
+        if (!headObject_File(CONT_CALLER ctx->mObjKey, nullptr))
+        {
+            traceW(L"fault: headObject_File");
+            return;
+        }
 
         if (mConfig.deleteAfterUpload)
         {

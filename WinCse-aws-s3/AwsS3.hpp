@@ -114,8 +114,8 @@ private:
 	WinCseLib::FileHandle mRefDir;
 
 	// ファイル生成時の排他制御
-	struct PrepareLocalCacheFileShared : public SharedBase { };
-	ShareStore<PrepareLocalCacheFileShared> mGuardPrepareLocalCache;
+	struct PrepareLocalFileShare : public SharedBase { };
+	ShareStore<PrepareLocalFileShare> mPrepareLocalFileShare;
 
 	// シャットダウン要否判定のためポインタ
 	std::unique_ptr<Aws::SDKOptions> mSDKOptions;
@@ -142,7 +142,7 @@ private:
 	void clearBucketCache(CALLER_ARG0);
 	bool reloadBucketCache(CALLER_ARG std::chrono::system_clock::time_point threshold);
 	void reportBucketCache(CALLER_ARG FILE* fp);
-	std::wstring unsafeGetBucketRegion(CALLER_ARG const std::wstring& bucketName);
+	std::wstring getBucketLocation(CALLER_ARG const std::wstring& bucketName);
 
 	// オブジェクト操作関連
 	void reportObjectCache(CALLER_ARG FILE* fp);
@@ -150,16 +150,10 @@ private:
 	int clearObjectCache(CALLER_ARG0);
 	int deleteObjectCache(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
 
-	//
-	void unsafeReportObjectCache(CALLER_ARG FILE* fp);
-	int unsafeDeleteOldObjectCache(CALLER_ARG std::chrono::system_clock::time_point threshold);
-	int unsafeClearObjectCache(CALLER_ARG0);
-	int unsafeDeleteObjectCache(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
-
 	// AWS SDK API を実行
 	DirInfoType apicallHeadObject(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
-	bool apicallListObjectsV2(CALLER_ARG const Purpose purpose,
-		const WinCseLib::ObjectKey& argObjKey, DirInfoListType* pDirInfoList);
+	bool apicallListObjectsV2(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
+		const bool argDelimiter, const int argLimit, DirInfoListType* pDirInfoList);
 
 	//
 	bool unsafeHeadBucket(CALLER_ARG const std::wstring& bucketName,
@@ -174,6 +168,7 @@ private:
 		const Purpose purpose, DirInfoListType* pDirInfoList /* nullable */);
 	bool unsafeGetPositiveCache_File(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
 		DirInfoType* pDirInfo);
+	bool unsafeIsInNegativeCache_File(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
 
 	// Read 関連
 
@@ -208,7 +203,6 @@ public:
 
 	bool headBucket(CALLER_ARG const std::wstring& argBucket,
 		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) override;
-	DirInfoType getBucket(CALLER_ARG const std::wstring& bucketName) override;
 	bool listBuckets(CALLER_ARG DirInfoListType* pDirInfoList /* nullable */) override;
 
 	bool headObject_File(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,

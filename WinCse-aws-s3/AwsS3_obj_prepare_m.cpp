@@ -200,7 +200,7 @@ NTSTATUS AwsS3::prepareLocalFile_Multipart(CALLER_ARG OpenContext* ctx)
 
     // ファイル名への参照を登録
 
-    UnprotectedShare<PrepareLocalCacheFileShared> unsafeShare(&mGuardPrepareLocalCache, remotePath);    // 名前への参照を登録
+    UnprotectedShare<PrepareLocalFileShare> unsafeShare(&mPrepareLocalFileShare, remotePath);    // 名前への参照を登録
     {
         const auto safeShare{ unsafeShare.lock() }; // 名前のロック
 

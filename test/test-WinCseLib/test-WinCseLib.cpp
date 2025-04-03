@@ -629,8 +629,6 @@ void test15()
 
 void test16_b(FileHandle v)
 {
-    int iii = 0;
-
     std::cout << "v1=" << BOOL_CSTRA(v.valid()) << std::endl;
 }
 

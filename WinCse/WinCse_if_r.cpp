@@ -101,7 +101,9 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 			return STATUS_OBJECT_NAME_INVALID;
 		}
 
-		APP_ASSERT(!dirInfoList.empty());
+		// バケット一覧は空の可能性もあるのでコメント
+		//APP_ASSERT(!dirInfoList.empty());
+
 		//traceW(L"bucket count: %zu", dirInfoList.size());
 	}
 	else
@@ -126,7 +128,9 @@ NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 			return STATUS_OBJECT_NAME_INVALID;
 		}
 
+		// 少なくとも "." はあるので空ではないはず
 		APP_ASSERT(!dirInfoList.empty());
+
 		//traceW(L"object count: %zu", dirInfoList.size());
 	}
 

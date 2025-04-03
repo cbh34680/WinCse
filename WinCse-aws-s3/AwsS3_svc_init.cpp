@@ -277,14 +277,14 @@ bool AwsS3::PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir,
 
         const auto* confPathCstr = confPath.c_str();
 
-        mConfig.maxDisplayBuckets       = GetIniIntW(confPathCstr, iniSection, L"max_display_buckets",         0,   0, INT_MAX - 1);
+        mConfig.maxDisplayBuckets       = GetIniIntW(confPathCstr, iniSection, L"max_display_buckets",         8,   0, INT_MAX - 1);
         mConfig.maxDisplayObjects       = GetIniIntW(confPathCstr, iniSection, L"max_display_objects",      1000,   0, INT_MAX - 1);
         mConfig.bucketCacheExpiryMin    = GetIniIntW(confPathCstr, iniSection, L"bucket_cache_expiry_min",    20,   1,        1440);
         mConfig.objectCacheExpiryMin    = GetIniIntW(confPathCstr, iniSection, L"object_cache_expiry_min",     3,   1,          60);
         mConfig.cacheFileRetentionMin   = GetIniIntW(confPathCstr, iniSection, L"cache_file_retention_min",  360,   1,       10080);
 
-        mConfig.deleteAfterUpload       = ::GetPrivateProfileIntW(iniSection, L"delete_after_upload",   0, confPathCstr) != 0;
-        mConfig.strictFileTimestamp     = ::GetPrivateProfileIntW(iniSection, L"strict_file_timestamp", 0, confPathCstr) != 0;
+        mConfig.deleteAfterUpload       = ::GetPrivateProfileIntW(iniSection, L"delete_after_upload",           0, confPathCstr) != 0;
+        mConfig.strictFileTimestamp     = ::GetPrivateProfileIntW(iniSection, L"strict_file_timestamp",         0, confPathCstr) != 0;
 
         // ÉÅÉìÉoÇ…ï€ë∂ÇµÇƒèIóπ
 

@@ -18,7 +18,6 @@
 #include <aws/s3/model/BucketLocationConstraint.h>
 #include <aws/s3/model/Bucket.h>
 #include <aws/s3/model/GetBucketLocationRequest.h>
-#include <aws/s3/model/HeadBucketRequest.h>
 #include <aws/s3/model/ListBucketsRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
 #include <aws/s3/model/ListObjectsV2Request.h>
