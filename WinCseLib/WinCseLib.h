@@ -28,9 +28,6 @@
 #include <mutex>
 #include <functional>
 
-typedef std::shared_ptr<FSP_FSCTL_DIR_INFO> DirInfoType;
-typedef std::list<DirInfoType> DirInfoListType;
-
 #define CALLER_ARG0				const std::wstring& caller_
 #define CALLER_ARG				CALLER_ARG0,
 
@@ -43,7 +40,7 @@ typedef std::list<DirInfoType> DirInfoListType;
 #define CONT_CALLER				CONT_CALLER0,
 
 
-namespace WinCseLib {
+namespace WCSE {
 
 // ファイルサイズ
 
@@ -155,6 +152,9 @@ public:
 	using HandleRAII<(HANDLE)NULL>::HandleRAII;
 };
 
+using DirInfoType = std::shared_ptr<FSP_FSCTL_DIR_INFO>;
+using DirInfoListType = std::list<DirInfoType>;
+
 }
 
 // インターフェース定義
@@ -166,7 +166,7 @@ public:
 
 // 以降はアプリケーション関連
 
-namespace WinCseLib {
+namespace WCSE {
 
 //
 // グローバル関数
@@ -308,7 +308,7 @@ std::wstring getDerivedClassNamesW(T* baseClass)
 	return MB2WC(typeInfo.name());
 }
 
-} // namespace WinCseLib
+} // namespace WCSE
 
 typedef struct
 {
@@ -337,32 +337,35 @@ WINFSP_STATS;
 
 typedef struct
 {
-	WinCseLib::ICSDriver* pDriver;
+	WCSE::ICSDriver* pDriver;
 	WINFSP_STATS stats;
 }
 WINFSP_IF;
 
-WINCSELIB_API int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINFSP_IF* appif);
+extern "C"
+{
+	WINCSELIB_API int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINFSP_IF* appif);
+}
 
 // -----------------------------
 //
 // マクロ定義
 //
 #define NEW_LOG_BLOCK() \
-	WinCseLib::LogBlock logBlock_(__FILEW__, __LINE__, __FUNCTIONW__)
+	WCSE::LogBlock logBlock_(__FILEW__, __LINE__, __FUNCTIONW__)
 
 #define LOG_BLOCK()		logBlock_
 #define LOG_DEPTH()		LOG_BLOCK().depth()
 
 #define traceA(format, ...) \
-	WinCseLib::GetLogger()->traceA_impl(LOG_DEPTH(), __FILE__, __LINE__, __FUNCTION__, format, __VA_ARGS__)
+	WCSE::GetLogger()->traceA_impl(LOG_DEPTH(), __FILE__, __LINE__, __FUNCTION__, format, __VA_ARGS__)
 
 #define traceW(format, ...) \
-	WinCseLib::GetLogger()->traceW_impl(LOG_DEPTH(), __FILEW__, __LINE__, __FUNCTIONW__, format, __VA_ARGS__)
+	WCSE::GetLogger()->traceW_impl(LOG_DEPTH(), __FILEW__, __LINE__, __FUNCTIONW__, format, __VA_ARGS__)
 
 #define APP_ASSERT(expr) \
     if (!(expr)) { \
-        WinCseLib::AbnormalEnd(__FILE__, __LINE__, __FUNCTION__, -1); \
+        WCSE::AbnormalEnd(__FILE__, __LINE__, __FUNCTION__, -1); \
     }
 
 #define FA_IS_DIR(fa)			((fa) & FILE_ATTRIBUTE_DIRECTORY)

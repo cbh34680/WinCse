@@ -5,7 +5,7 @@
 #include <algorithm>
 //#include <locale>
 
-namespace WinCseLib {
+namespace WCSE {
 
 // wstring ‚©‚ç string ‚Ö‚Ì•ÏŠ·
 std::string WC2MB(const std::wstring& wstr)

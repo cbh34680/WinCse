@@ -1,201 +1,183 @@
 #include "AwsS3.hpp"
+#include "AwsS3_obj_pp_util.h"
 
-using namespace WinCseLib;
+using namespace WCSE;
 
-NTSTATUS AwsS3::prepareLocalFile(CALLER_ARG OpenContext* ctx)
-{
-#if 1
-    if (ctx->mFileInfo.FileSize <= PART_LENGTH_BYTE)
-    {
-        return this->prepareLocalFile_Simple(CONT_CALLER ctx);
-    }
-    else
-    {
-        return this->prepareLocalFile_Multipart(CONT_CALLER ctx);
-    }
 
-#else
-    return this->prepareLocalFile_Multipart(CONT_CALLER ctx);
+static NTSTATUS syncFileAttributes(CALLER_ARG
+    const FSP_FSCTL_FILE_INFO& fileInfo, const std::wstring& localPath, bool* pNeedDownload);
 
-#endif
-}
-
-//
-// GetObject() で取得した内容をファイルに出力
-//
-// argOffset)
-//      -1 以下     書き出しオフセット指定なし
-//      それ以外    CreateFile 後に SetFilePointerEx が実行される
-//
-static int64_t outputObjectResultToFile(CALLER_ARG
-    const Aws::S3::Model::GetObjectResult& argResult, const FileOutputParams& argOutputParams)
+NTSTATUS AwsS3::prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, const UINT64 argOffset, const ULONG argLength)
 {
     NEW_LOG_BLOCK();
 
-    // 入力データ
-    const auto pbuf = argResult.GetBody().rdbuf();
-    const auto inputSize = argResult.GetContentLength();  // ファイルサイズ
+    const auto remotePath{ ctx->mObjKey.str() };
 
-    std::vector<char> vbuffer(1024 * 64);
+    traceW(L"remotePath=%s", remotePath.c_str());
 
-    traceW(argOutputParams.str().c_str());
+    // ファイル名への参照を登録
 
-    // result の内容をファイルに出力する
-
-    auto remainingTotal = inputSize;
-
-    FileHandle hFile = ::CreateFileW
-    (
-        argOutputParams.mPath.c_str(),
-        GENERIC_WRITE,
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-        NULL,
-        argOutputParams.mCreationDisposition,
-        FILE_ATTRIBUTE_NORMAL,
-        NULL
-    );
-
-    if (hFile.invalid())
+    UnprotectedShare<PrepareLocalFileShare> unsafeShare(&mPrepareLocalFileShare, remotePath);    // 名前への参照を登録
     {
-        const auto lerr = ::GetLastError();
-        traceW(L"fault: CreateFileW lerr=%ld", lerr);
+        const auto safeShare{ unsafeShare.lock() }; // 名前のロック
 
-        return -1LL;
-    }
-
-    if (argOutputParams.mSpecifyRange)
-    {
-        LARGE_INTEGER li{};
-        li.QuadPart = argOutputParams.mOffset;
-
-        if (::SetFilePointerEx(hFile.handle(), li, NULL, FILE_BEGIN) == 0)
+        if (ctx->mFile.invalid())
         {
-            const auto lerr = ::GetLastError();
-            traceW(L"fault: SetFilePointerEx lerr=%ld", lerr);
+            // AwsS3::open() 後の初回の呼び出し
 
-            return -1LL;
-        }
-    }
+            std::wstring localPath;
 
-    while (remainingTotal > 0)
-    {
-        // バッファにデータを読み込む
-
-        char* buffer = vbuffer.data();
-        const std::streamsize bytesRead = pbuf->sgetn(buffer, min(remainingTotal, (int64_t)vbuffer.size()));
-        if (bytesRead <= 0)
-        {
-            traceW(L"fault: Read error");
-
-            return -1LL;
-        }
-
-        //traceW(L"%lld bytes read", bytesRead);
-
-        // ファイルにデータを書き込む
-
-        char* pos = buffer;
-        auto remainingWrite = bytesRead;
-
-        while (remainingWrite > 0)
-        {
-            //traceW(L"%lld bytes remaining", remainingWrite);
-
-            DWORD bytesWritten = 0;
-            if (!::WriteFile(hFile.handle(), pos, (DWORD)remainingWrite, &bytesWritten, NULL))
+            if (!ctx->getCacheFilePath(&localPath))
             {
-                const auto lerr = ::GetLastError();
-                traceW(L"fault: WriteFile lerr=%ld", lerr);
-
-                return -1LL;
+                //traceW(L"fault: getCacheFilePath");
+                //return STATUS_OBJECT_NAME_NOT_FOUND;
+                return FspNtStatusFromWin32(ERROR_FILE_NOT_FOUND);
             }
 
-            //traceW(L"%lld bytes written", bytesWritten);
+            // ダウンロードが必要か判断
 
-            pos += bytesWritten;
-            remainingWrite -= bytesWritten;
+            bool needDownload = false;
+
+            NTSTATUS ntstatus = syncFileAttributes(CONT_CALLER ctx->mFileInfo, localPath, &needDownload);
+            if (!NT_SUCCESS(ntstatus))
+            {
+                traceW(L"fault: syncFileAttributes");
+                return ntstatus;
+            }
+
+            //traceW(L"needDownload: %s", BOOL_CSTRW(needDownload));
+
+            if (!needDownload)
+            {
+                if (ctx->mFileInfo.FileSize == 0)
+                {
+                    // syncFileAttributes() でトランケート済
+
+                    //return STATUS_END_OF_FILE;
+                    return FspNtStatusFromWin32(ERROR_HANDLE_EOF);
+                }
+            }
+
+            if (ctx->mFileInfo.FileSize <= PART_SIZE_BYTE)
+            {
+                // 一度で全てをダウンロード
+
+                if (needDownload)
+                {
+                    // キャッシュ・ファイルの準備
+
+                    const FileOutputParams outputParams{ localPath, CREATE_ALWAYS };
+
+                    const auto bytesWritten = this->getObjectAndWriteToFile(CONT_CALLER ctx->mObjKey, outputParams);
+
+                    if (bytesWritten < 0)
+                    {
+                        traceW(L"fault: getObjectAndWriteToFile_Simple bytesWritten=%lld", bytesWritten);
+                        //return STATUS_IO_DEVICE_ERROR;
+                        return FspNtStatusFromWin32(ERROR_IO_DEVICE);
+                    }
+                }
+
+                // 既存のファイルを開く
+
+                ntstatus = ctx->openFileHandle(CONT_CALLER
+                    FILE_WRITE_ATTRIBUTES,
+                    OPEN_EXISTING
+                );
+
+                if (!NT_SUCCESS(ntstatus))
+                {
+                    traceW(L"fault: openFileHandle");
+                    return ntstatus;
+                }
+
+                APP_ASSERT(ctx->mFile.valid());
+            }
+            else
+            {
+                // マルチパート・ダウンロード
+
+                // ファイルを開く
+
+                ntstatus = ctx->openFileHandle(CONT_CALLER
+                    FILE_WRITE_ATTRIBUTES,
+                    needDownload ? CREATE_ALWAYS : OPEN_EXISTING
+                );
+
+                if (!NT_SUCCESS(ntstatus))
+                {
+                    traceW(L"fault: openFileHandle");
+                    return ntstatus;
+                }
+
+                APP_ASSERT(ctx->mFile.valid());
+
+                if (needDownload)
+                {
+                    // ダウンロードが必要
+
+                    if (!this->doMultipartDownload(CONT_CALLER ctx, localPath))
+                    {
+                        traceW(L"fault: doMultipartDownload");
+                        //return STATUS_IO_DEVICE_ERROR;
+                        return FspNtStatusFromWin32(ERROR_IO_DEVICE);
+                    }
+                }
+            }
+
+            if (needDownload)
+            {
+                // ファイル日付の同期
+
+                if (!ctx->mFile.setFileTime(ctx->mFileInfo))
+                {
+                    const auto lerr = ::GetLastError();
+                    traceW(L"fault: setBasicInfo lerr=%lu", lerr);
+
+                    return FspNtStatusFromWin32(lerr);
+                }
+            }
+            else
+            {
+                // アクセス日時のみ更新
+
+                if (!ctx->mFile.setFileTime(0, 0))
+                {
+                    const auto lerr = ::GetLastError();
+                    traceW(L"fault: setFileTime lerr=%lu", lerr);
+
+                    return FspNtStatusFromWin32(lerr);
+                }
+            }
+
+            // 属性情報のサイズと比較
+
+            LARGE_INTEGER fileSize;
+            if(!::GetFileSizeEx(ctx->mFile.handle(), &fileSize))
+            {
+                const auto lerr = ::GetLastError();
+                traceW(L"fault: GetFileSizeEx lerr=%lu", lerr);
+
+                return FspNtStatusFromWin32(lerr);
+            }
+
+            if (ctx->mFileInfo.FileSize != (UINT64)fileSize.QuadPart)
+            {
+                APP_ASSERT(0);
+
+                traceW(L"fault: no match filesize ");
+                //return STATUS_IO_DEVICE_ERROR;
+                return FspNtStatusFromWin32(ERROR_IO_DEVICE);
+            }
         }
+    }   // 名前のロックを解除 (safeShare の生存期間)
 
-        remainingTotal -= bytesRead;
-    }
+    APP_ASSERT(ctx->mFile.valid());
 
-    //traceW(L"return %lld", inputSize);
-
-    return inputSize;
+    return STATUS_SUCCESS;
 }
 
-//
-// 引数で指定されたローカル・キャッシュが存在しない、又は 対する s3 オブジェクトの
-// 更新日時より古い場合は新たに GetObject() を実行してキャッシュ・ファイルを作成する
-// 
-// argOffset)
-//      -1 以下     書き出しオフセット指定なし
-//      それ以外    CreateFile 後に SetFilePointerEx が実行される
-//
-
-int64_t AwsS3::getObjectAndWriteToFile(CALLER_ARG
-    const ObjectKey& argObjKey, const FileOutputParams& argOutputParams)
-{
-    NEW_LOG_BLOCK();
-
-    //traceW(L"argObjKey=%s meta=%s", argObjKey.c_str(), argOutputParams.str().c_str());
-
-    std::stringstream ss;
-
-    if (argOutputParams.mSpecifyRange)
-    {
-        // オフセットの指定があるときは既存ファイルへの
-        // 部分書き込みなので Length も指定されるべきである
-
-        ss << "bytes=";
-        ss << argOutputParams.mOffset;
-        ss << '-';
-        ss << argOutputParams.getOffsetEnd();
-    }
-
-    const std::string range{ ss.str() };
-    //traceA("range=%s", range.c_str());
-
-    namespace chrono = std::chrono;
-    const chrono::steady_clock::time_point start{ chrono::steady_clock::now() };
-
-    Aws::S3::Model::GetObjectRequest request;
-    request.SetBucket(argObjKey.bucketA());
-    request.SetKey(argObjKey.keyA());
-
-    if (!range.empty())
-    {
-        request.SetRange(range);
-    }
-
-    const auto outcome = mClient->GetObject(request);
-    if (!outcomeIsSuccess(outcome))
-    {
-        traceW(L"fault: GetObject");
-        return -1LL;
-    }
-
-    const auto& result = outcome.GetResult();
-
-    // result の内容をファイルに出力する
-
-    const auto bytesWritten = outputObjectResultToFile(CONT_CALLER result, argOutputParams);
-
-    if (bytesWritten < 0)
-    {
-        traceW(L"fault: outputObjectResultToFile");
-        return -1LL;
-    }
-
-    const chrono::steady_clock::time_point end{ chrono::steady_clock::now() };
-    const auto duration{ std::chrono::duration_cast<std::chrono::milliseconds>(end - start) };
-
-    //traceW(L"DOWNLOADTIME argObjKey=%s size=%lld duration=%lld", argObjKey.c_str(), bytesWritten, duration.count());
-
-    return bytesWritten;
-}
-
-NTSTATUS syncFileAttributes(CALLER_ARG const FSP_FSCTL_FILE_INFO& remoteInfo,
+static NTSTATUS syncFileAttributes(CALLER_ARG const FSP_FSCTL_FILE_INFO& remoteInfo,
     const std::wstring& localPath, bool* pNeedDownload)
 {
     //

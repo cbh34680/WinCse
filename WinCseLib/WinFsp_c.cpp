@@ -60,7 +60,7 @@ WINFSP_IF* gWinFspIf;
 #define StatsIncr(fname)    if (gWinFspIf) InterlockedIncrement(& (gWinFspIf->stats.fname))
 
 #if !WINFSP_PASSTHROUGH
-WinCseLib::ICSDriver* CSDriver()
+WCSE::ICSDriver* getCSDriver()
 {
     ::SetLastError(ERROR_SUCCESS);
 
@@ -139,7 +139,7 @@ static NTSTATUS GetSecurityByName(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(GetSecurityByName);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoGetSecurityByName(FileName, PFileAttributes, SecurityDescriptor, PSecurityDescriptorSize);
+    return getCSDriver()->DoGetSecurityByName(FileName, PFileAttributes, SecurityDescriptor, PSecurityDescriptorSize);
 
 #else
     PTFS* Ptfs = (PTFS*)FileSystem->UserContext;
@@ -206,7 +206,7 @@ static NTSTATUS Create(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(Create);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoCreate(FileName, CreateOptions, GrantedAccess, FileAttributes, SecurityDescriptor, AllocationSize, PFileContext, FileInfo);
+    return getCSDriver()->DoCreate(FileName, CreateOptions, GrantedAccess, FileAttributes, SecurityDescriptor, AllocationSize, PFileContext, FileInfo);
 
 #else
     PTFS* Ptfs = (PTFS*)FileSystem->UserContext;
@@ -272,7 +272,7 @@ static NTSTATUS Open(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(Open);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoOpen(FileName, CreateOptions, GrantedAccess, PFileContext, FileInfo);
+    return getCSDriver()->DoOpen(FileName, CreateOptions, GrantedAccess, PFileContext, FileInfo);
 
 #else
     PTFS *Ptfs = (PTFS *)FileSystem->UserContext;
@@ -314,7 +314,7 @@ static NTSTATUS Overwrite(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(Overwrite);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoOverwrite((PTFS_FILE_CONTEXT*)FileContext,
+    return getCSDriver()->DoOverwrite((PTFS_FILE_CONTEXT*)FileContext,
         FileAttributes, ReplaceFileAttributes, AllocationSize, FileInfo);
 
 #else
@@ -362,7 +362,7 @@ static VOID Cleanup(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(Cleanup);
 
 #if !WINFSP_PASSTHROUGH
-    CSDriver()->DoCleanup((PTFS_FILE_CONTEXT*)FileContext, FileName, Flags);
+    getCSDriver()->DoCleanup((PTFS_FILE_CONTEXT*)FileContext, FileName, Flags);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -385,7 +385,7 @@ static VOID Close(FSP_FILE_SYSTEM *FileSystem,
     PTFS_FILE_CONTEXT *FileContext = (PTFS_FILE_CONTEXT*)FileContext0;
 
 #if !WINFSP_PASSTHROUGH
-    CSDriver()->DoClose(FileContext);
+    getCSDriver()->DoClose(FileContext);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -404,7 +404,7 @@ static NTSTATUS Read(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(Read);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoRead((PTFS_FILE_CONTEXT*)FileContext, Buffer, Offset, Length, PBytesTransferred);
+    return getCSDriver()->DoRead((PTFS_FILE_CONTEXT*)FileContext, Buffer, Offset, Length, PBytesTransferred);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -430,7 +430,7 @@ static NTSTATUS Write(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(Write);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoWrite((PTFS_FILE_CONTEXT*)FileContext, Buffer, Offset, Length, WriteToEndOfFile, ConstrainedIo, PBytesTransferred, FileInfo);
+    return getCSDriver()->DoWrite((PTFS_FILE_CONTEXT*)FileContext, Buffer, Offset, Length, WriteToEndOfFile, ConstrainedIo, PBytesTransferred, FileInfo);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -465,7 +465,7 @@ static NTSTATUS Flush(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(Flush);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoFlush((PTFS_FILE_CONTEXT*)FileContext, FileInfo);
+    return getCSDriver()->DoFlush((PTFS_FILE_CONTEXT*)FileContext, FileInfo);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -488,7 +488,7 @@ static NTSTATUS GetFileInfo(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(GetFileInfo);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoGetFileInfo((PTFS_FILE_CONTEXT*)FileContext0, FileInfo);
+    return getCSDriver()->DoGetFileInfo((PTFS_FILE_CONTEXT*)FileContext0, FileInfo);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext0);
@@ -505,7 +505,7 @@ static NTSTATUS SetBasicInfo(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(SetBasicInfo);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoSetBasicInfo((PTFS_FILE_CONTEXT*)FileContext, FileAttributes,
+    return getCSDriver()->DoSetBasicInfo((PTFS_FILE_CONTEXT*)FileContext, FileAttributes,
         CreationTime, LastAccessTime, LastWriteTime, ChangeTime, FileInfo);
 
 #else
@@ -539,7 +539,7 @@ static NTSTATUS SetFileSize(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(SetFileSize);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoSetFileSize((PTFS_FILE_CONTEXT*)FileContext, NewSize, SetAllocationSize, FileInfo);
+    return getCSDriver()->DoSetFileSize((PTFS_FILE_CONTEXT*)FileContext, NewSize, SetAllocationSize, FileInfo);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -585,7 +585,7 @@ static NTSTATUS Rename(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(Rename);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoRename((PTFS_FILE_CONTEXT*)FileContext, FileName, NewFileName, ReplaceIfExists);
+    return getCSDriver()->DoRename((PTFS_FILE_CONTEXT*)FileContext, FileName, NewFileName, ReplaceIfExists);
 
 #else
     PTFS* Ptfs = (PTFS*)FileSystem->UserContext;
@@ -611,7 +611,7 @@ static NTSTATUS GetSecurity(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(GetSecurity);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoGetSecurity((PTFS_FILE_CONTEXT*)FileContext, SecurityDescriptor, PSecurityDescriptorSize);
+    return getCSDriver()->DoGetSecurity((PTFS_FILE_CONTEXT*)FileContext, SecurityDescriptor, PSecurityDescriptorSize);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -638,7 +638,7 @@ static NTSTATUS SetSecurity(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(SetSecurity);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoSetSecurity((PTFS_FILE_CONTEXT*)FileContext, SecurityInformation, ModificationDescriptor);
+    return getCSDriver()->DoSetSecurity((PTFS_FILE_CONTEXT*)FileContext, SecurityInformation, ModificationDescriptor);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -660,7 +660,7 @@ static NTSTATUS ReadDirectory(FSP_FILE_SYSTEM *FileSystem,
     PTFS_FILE_CONTEXT *FileContext = (PTFS_FILE_CONTEXT*)FileContext0;
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoReadDirectory(FileContext, Pattern, Marker, Buffer, BufferLength, PBytesTransferred);
+    return getCSDriver()->DoReadDirectory(FileContext, Pattern, Marker, Buffer, BufferLength, PBytesTransferred);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -752,7 +752,7 @@ static NTSTATUS SetDelete(FSP_FILE_SYSTEM *FileSystem,
     StatsIncr(SetDelete);
 
 #if !WINFSP_PASSTHROUGH
-    return CSDriver()->DoSetDelete((PTFS_FILE_CONTEXT*)FileContext, FileName, DeleteFile);
+    return getCSDriver()->DoSetDelete((PTFS_FILE_CONTEXT*)FileContext, FileName, DeleteFile);
 
     /*
     https://stackoverflow.com/questions/36217150/deleting-a-file-based-on-disk-id
@@ -1116,7 +1116,7 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
     }
 
 #if !WINFSP_PASSTHROUGH
-    if (!CSDriver()->PreCreateFilesystem(Service, PassThrough, &VolumeParams))
+    if (!getCSDriver()->PreCreateFilesystem(Service, PassThrough, &VolumeParams))
     {
         fail(L"fault: PreCreateFilesystem");
 
@@ -1137,7 +1137,7 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
     }
 
 #if !WINFSP_PASSTHROUGH
-    if (!CSDriver()->OnSvcStart(PassThrough, Ptfs->FileSystem))
+    if (!getCSDriver()->OnSvcStart(PassThrough, Ptfs->FileSystem))
     {
         fail(L"fault: OnSvcStart");
 
@@ -1198,7 +1198,7 @@ static NTSTATUS SvcStop(FSP_SERVICE *Service)
     FspFileSystemStopDispatcher(Ptfs->FileSystem);
 
 #if !WINFSP_PASSTHROUGH
-    CSDriver()->OnSvcStop();
+    getCSDriver()->OnSvcStop();
 #endif
 
     PtfsDelete(Ptfs);

@@ -7,9 +7,9 @@
 
 #include <iostream>
 
-using namespace WinCseLib;
+using namespace WCSE;
 
-struct ImmediateWorker : public WinCseLib::IWorker
+struct ImmediateWorker : public IWorker
 {
     bool addTask(CALLER_ARG ITask* argTask)
     {

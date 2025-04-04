@@ -1,7 +1,7 @@
 #include "AwsS3.hpp"
 #include <filesystem>
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 
 struct ListBucketsTask : public IOnDemandTask

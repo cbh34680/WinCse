@@ -4,7 +4,7 @@
 #include <numeric>
 #include <sstream>
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 
 #define ENABLE_WORKER		(1)
@@ -201,7 +201,7 @@ void ScheduledWorker::listenEvent(const int threadIndex)
 static std::mutex gGuard;
 #define THREAD_SAFE() std::lock_guard<std::mutex> lock_(gGuard)
 
-bool ScheduledWorker::addTypedTask(CALLER_ARG WinCseLib::IScheduledTask* argTask)
+bool ScheduledWorker::addTypedTask(CALLER_ARG WCSE::IScheduledTask* argTask)
 {
 	THREAD_SAFE();
 	NEW_LOG_BLOCK();

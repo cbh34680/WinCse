@@ -25,9 +25,8 @@
     <ClCompile Include="AwsS3_obj_clist.cpp" />
     <ClCompile Include="AwsS3_obj_list.cpp" />
     <ClCompile Include="AwsS3_obj_open.cpp" />
+    <ClCompile Include="AwsS3_obj_pp_util.cpp" />
     <ClCompile Include="AwsS3_obj_prepare.cpp" />
-    <ClCompile Include="AwsS3_obj_prepare_m.cpp" />
-    <ClCompile Include="AwsS3_obj_prepare_s.cpp" />
     <ClCompile Include="AwsS3_obj_rw.cpp.cpp" />
     <ClCompile Include="AwsS3_schedule.cpp" />
     <ClCompile Include="AwsS3_svc.cpp" />
@@ -38,6 +37,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AwsS3.hpp" />
+    <ClInclude Include="AwsS3_obj_pp_util.h" />
     <ClInclude Include="aws_sdk_s3.h" />
     <ClInclude Include="BucketCache.hpp" />
     <ClInclude Include="ObjectCache.hpp" />

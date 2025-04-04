@@ -1,12 +1,12 @@
 #include "AwsS3.hpp"
 #include <filesystem>
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 //
 // AwsS3
 //
-WinCseLib::ICSDevice* NewCSDevice(
+WCSE::ICSDevice* NewCSDevice(
     const wchar_t* argTempDir, const wchar_t* argIniSection,
     NamedWorker argWorkers[])
 {
@@ -111,7 +111,7 @@ DirInfoType AwsS3::makeDirInfo_dir(const std::wstring& argFileName, const UINT64
 }
 
 NTSTATUS AwsS3::getHandleFromContext(CALLER_ARG
-    WinCseLib::CSDeviceContext* argCSDeviceContext,
+    WCSE::CSDeviceContext* argCSDeviceContext,
     const DWORD argDesiredAccess, const DWORD argCreationDisposition, PHANDLE pHandle)
 {
     NEW_LOG_BLOCK();

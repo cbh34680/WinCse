@@ -2,7 +2,7 @@
 #pragma warning(push)
 #pragma warning(disable: 4100)
 
-namespace WinCseLib {
+namespace WCSE {
 
 struct ITask
 {
@@ -68,7 +68,7 @@ typedef struct
 }
 NamedWorker;
 
-} // namespace WinCseLib
+} // namespace WCSE
 
 #pragma warning(pop)
 // EOF

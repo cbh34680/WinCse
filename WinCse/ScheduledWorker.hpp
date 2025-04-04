@@ -4,20 +4,20 @@
 #include <queue>
 #include <atomic>
 
-class ScheduledWorker : public WinCseLib::ITaskTypedWorker<WinCseLib::IScheduledTask>
+class ScheduledWorker : public WCSE::ITaskTypedWorker<WCSE::IScheduledTask>
 {
 private:
 	const std::wstring mTempDir;
 	const std::wstring mIniSection;
 	std::list<std::thread> mThreads;
 	std::atomic<bool> mEndWorkerFlag = false;
-	std::deque<std::shared_ptr<WinCseLib::IScheduledTask>> mTasks;
+	std::deque<std::shared_ptr<WCSE::IScheduledTask>> mTasks;
 
-	WinCseLib::EventHandle mEvent;
+	WCSE::EventHandle mEvent;
 
 protected:
 	void listenEvent(const int i);
-	std::deque<std::shared_ptr<WinCseLib::IScheduledTask>> getTasks();
+	std::deque<std::shared_ptr<WCSE::IScheduledTask>> getTasks();
 
 	virtual int getThreadPriority() const noexcept = 0;
 	virtual DWORD getTimePeriodMillis() const noexcept = 0;
@@ -29,7 +29,7 @@ public:
 	bool OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
 	void OnSvcStop() override;
 
-	bool addTypedTask(CALLER_ARG WinCseLib::IScheduledTask* argTask) override;
+	bool addTypedTask(CALLER_ARG WCSE::IScheduledTask* argTask) override;
 };
 
 // EOF

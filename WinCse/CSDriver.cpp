@@ -1,13 +1,13 @@
 #include "WinCseLib.h"
-#include "WinCse.hpp"
+#include "CSDriver.hpp"
 #include <filesystem>
 
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 static const wchar_t* const DEFAULT_IGNORE_PATTERNS = LR"(\b(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif)|\.DS_Store)$)";
 
-WinCse::WinCse(WINCSE_DRIVER_STATS* argStats,
+CSDriver::CSDriver(WINCSE_DRIVER_STATS* argStats,
 	const std::wstring& argTempDir, const std::wstring& argIniSection,
 	NamedWorker argWorkers[], ICSDevice* argCSDevice)
 	:
@@ -26,7 +26,7 @@ WinCse::WinCse(WINCSE_DRIVER_STATS* argStats,
 	NamedWorkersToMap(argWorkers, &mWorkers);
 }
 
-WinCse::~WinCse()
+CSDriver::~CSDriver()
 {
 	NEW_LOG_BLOCK();
 
@@ -38,7 +38,7 @@ WinCse::~WinCse()
 	traceW(L"all done.");
 }
 
-bool WinCse::shouldIgnoreFileName(const std::wstring& arg)
+bool CSDriver::shouldIgnoreFileName(const std::wstring& arg)
 {
 	// desktop.ini などリクエストが増え過ぎるものは無視する
 
@@ -59,7 +59,7 @@ bool WinCse::shouldIgnoreFileName(const std::wstring& arg)
 // 放置しても問題はないが、デバッグ時にメモリリークとして報告されてしまい
 // 本来の意味でのメモリリークと混在してしまうため
 //
-WinCse::ResourceSweeper::~ResourceSweeper()
+CSDriver::ResourceSweeper::~ResourceSweeper()
 {
 	NEW_LOG_BLOCK();
 
@@ -83,7 +83,7 @@ WinCse::ResourceSweeper::~ResourceSweeper()
 static std::mutex gGuard;
 #define THREAD_SAFE() std::lock_guard<std::mutex> lock_(gGuard)
 
-void WinCse::ResourceSweeper::add(PTFS_FILE_CONTEXT* FileContext)
+void CSDriver::ResourceSweeper::add(PTFS_FILE_CONTEXT* FileContext)
 {
 	THREAD_SAFE();
 	APP_ASSERT(mOpenAddrs.find(FileContext) == mOpenAddrs.end());
@@ -91,7 +91,7 @@ void WinCse::ResourceSweeper::add(PTFS_FILE_CONTEXT* FileContext)
 	mOpenAddrs.insert(FileContext);
 }
 
-void WinCse::ResourceSweeper::remove(PTFS_FILE_CONTEXT* FileContext)
+void CSDriver::ResourceSweeper::remove(PTFS_FILE_CONTEXT* FileContext)
 {
 	THREAD_SAFE();
 	APP_ASSERT(mOpenAddrs.find(FileContext) != mOpenAddrs.end());

@@ -1,11 +1,11 @@
 #include "WinCseLib.h"
-#include "WinCse.hpp"
+#include "CSDriver.hpp"
 #include <sstream>
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 
-NTSTATUS WinCse::getFileInfoByName(CALLER_ARG const wchar_t* fileName, FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pType /* nullable */)
+NTSTATUS CSDriver::getFileInfoByName(CALLER_ARG const wchar_t* fileName, FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pType /* nullable */)
 {
 	APP_ASSERT(pFileInfo);
 
@@ -79,7 +79,7 @@ NTSTATUS WinCse::getFileInfoByName(CALLER_ARG const wchar_t* fileName, FSP_FSCTL
 	return FspNtStatusFromWin32(ERROR_FILE_NOT_FOUND);
 }
 
-NTSTATUS WinCse::FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCTL_FILE_INFO* pFileInfo)
+NTSTATUS CSDriver::FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCTL_FILE_INFO* pFileInfo)
 {
 	APP_ASSERT(FileName);
 	APP_ASSERT(pFileInfo);
@@ -89,7 +89,7 @@ NTSTATUS WinCse::FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCT
 	return getFileInfoByName(CONT_CALLER FileName, pFileInfo, nullptr);
 }
 
-NTSTATUS WinCse::DoGetSecurityByName(
+NTSTATUS CSDriver::DoGetSecurityByName(
 	const wchar_t* FileName, PUINT32 PFileAttributes,
 	PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize)
 {

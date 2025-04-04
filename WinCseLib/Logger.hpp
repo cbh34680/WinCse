@@ -3,9 +3,9 @@
 #include <fstream>
 
 
-namespace WinCseLib {
+namespace WCSE {
 
-class Logger : public WinCseLib::ILogger
+class Logger : public WCSE::ILogger
 {
 private:
 	std::wstring mTempDir;

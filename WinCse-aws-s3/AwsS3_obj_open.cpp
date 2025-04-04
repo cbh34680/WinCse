@@ -2,7 +2,7 @@
 #include <fstream>
 #include <iostream>
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 
 CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
@@ -122,7 +122,7 @@ CSDeviceContext* AwsS3::open(CALLER_ARG const ObjectKey& argObjKey,
     return ctx;
 }
 
-void AwsS3::close(CALLER_ARG WinCseLib::CSDeviceContext* ctx)
+void AwsS3::close(CALLER_ARG WCSE::CSDeviceContext* ctx)
 {
     StatsIncr(close);
     NEW_LOG_BLOCK();

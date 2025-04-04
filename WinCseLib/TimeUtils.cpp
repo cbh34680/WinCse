@@ -3,7 +3,7 @@
 #include <iomanip>
 
 
-namespace WinCseLib {
+namespace WCSE {
 
 // UTC ƒ~ƒŠ•b‚ð YYYY-MM-DD HH:MI:SS.NNN •¶Žš—ñ‚É•ÏŠ·
 std::wstring UtcMilliToLocalTimeStringW(uint64_t milliseconds)
@@ -169,6 +169,6 @@ uint64_t WinFileTimeToUtcMillis(const FILETIME &ft)
 	return (WinFileTimeToWinFileTime100ns(ft) - EPOCH_DIFFERENCE_100NS) / HUNDRED_NANOSECONDS_PER_MILLISECOND;
 }
 
-} // WinCseLib
+} // WCSE
 
 // EOF

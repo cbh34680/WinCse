@@ -1,6 +1,6 @@
 #include "AwsS3.hpp"
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 // -----------------------------------------------------------------------------------
 //

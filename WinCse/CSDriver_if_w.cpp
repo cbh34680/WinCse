@@ -1,15 +1,15 @@
 #include "WinCseLib.h"
-#include "WinCse.hpp"
+#include "CSDriver.hpp"
 
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 // ---------------------------------------------------------------------------
 //
 // 既にファイルが開いている状態のもの
 //
 
-NTSTATUS WinCse::DoSetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize, BOOLEAN SetAllocationSize,
+NTSTATUS CSDriver::DoSetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize, BOOLEAN SetAllocationSize,
 	FSP_FSCTL_FILE_INFO *FileInfo)
 {
 	StatsIncr(DoSetFileSize);
@@ -67,7 +67,7 @@ NTSTATUS WinCse::DoSetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize, B
 	return GetFileInfoInternal(Handle, FileInfo);
 }
 
-NTSTATUS WinCse::DoFlush(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO *FileInfo)
+NTSTATUS CSDriver::DoFlush(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO *FileInfo)
 {
 	StatsIncr(DoFlush);
 	NEW_LOG_BLOCK();
@@ -103,7 +103,7 @@ NTSTATUS WinCse::DoFlush(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO *Fi
 // CreateFile() が必要なもの
 //
 
-NTSTATUS WinCse::DoOverwrite(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttributes,
+NTSTATUS CSDriver::DoOverwrite(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttributes,
 	BOOLEAN ReplaceFileAttributes, UINT64 AllocationSize, FSP_FSCTL_FILE_INFO *FileInfo)
 {
 	StatsIncr(DoOverwrite);
@@ -180,7 +180,7 @@ NTSTATUS WinCse::DoOverwrite(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttribut
 	return GetFileInfoInternal(Handle, FileInfo);
 }
 
-NTSTATUS WinCse::DoWrite(PTFS_FILE_CONTEXT* FileContext, PVOID Buffer, UINT64 Offset, ULONG Length,
+NTSTATUS CSDriver::DoWrite(PTFS_FILE_CONTEXT* FileContext, PVOID Buffer, UINT64 Offset, ULONG Length,
 	BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
 	PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO *FileInfo)
 {
@@ -189,8 +189,9 @@ NTSTATUS WinCse::DoWrite(PTFS_FILE_CONTEXT* FileContext, PVOID Buffer, UINT64 Of
 	APP_ASSERT(FileContext && Buffer && PBytesTransferred && FileInfo);
 	APP_ASSERT(!FA_IS_DIR(FileContext->FileInfo.FileAttributes));		// ファイルのみ
 
-	traceW(L"FileName=%s, Offset=%llu, Length=%lu, WriteToEndOfFile=%s, ConstrainedIo=%s",
-		FileContext->FileName, Offset, Length, BOOL_CSTRW(WriteToEndOfFile), BOOL_CSTRW(ConstrainedIo));
+	traceW(L"FileName=%s, FileAttributes=%u, FileSize=%llu, Offset=%llu, Length=%lu, WriteToEndOfFile=%s, ConstrainedIo=%s",
+		FileContext->FileName, FileContext->FileInfo.FileAttributes, FileContext->FileInfo.FileSize,
+		Offset, Length, BOOL_CSTRW(WriteToEndOfFile), BOOL_CSTRW(ConstrainedIo));
 
 	return mCSDevice->writeObject(START_CALLER (CSDeviceContext*)FileContext->UParam,
 		Buffer, Offset, Length, WriteToEndOfFile, ConstrainedIo, PBytesTransferred, FileInfo);
@@ -201,7 +202,7 @@ NTSTATUS WinCse::DoWrite(PTFS_FILE_CONTEXT* FileContext, PVOID Buffer, UINT64 Of
 // 以降はファイルとディレクトリの両方が対象
 //
 
-NTSTATUS WinCse::DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOOLEAN argDeleteFile)
+NTSTATUS CSDriver::DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOOLEAN argDeleteFile)
 {
 	StatsIncr(DoSetDelete);
 	NEW_LOG_BLOCK();
@@ -281,7 +282,7 @@ NTSTATUS WinCse::DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOO
 	return STATUS_SUCCESS;
 }
 
-NTSTATUS WinCse::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, const UINT32 argFileAttributes,
+NTSTATUS CSDriver::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, const UINT32 argFileAttributes,
 	const UINT64 argCreationTime, const UINT64 argLastAccessTime, const UINT64 argLastWriteTime,
 	const UINT64 argChangeTime, FSP_FSCTL_FILE_INFO *FileInfo)
 {
@@ -353,7 +354,7 @@ NTSTATUS WinCse::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, const UINT32 arg
 	return GetFileInfoInternal(Handle, FileInfo);
 }
 
-NTSTATUS WinCse::DoSetSecurity(PTFS_FILE_CONTEXT* FileContext,
+NTSTATUS CSDriver::DoSetSecurity(PTFS_FILE_CONTEXT* FileContext,
 	SECURITY_INFORMATION SecurityInformation, PSECURITY_DESCRIPTOR ModificationDescriptor)
 {
 	StatsIncr(DoSetSecurity);
@@ -367,7 +368,7 @@ NTSTATUS WinCse::DoSetSecurity(PTFS_FILE_CONTEXT* FileContext,
 	//return STATUS_SUCCESS;
 }
 
-NTSTATUS WinCse::DoRename(PTFS_FILE_CONTEXT* FileContext,
+NTSTATUS CSDriver::DoRename(PTFS_FILE_CONTEXT* FileContext,
 	PWSTR FileName, PWSTR NewFileName, BOOLEAN ReplaceIfExists)
 {
 	StatsIncr(DoRename);

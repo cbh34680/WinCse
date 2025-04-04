@@ -7,7 +7,7 @@
 // å‚É ChatGPT ‚É‚æ‚è¶¬
 //
 
-namespace WinCseLib {
+namespace WCSE {
 
 // AES ‚ğg‚Á‚Ä•œ†‰»
 
@@ -270,6 +270,6 @@ exit:
     return ret;
 }
 
-} // namespace WinCseLib
+} // namespace WCSE
 
 // EOF

@@ -2,7 +2,7 @@
 #include <filesystem>
 
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 
 static const wchar_t* CONFIGFILE_FNAME = L"WinCse.conf";

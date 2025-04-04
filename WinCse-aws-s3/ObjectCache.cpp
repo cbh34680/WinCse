@@ -3,7 +3,7 @@
 #include <functional>
 
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 
 //
@@ -346,7 +346,7 @@ bool ObjectCache::isInNegative(CALLER_ARG const ObjectKey& argObjKey, const Purp
     return true;
 }
 
-void ObjectCache::addNegative(CALLER_ARG const WinCseLib::ObjectKey& argObjKey, const Purpose argPurpose)
+void ObjectCache::addNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey, const Purpose argPurpose)
 {
     THREAD_SAFE();
     NEW_LOG_BLOCK();

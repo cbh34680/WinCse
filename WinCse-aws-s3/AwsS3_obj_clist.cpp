@@ -1,7 +1,7 @@
 #include "AwsS3.hpp"
 #include "ObjectCache.hpp"
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 
 static ObjectCache gObjectCache;
@@ -225,7 +225,7 @@ int AwsS3::clearObjectCache(CALLER_ARG0)
     return gObjectCache.deleteByTime(CONT_CALLER std::chrono::system_clock::now());
 }
 
-int AwsS3::deleteObjectCache(CALLER_ARG const WinCseLib::ObjectKey& argObjKey)
+int AwsS3::deleteObjectCache(CALLER_ARG const WCSE::ObjectKey& argObjKey)
 {
     return gObjectCache.deleteByKey(CONT_CALLER argObjKey);
 }

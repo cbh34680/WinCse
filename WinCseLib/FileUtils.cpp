@@ -5,7 +5,7 @@
 #include <sddl.h>
 
 
-namespace WinCseLib {
+namespace WCSE {
 
 bool GetCacheFilePath(const std::wstring& argDir, const std::wstring& argName, std::wstring* pPath)
 {
@@ -303,6 +303,6 @@ bool PathToSDStr(const std::wstring& path, std::wstring& sdstr)
 }
 #endif
 
-} // WinCseLib
+} // WCSE
 
 // EOF

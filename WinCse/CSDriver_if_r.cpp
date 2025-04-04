@@ -1,10 +1,10 @@
 #include "WinCseLib.h"
-#include "WinCse.hpp"
+#include "CSDriver.hpp"
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 
-NTSTATUS WinCse::DoGetFileInfo(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO* FileInfo)
+NTSTATUS CSDriver::DoGetFileInfo(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO* FileInfo)
 {
 	StatsIncr(DoGetFileInfo);
 
@@ -21,7 +21,7 @@ NTSTATUS WinCse::DoGetFileInfo(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_IN
 	return STATUS_SUCCESS;
 }
 
-NTSTATUS WinCse::DoGetSecurity(PTFS_FILE_CONTEXT* FileContext,
+NTSTATUS CSDriver::DoGetSecurity(PTFS_FILE_CONTEXT* FileContext,
 	PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize)
 {
 	StatsIncr(DoGetSecurity);
@@ -40,7 +40,7 @@ NTSTATUS WinCse::DoGetSecurity(PTFS_FILE_CONTEXT* FileContext,
 	return HandleToSecurityInfo(Handle, SecurityDescriptor, PSecurityDescriptorSize);
 }
 
-NTSTATUS WinCse::DoRead(PTFS_FILE_CONTEXT* FileContext,
+NTSTATUS CSDriver::DoRead(PTFS_FILE_CONTEXT* FileContext,
 	PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred)
 {
 	StatsIncr(DoRead);
@@ -48,8 +48,8 @@ NTSTATUS WinCse::DoRead(PTFS_FILE_CONTEXT* FileContext,
 	APP_ASSERT(FileContext && Buffer && PBytesTransferred);
 	APP_ASSERT(!FA_IS_DIR(FileContext->FileInfo.FileAttributes));		// ƒtƒ@ƒCƒ‹‚Ì‚Ý
 
-	traceW(L"FileName=%s, FileAttributes=%u, Size=%llu, Offset=%llu",
-		FileContext->FileName, FileContext->FileInfo.FileAttributes, FileContext->FileInfo.FileSize, Offset);
+	traceW(L"FileName=%s, FileAttributes=%u, FileSize=%llu, Offset=%llu, Length=%lu",
+		FileContext->FileName, FileContext->FileInfo.FileAttributes, FileContext->FileInfo.FileSize, Offset, Length);
 
 	//APP_ASSERT(Offset <= FileContext->FileInfo.FileSize);
 
@@ -59,7 +59,7 @@ NTSTATUS WinCse::DoRead(PTFS_FILE_CONTEXT* FileContext,
 		Buffer, Offset, Length, PBytesTransferred);
 }
 
-NTSTATUS WinCse::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
+NTSTATUS CSDriver::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 	PWSTR Marker, PVOID Buffer, ULONG BufferLength, PULONG PBytesTransferred)
 {
 	StatsIncr(DoReadDirectory);

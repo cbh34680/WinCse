@@ -3,7 +3,7 @@
 class BucketCache
 {
 private:
-	DirInfoListType mList;
+	WCSE::DirInfoListType mList;
 	std::unordered_map<std::wstring, std::wstring> mBucketRegions;
 
 	std::wstring mLastSetCallChain;
@@ -35,9 +35,9 @@ public:
 		return mList.empty();
 	}
 
-	void set(CALLER_ARG const DirInfoListType& argDirInfoList);
-	DirInfoListType get(CALLER_ARG0);
-	DirInfoType find(CALLER_ARG const std::wstring& argBucketName);
+	void set(CALLER_ARG const WCSE::DirInfoListType& argDirInfoList);
+	WCSE::DirInfoListType get(CALLER_ARG0);
+	WCSE::DirInfoType find(CALLER_ARG const std::wstring& argBucketName);
 
 	void report(CALLER_ARG FILE* fp);
 };

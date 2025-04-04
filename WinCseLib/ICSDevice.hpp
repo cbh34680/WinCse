@@ -23,7 +23,7 @@ typedef struct
 }
 WINCSE_DEVICE_STATS;
 
-namespace WinCseLib {
+namespace WCSE {
 
 // 文字列をバケット名とキーに分割
 class ObjectKey
@@ -117,7 +117,7 @@ struct CSDeviceContext
 	uint32_t mFlags = 0U;
 
 	WINCSELIB_API CSDeviceContext(const std::wstring& argCacheDataDir,
-		const WinCseLib::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo);
+		const WCSE::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo);
 
 	WINCSELIB_API bool getCacheFilePath(std::wstring* pPath) const;
 
@@ -192,15 +192,15 @@ struct ICSDevice : public ICSService
 		const DWORD argDesiredAccess, const DWORD argCreationDisposition, PHANDLE pHandle) = 0;
 };
 
-} // namespace WinCseLib
+} // namespace WCSE
 
   // カスタムハッシュ関数 ... unorderd_map のキーになるために必要
 namespace std
 {
 template <>
-struct hash<WinCseLib::ObjectKey>
+struct hash<WCSE::ObjectKey>
 {
-	size_t operator()(const WinCseLib::ObjectKey& that) const noexcept
+	size_t operator()(const WCSE::ObjectKey& that) const noexcept
 	{
 		return hash<wstring>()(that.bucket()) ^ (hash<wstring>()(that.key()) << 1);
 	}

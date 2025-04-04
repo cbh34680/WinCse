@@ -8,7 +8,7 @@
 #undef traceA
 
 
-namespace WinCseLib {
+namespace WCSE {
 
 //
 // スレッド・ローカル変数の初期化
@@ -314,6 +314,6 @@ void DeleteLogger()
 	gLogger = nullptr;
 }
 
-} // namespace WinCseLib
+} // namespace WCSE
 
 // EOF

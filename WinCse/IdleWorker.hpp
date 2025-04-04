@@ -12,7 +12,7 @@ protected:
 
 	DWORD getTimePeriodMillis() const noexcept override
 	{
-		return WinCseLib::TIMEMILLIS_1MINu;
+		return WCSE::TIMEMILLIS_1MINu;
 	}
 
 public:

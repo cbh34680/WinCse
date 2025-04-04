@@ -3,7 +3,7 @@
 #include <filesystem>
 #include <sstream>
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 
 #define ENABLE_TASK		(1)
@@ -237,7 +237,7 @@ bool taskComparator(const std::unique_ptr<IOnDemandTask>& a, const std::unique_p
 }
 
 #if ENABLE_TASK
-bool DelayedWorker::addTypedTask(CALLER_ARG WinCseLib::IOnDemandTask* argTask)
+bool DelayedWorker::addTypedTask(CALLER_ARG WCSE::IOnDemandTask* argTask)
 {
 	THREAD_SAFE();
 	NEW_LOG_BLOCK();
@@ -338,7 +338,7 @@ std::unique_ptr<IOnDemandTask> DelayedWorker::dequeueTask()
 
 #else
 
-bool DelayedWorker::addTypedTask(CALLER_ARG WinCseLib::IOnDemandTask* argTask)
+bool DelayedWorker::addTypedTask(CALLER_ARG WCSE::IOnDemandTask* argTask)
 {
 	THREAD_SAFE();
 

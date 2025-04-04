@@ -3,22 +3,22 @@
 #include <regex>
 #include <set>
 
-class WinCse : public WinCseLib::ICSDriver
+class CSDriver : public WCSE::ICSDriver
 {
 private:
 	WINCSE_DRIVER_STATS* mStats;
 
 	bool mReadonlyVolume = false;
 
-	WinCseLib::ICSDevice* mCSDevice;
+	WCSE::ICSDevice* mCSDevice;
 
 	const std::wstring mTempDir;
 	const std::wstring mIniSection;
 
 	// Worker 取得
-	std::unordered_map<std::wstring, WinCseLib::IWorker*> mWorkers;
+	std::unordered_map<std::wstring, WCSE::IWorker*> mWorkers;
 
-	WinCseLib::IWorker* getWorker(const std::wstring& argName)
+	WCSE::IWorker* getWorker(const std::wstring& argName)
 	{
 		return mWorkers.at(argName);
 	}
@@ -30,14 +30,14 @@ private:
 	std::wstring mWorkDir;
 
 	// 属性参照用ファイル・ハンドル
-	WinCseLib::FileHandle mRefFile;
-	WinCseLib::FileHandle mRefDir;
+	WCSE::FileHandle mRefFile;
+	WCSE::FileHandle mRefDir;
 
 	struct ResourceSweeper
 	{
-		WinCse* mThat;
+		CSDriver* mThat;
 
-		ResourceSweeper(WinCse* argThat) : mThat(argThat) { }
+		ResourceSweeper(CSDriver* argThat) : mThat(argThat) { }
 
 		std::set<PTFS_FILE_CONTEXT*> mOpenAddrs;
 		void add(PTFS_FILE_CONTEXT* FileContext);
@@ -62,11 +62,11 @@ protected:
 	bool shouldIgnoreFileName(const std::wstring& FileName);
 
 public:
-	WinCse(
+	CSDriver(
 		WINCSE_DRIVER_STATS* argStats, const std::wstring& argTempDir, const std::wstring& argIniSection,
-		WinCseLib::NamedWorker argWorkers[], WinCseLib::ICSDevice* argCSDevice);
+		WCSE::NamedWorker argWorkers[], WCSE::ICSDevice* argCSDevice);
 
-	~WinCse();
+	~CSDriver();
 
 	// WinFsp から呼び出される関数
 	bool PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;

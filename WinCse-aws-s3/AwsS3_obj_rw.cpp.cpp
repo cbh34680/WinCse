@@ -1,7 +1,7 @@
 #include "AwsS3.hpp"
 #include <fstream>
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 
 //
@@ -9,7 +9,7 @@ using namespace WinCseLib;
 // ここでは最初に呼び出されたときに s3 からファイルをダウンロードしてキャッシュとした上で
 // そのファイルをオープンし、その後は HANDLE を使いまわす
 //
-NTSTATUS AwsS3::readObject(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
+NTSTATUS AwsS3::readObject(CALLER_ARG WCSE::CSDeviceContext* argCSDeviceContext,
     PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred)
 {
     StatsIncr(readObject);
@@ -22,7 +22,7 @@ NTSTATUS AwsS3::readObject(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceCon
     traceW(L"mObjKey=%s, ctx=%p HANDLE=%p, Offset=%llu, Length=%lu",
         ctx->mObjKey.c_str(), ctx, ctx->mFile.handle(), Offset, Length);
 
-    NTSTATUS ntstatus = this->prepareLocalFile(CONT_CALLER ctx);
+    NTSTATUS ntstatus = this->prepareLocalFile_simple(CONT_CALLER ctx, Offset, Length);
 
     if (!NT_SUCCESS(ntstatus))
     {
@@ -52,7 +52,7 @@ NTSTATUS AwsS3::readObject(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceCon
     return STATUS_SUCCESS;
 }
 
-NTSTATUS AwsS3::writeObject(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceContext,
+NTSTATUS AwsS3::writeObject(CALLER_ARG WCSE::CSDeviceContext* argCSDeviceContext,
     PVOID Buffer, UINT64 Offset, ULONG Length, BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
     PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO *FileInfo)
 {
@@ -66,7 +66,7 @@ NTSTATUS AwsS3::writeObject(CALLER_ARG WinCseLib::CSDeviceContext* argCSDeviceCo
         ctx->mObjKey.c_str(), ctx, ctx->mFile.handle(), Offset, Length,
         BOOL_CSTRW(WriteToEndOfFile), BOOL_CSTRW(ConstrainedIo));
 
-    NTSTATUS ntstatus = this->prepareLocalFile(CONT_CALLER ctx);
+    NTSTATUS ntstatus = this->prepareLocalFile_simple(CONT_CALLER ctx, Offset, Length);
 
     if (!NT_SUCCESS(ntstatus))
     {

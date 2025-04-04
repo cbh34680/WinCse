@@ -8,7 +8,7 @@
 #include "DelayedWorker.hpp"
 #include "IdleWorker.hpp"
 #include "TimerWorker.hpp"
-#include "WinCse.hpp"
+#include "CSDriver.hpp"
 #include <csignal>
 #include <iostream>
 #include <sstream>
@@ -23,7 +23,7 @@
 #endif
 
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 static WCHAR PROGNAME[] = L"WinCse";
 
@@ -89,8 +89,8 @@ bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir,
 
 	const std::wstring dllName{ std::wstring(PROGNAME) + L'-' + dllType + L".dll" };
 
-	typedef WinCseLib::ICSDevice* (*NewCSDevice)(
-		const wchar_t* argTempDir, const wchar_t* argIniSection, NamedWorker workers[]);
+	//typedef WCSE::ICSDevice* (*NewCSDevice)(const wchar_t* argTempDir, const wchar_t* argIniSection, NamedWorker workers[]);
+    using NewCSDevice = WCSE::ICSDevice* (*)(const wchar_t* argTempDir, const wchar_t* argIniSection, NamedWorker workers[]);
 
 	NewCSDevice dllFunc = nullptr;
     ICSDevice* pCSDevice = nullptr;
@@ -223,7 +223,7 @@ static int app_main(int argc, wchar_t** argv,
                     WINFSP_IF libif{};
 
                     {
-                        WinCse app(&appStats, tmpDir, iniSection, workers, dll.mCSDevice);
+                        CSDriver app(&appStats, tmpDir, iniSection, workers, dll.mCSDevice);
 
                         std::wcout << L"call WinFspMain" << std::endl;
                         traceW(L"call WinFspMain");
@@ -426,12 +426,12 @@ static bool app_tempdir(std::wstring* pTmpDir)
 
 static void app_sighandler(int signum)
 {
-    WinCseLib::AbnormalEnd(__FILE__, __LINE__, __FUNCTION__, signum);
+    WCSE::AbnormalEnd(__FILE__, __LINE__, __FUNCTION__, signum);
 }
 
 static void app_terminate()
 {
-    WinCseLib::AbnormalEnd(__FILE__, __LINE__, __FUNCTION__, -1);
+    WCSE::AbnormalEnd(__FILE__, __LINE__, __FUNCTION__, -1);
 }
 
 static void writeStats(

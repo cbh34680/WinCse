@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <iterator>
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 
 #define LN              L"\n"

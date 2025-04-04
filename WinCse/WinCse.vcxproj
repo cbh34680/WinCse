@@ -150,20 +150,20 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ScheduledWorker.cpp" />
-    <ClCompile Include="WinCse.cpp" />
-    <ClCompile Include="WinCse_finfo.cpp" />
-    <ClCompile Include="WinCse_if_w.cpp" />
-    <ClCompile Include="WinCse_open.cpp" />
-    <ClCompile Include="WinCse_svc.cpp" />
+    <ClCompile Include="CSDriver.cpp" />
+    <ClCompile Include="CSDriver_finfo.cpp" />
+    <ClCompile Include="CSDriver_if_w.cpp" />
+    <ClCompile Include="CSDriver_open.cpp" />
+    <ClCompile Include="CSDriver_svc.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="WinCse_if_r.cpp" />
+    <ClCompile Include="CSDriver_if_r.cpp" />
     <ClCompile Include="DelayedWorker.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="IdleWorker.hpp" />
     <ClInclude Include="ScheduledWorker.hpp" />
     <ClInclude Include="TimerWorker.hpp" />
-    <ClInclude Include="WinCse.hpp" />
+    <ClInclude Include="CSDriver.hpp" />
     <ClInclude Include="DelayedWorker.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

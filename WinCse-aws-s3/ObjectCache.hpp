@@ -15,10 +15,10 @@
 // S3 オブジェクト・キャッシュのキー
 struct ObjectCacheKey
 {
-	WinCseLib::ObjectKey mObjKey;
+	WCSE::ObjectKey mObjKey;
 	Purpose mPurpose = Purpose::None;
 
-	ObjectCacheKey(const WinCseLib::ObjectKey& argObjectKey, const Purpose argPurpose)
+	ObjectCacheKey(const WCSE::ObjectKey& argObjectKey, const Purpose argPurpose)
 		: mObjKey(argObjectKey), mPurpose(argPurpose)
 	{
 	}
@@ -61,7 +61,7 @@ namespace std
 	{
 		size_t operator()(const ObjectCacheKey& that) const
 		{
-			return hash<WinCseLib::ObjectKey>()(that.mObjKey) ^ (hash<int>()(static_cast<int>(that.mPurpose)) << 2);
+			return hash<WCSE::ObjectKey>()(that.mObjKey) ^ (hash<int>()(static_cast<int>(that.mPurpose)) << 2);
 		}
 	};
 }
@@ -85,10 +85,10 @@ struct NegativeCacheVal : public BaseCacheVal { };
 
 struct PosisiveCacheVal : public BaseCacheVal
 {
-	DirInfoListType mDirInfoList;
+	WCSE::DirInfoListType mDirInfoList;
 
 	PosisiveCacheVal(CALLER_ARG
-		const DirInfoListType& argDirInfoList)
+		const WCSE::DirInfoListType& argDirInfoList)
 		: BaseCacheVal(CONT_CALLER0), mDirInfoList(argDirInfoList)
 	{
 	}
@@ -123,29 +123,29 @@ public:
 
 	void report(CALLER_ARG FILE* fp);
 
-	bool getPositive(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
-		const Purpose argPurpose, DirInfoListType* pDirInfoList);
+	bool getPositive(CALLER_ARG const WCSE::ObjectKey& argObjKey,
+		const Purpose argPurpose, WCSE::DirInfoListType* pDirInfoList);
 
-	void setPositive(CALLER_ARG const WinCseLib::ObjectKey& argObjKey,
-		Purpose argPurpose, const DirInfoListType& pDirInfoList);
+	void setPositive(CALLER_ARG const WCSE::ObjectKey& argObjKey,
+		Purpose argPurpose, const WCSE::DirInfoListType& pDirInfoList);
 
 	bool getPositive_File(CALLER_ARG
-		const WinCseLib::ObjectKey& argObjKey, DirInfoType* pDirInfo);
+		const WCSE::ObjectKey& argObjKey, WCSE::DirInfoType* pDirInfo);
 
 	void setPositive_File(CALLER_ARG
-		const WinCseLib::ObjectKey& argObjKey, const DirInfoType& pDirInfo);
+		const WCSE::ObjectKey& argObjKey, const WCSE::DirInfoType& pDirInfo);
 
-	bool isInNegative(CALLER_ARG const WinCseLib::ObjectKey& argObjKey, const Purpose argPurpose);
+	bool isInNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey, const Purpose argPurpose);
 
-	void addNegative(CALLER_ARG const WinCseLib::ObjectKey& argObjKey, const Purpose argPurpose);
+	void addNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey, const Purpose argPurpose);
 
-	bool isInNegative_File(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
+	bool isInNegative_File(CALLER_ARG const WCSE::ObjectKey& argObjKey);
 
-	void addNegative_File(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
+	void addNegative_File(CALLER_ARG const WCSE::ObjectKey& argObjKey);
 
 	int deleteByTime(CALLER_ARG std::chrono::system_clock::time_point threshold);
 
-	int deleteByKey(CALLER_ARG const WinCseLib::ObjectKey& argObjKey);
+	int deleteByKey(CALLER_ARG const WCSE::ObjectKey& argObjKey);
 };
 
 // EOF

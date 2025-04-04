@@ -2,7 +2,7 @@
 #pragma warning(push)
 #pragma warning(disable: 4100)
 
-namespace WinCseLib {
+namespace WCSE {
 
 struct ILogger
 {
@@ -12,7 +12,7 @@ struct ILogger
 	virtual void traceW_impl(const int indent, const wchar_t*, const int, const wchar_t*, const wchar_t* format, ...) = 0;
 };
 
-} // namespace WinCseLib
+} // namespace WCSE
 
 #pragma warning(pop)
 // EOF

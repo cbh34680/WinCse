@@ -11,7 +11,7 @@
 #include <deque>
 #include <bcrypt.h>
 
-using namespace WinCseLib;
+using namespace WCSE;
 using namespace std;
 
 void test1()

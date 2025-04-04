@@ -2,7 +2,7 @@
 #include <Windows.h>
 #include "AwsS3.hpp"
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 void test4()
 {
@@ -22,7 +22,7 @@ void test4()
 
     for (const auto key: keys)
     {
-        bool b = WinCseLib::SplitPath(key, &parentDir, &filename);
+        bool b = WCSE::SplitPath(key, &parentDir, &filename);
 
         wprintf(L"key=[%s] b=[%s] dir=[%s] file=[%s]\n",
             key, BOOL_CSTRW(b), parentDir.c_str(), filename.c_str());

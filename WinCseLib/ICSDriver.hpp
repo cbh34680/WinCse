@@ -33,7 +33,7 @@ typedef struct
 }
 WINCSE_DRIVER_STATS;
 
-namespace WinCseLib {
+namespace WCSE {
 
 struct ICSDriver : public ICSService
 {
@@ -92,7 +92,7 @@ struct ICSDriver : public ICSService
 	virtual NTSTATUS DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOOLEAN deleteFile) { return STATUS_INVALID_DEVICE_REQUEST; }
 };
 
-} // namespace WinCseLib
+} // namespace WCSE
 
 #pragma warning(pop)
 // EOF

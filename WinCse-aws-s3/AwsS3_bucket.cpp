@@ -2,7 +2,7 @@
 #include "BucketCache.hpp"
 
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 /*
 struct NotifRemoveBucketTask : public IOnDemandTask

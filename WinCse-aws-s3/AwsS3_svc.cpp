@@ -2,7 +2,7 @@
 #include <iomanip>
 //#include <filesystem>
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 
 static std::atomic<bool> gEndWorkerFlag;

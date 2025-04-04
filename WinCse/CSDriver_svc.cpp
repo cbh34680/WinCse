@@ -1,9 +1,9 @@
 #include "WinCseLib.h"
-#include "WinCse.hpp"
+#include "CSDriver.hpp"
 #include <filesystem>
 #include <iostream>
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 
 static const wchar_t* CONFIGFILE_FNAME = L"WinCse.conf";
@@ -12,7 +12,7 @@ static const wchar_t* CONFIGFILE_FNAME = L"WinCse.conf";
 // プログラム引数 "-u" から算出されたディレクトリから ini ファイルを読み
 // S3 クライアントを生成する
 //
-bool WinCse::PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams)
+bool CSDriver::PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams)
 {
 	StatsIncr(PreCreateFilesystem);
 
@@ -183,7 +183,7 @@ bool WinCse::PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir
 	return ret;		// 例外発生時に false
 }
 
-bool WinCse::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
+bool CSDriver::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 {
 	StatsIncr(OnSvcStart);
 
@@ -241,7 +241,7 @@ bool WinCse::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 	return ret;
 }
 
-void WinCse::OnSvcStop()
+void CSDriver::OnSvcStop()
 {
 	StatsIncr(OnSvcStop);
 

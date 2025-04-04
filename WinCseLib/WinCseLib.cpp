@@ -8,7 +8,7 @@
 #pragma comment(lib, "Dbghelp.lib")             // SymInitialize
 
 
-namespace WinCseLib {
+namespace WCSE {
 
 void AbnormalEnd(const char* file, const int line, const char* func, const int signum)
 {
@@ -520,7 +520,7 @@ std::string ObjectKey::strA() const
 // CSDeviceContext
 //
 CSDeviceContext::CSDeviceContext(const std::wstring& argCacheDataDir,
-	const WinCseLib::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo)
+	const WCSE::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo)
 	:
 	mCacheDataDir(argCacheDataDir),
 	mFileInfo(argFileInfo),
@@ -635,6 +635,6 @@ int LogBlock::getCount()
 	return mCounter.load();
 }
 
-} // namespace WinCseLib
+} // namespace WCSE
 
 // EOF

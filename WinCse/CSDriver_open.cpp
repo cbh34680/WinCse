@@ -1,12 +1,12 @@
 #include "WinCseLib.h"
-#include "WinCse.hpp"
+#include "CSDriver.hpp"
 #include <filesystem>
 #include <sstream>
 
-using namespace WinCseLib;
+using namespace WCSE;
 
 
-NTSTATUS WinCse::DoCreate(const wchar_t* FileName,
+NTSTATUS CSDriver::DoCreate(const wchar_t* FileName,
 	UINT32 CreateOptions, UINT32 GrantedAccess, UINT32 FileAttributes,
 	PSECURITY_DESCRIPTOR SecurityDescriptor, UINT64 AllocationSize,
 	PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo)
@@ -206,7 +206,7 @@ exit:
 	return ntstatus;
 }
 
-NTSTATUS WinCse::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
+NTSTATUS CSDriver::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
 	PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo)
 {
 	StatsIncr(DoOpen);
@@ -314,7 +314,7 @@ exit:
 	return ntstatus;
 }
 
-VOID WinCse::DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags)
+VOID CSDriver::DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags)
 {
 	StatsIncr(DoCleanup);
 
@@ -347,7 +347,7 @@ VOID WinCse::DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Fla
 	}
 }
 
-NTSTATUS WinCse::DoClose(PTFS_FILE_CONTEXT* FileContext)
+NTSTATUS CSDriver::DoClose(PTFS_FILE_CONTEXT* FileContext)
 {
 	StatsIncr(DoClose);
 
