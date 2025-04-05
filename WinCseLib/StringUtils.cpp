@@ -17,17 +17,26 @@ std::string WC2MB(const std::wstring& wstr)
 		return "";
 	}
 
-	const wchar_t* pWstr = wstr.c_str();
+	const auto pWstr = wstr.c_str();
 
 	::SetLastError(ERROR_SUCCESS);
+
 	const int need = ::WideCharToMultiByte(CP_UTF8, 0, pWstr, -1, NULL, 0, NULL, NULL);
-	APP_ASSERT(::GetLastError() == ERROR_SUCCESS);
+	auto lerr = ::GetLastError();
+	if (lerr != ERROR_SUCCESS)
+	{
+		throw FatalError(__FUNCTION__, lerr);
+	}
 
 	std::vector<char> buff(need);
 	char* pStr = buff.data();
 
 	::WideCharToMultiByte(CP_UTF8, 0, pWstr, -1, pStr, need, NULL, NULL);
-	APP_ASSERT(::GetLastError() == ERROR_SUCCESS);
+	lerr = ::GetLastError();
+	if (lerr != ERROR_SUCCESS)
+	{
+		throw FatalError(__FUNCTION__, lerr);
+	}
 
 	return std::string{ pStr };
 }
@@ -42,17 +51,26 @@ std::wstring MB2WC(const std::string& str)
 		return L"";
 	}
 
-	const char* pStr = str.c_str();
+	const auto pStr = str.c_str();
 
 	::SetLastError(ERROR_SUCCESS);
-	const int need = ::MultiByteToWideChar(CP_UTF8, 0, pStr, -1, NULL, 0);
-	APP_ASSERT(::GetLastError() == ERROR_SUCCESS);
 
-	std::vector<wchar_t> buff(need);
-	wchar_t* pWstr = buff.data();
+	const int need = ::MultiByteToWideChar(CP_UTF8, 0, pStr, -1, NULL, 0);
+	auto lerr = ::GetLastError();
+	if (lerr != ERROR_SUCCESS)
+	{
+		throw FatalError(__FUNCTION__, lerr);
+	}
+
+	std::vector<WCHAR> buff(need);
+	WCHAR* pWstr = buff.data();
 
 	::MultiByteToWideChar(CP_UTF8, 0, pStr, -1, pWstr, need);
-	APP_ASSERT(::GetLastError() == ERROR_SUCCESS);
+	lerr = ::GetLastError();
+	if (lerr != ERROR_SUCCESS)
+	{
+		throw FatalError(__FUNCTION__, lerr);
+	}
 
 	return std::wstring{ pWstr };
 }
@@ -122,6 +140,7 @@ bool Base64DecodeA(const std::string& src, std::string* pDst)
 	return true;
 }
 
+#if 0
 std::string URLEncodeA(const std::string& str)
 {
 	std::ostringstream encoded;
@@ -230,6 +249,7 @@ bool DecodeLocalNameToFileNameW(const std::wstring& src, std::wstring* pDst)
 
 	return true;
 }
+#endif
 
 // ëOå„ÇÃãÛîíÇÉgÉäÉÄÇ∑ÇÈä÷êî
 std::wstring TrimW(const std::wstring& str)
@@ -300,7 +320,7 @@ std::string WildcardToRegexA(const std::string& arg)
 	return WC2MB(WildcardToRegexW(MB2WC(arg)));
 }
 
-std::vector<std::wstring> SplitString(const std::wstring& input, const wchar_t sep, const bool ignoreEmpty)
+std::vector<std::wstring> SplitString(const std::wstring& input, wchar_t sep, bool ignoreEmpty)
 {
     std::wistringstream ss{ input };
     std::wstring token;
@@ -322,7 +342,7 @@ std::vector<std::wstring> SplitString(const std::wstring& input, const wchar_t s
 	return strs;
 }
 
-std::wstring JoinStrings(const std::vector<std::wstring>& tokens, const wchar_t sep, const bool ignoreEmpty)
+std::wstring JoinStrings(const std::vector<std::wstring>& tokens, wchar_t sep, bool ignoreEmpty)
 {
 	std::wostringstream ss;
 
@@ -362,6 +382,6 @@ std::wstring ToUpper(const std::wstring& input)
 	return result;
 }
 
-} // WInCseLib
+} // WCSE
 
 // EOF

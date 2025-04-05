@@ -82,7 +82,7 @@ public:
 	bool hasKey() const noexcept { return mHasKey; }
 	bool isBucket() const noexcept { return mHasBucket && !mHasKey; }
 	const std::wstring& str() const noexcept { return mBucketKey; }
-	const wchar_t* c_str() const noexcept { return mBucketKey.c_str(); }
+	PCWSTR c_str() const noexcept { return mBucketKey.c_str(); }
 	bool meansDir() const noexcept { return mMeansDir; }
 	bool meansFile() const noexcept { return mMeansFile; }
 
@@ -119,7 +119,7 @@ struct CSDeviceContext
 	WINCSELIB_API CSDeviceContext(const std::wstring& argCacheDataDir,
 		const WCSE::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo);
 
-	WINCSELIB_API bool getCacheFilePath(std::wstring* pPath) const;
+	WINCSELIB_API std::wstring getCacheFilePath() const;
 
 	WINCSELIB_API bool isDir() const noexcept;
 	bool isFile() const noexcept { return !isDir(); }
@@ -180,13 +180,13 @@ struct ICSDevice : public ICSService
 
 	virtual NTSTATUS writeObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
-		PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO *FileInfo) = 0;
+		PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO* FileInfo) = 0;
 
 	virtual bool deleteObject(CALLER_ARG const ObjectKey& argObjKey) = 0;
 
 	virtual bool putObject(CALLER_ARG const ObjectKey& argObjKey,
 		const FSP_FSCTL_FILE_INFO& argFileInfo,
-		const wchar_t* sourceFile /* nullable */) = 0;
+		PCWSTR sourceFile /* nullable */) = 0;
 
 	virtual NTSTATUS getHandleFromContext(CALLER_ARG CSDeviceContext* argCSDeviceContext,
 		const DWORD argDesiredAccess, const DWORD argCreationDisposition, PHANDLE pHandle) = 0;

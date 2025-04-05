@@ -6,13 +6,13 @@
 using namespace WCSE;
 
 
-static const wchar_t* CONFIGFILE_FNAME = L"WinCse.conf";
+static PCWSTR CONFIGFILE_FNAME = L"WinCse.conf";
 
 //
 // プログラム引数 "-u" から算出されたディレクトリから ini ファイルを読み
 // S3 クライアントを生成する
 //
-bool CSDriver::PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams)
+bool CSDriver::PreCreateFilesystem(FSP_SERVICE *Service, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams)
 {
 	StatsIncr(PreCreateFilesystem);
 
@@ -183,7 +183,7 @@ bool CSDriver::PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkD
 	return ret;		// 例外発生時に false
 }
 
-bool CSDriver::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
+bool CSDriver::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem, PCWSTR PtfsPath)
 {
 	StatsIncr(OnSvcStart);
 
@@ -204,7 +204,7 @@ bool CSDriver::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem
 
 			traceW(L"%s::OnSvcStart()", klassName.c_str());
 
-			if (!worker->OnSvcStart(argWorkDir, FileSystem))
+			if (!worker->OnSvcStart(argWorkDir, FileSystem, PtfsPath))
 			{
 				traceW(L"fault: PreCreateFilesystem");
 				return false;
@@ -220,7 +220,7 @@ bool CSDriver::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem
 
 			traceW(L"%s::OnSvcStart()", klassName.c_str());
 
-			if (!services[i]->OnSvcStart(argWorkDir, FileSystem))
+			if (!services[i]->OnSvcStart(argWorkDir, FileSystem, PtfsPath))
 			{
 				traceW(L"fault: OnSvcStart");
 				return false;

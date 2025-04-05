@@ -163,7 +163,7 @@ bool AwsS3::unsafeHeadBucket(CALLER_ARG const std::wstring& argBucketName, FSP_F
     return true;
 }
 
-bool AwsS3::unsafeListBuckets(CALLER_ARG DirInfoListType* pDirInfoList /* nullable */, const std::vector<std::wstring>& options)
+bool AwsS3::unsafeListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList /* nullable */, const std::vector<std::wstring>& options)
 {
     NEW_LOG_BLOCK();
 
@@ -318,7 +318,7 @@ bool AwsS3::headBucket(CALLER_ARG const std::wstring& argBucketName, FSP_FSCTL_F
     return this->unsafeHeadBucket(CONT_CALLER argBucketName, pFileInfo);
 }
 
-bool AwsS3::listBuckets(CALLER_ARG DirInfoListType* pDirInfoList /* nullable */)
+bool AwsS3::listBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList /* nullable */)
 {
     StatsIncr(listBuckets);
     THREAD_SAFE();

@@ -64,9 +64,9 @@ void ObjectCache::addNegative_File(CALLER_ARG const ObjectKey& argObjKey)
     addNegative(CONT_CALLER argObjKey, Purpose::CheckFileExists);
 }
 
-const wchar_t* PurposeString(const Purpose p)
+PCWSTR PurposeString(const Purpose p)
 {
-    static const wchar_t* PURPOSE_STRINGS[] = { L"*None*", L"CheckDirExists", L"Display", L"CheckFileExists", };
+    static PCWSTR PURPOSE_STRINGS[] = { L"*None*", L"CheckDirExists", L"Display", L"CheckFileExists", };
 
     const int i = static_cast<int>(p);
     APP_ASSERT(i < _countof(PURPOSE_STRINGS));
@@ -325,7 +325,7 @@ void ObjectCache::setPositive(CALLER_ARG const ObjectKey& argObjKey,
 
 // ----------------------- Negative
 
-bool ObjectCache::isInNegative(CALLER_ARG const ObjectKey& argObjKey, const Purpose argPurpose)
+bool ObjectCache::isInNegative(CALLER_ARG const ObjectKey& argObjKey, Purpose argPurpose)
 {
     THREAD_SAFE();
     APP_ASSERT(argObjKey.valid());
@@ -346,7 +346,7 @@ bool ObjectCache::isInNegative(CALLER_ARG const ObjectKey& argObjKey, const Purp
     return true;
 }
 
-void ObjectCache::addNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey, const Purpose argPurpose)
+void ObjectCache::addNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey, Purpose argPurpose)
 {
     THREAD_SAFE();
     NEW_LOG_BLOCK();

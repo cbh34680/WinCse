@@ -24,7 +24,7 @@ static bool app_tempdir(std::wstring* tmpDir);
 extern "C"
 {
     __declspec(dllimport) ICSDevice* NewCSDevice(
-        const wchar_t* argTempDir, const wchar_t* argIniSection, NamedWorker workers[]);
+        PCWSTR argTempDir, PCWSTR argIniSection, NamedWorker workers[]);
 }
 
 static void test1_1(ICSDevice* cs)

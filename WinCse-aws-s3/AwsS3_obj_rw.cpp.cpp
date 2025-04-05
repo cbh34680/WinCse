@@ -54,7 +54,7 @@ NTSTATUS AwsS3::readObject(CALLER_ARG WCSE::CSDeviceContext* argCSDeviceContext,
 
 NTSTATUS AwsS3::writeObject(CALLER_ARG WCSE::CSDeviceContext* argCSDeviceContext,
     PVOID Buffer, UINT64 Offset, ULONG Length, BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
-    PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO *FileInfo)
+    PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO* FileInfo)
 {
     NEW_LOG_BLOCK();
 
@@ -174,13 +174,7 @@ bool AwsS3::deleteObject(CALLER_ARG const ObjectKey& argObjKey)
                 delete_objects.AddObjects(obj);
 
                 //
-                std::wstring localPath;
-
-                if (!GetCacheFilePath(mCacheDataDir, fileObjKey.str(), &localPath))
-                {
-                    traceW(L"fault: GetCacheFilePath");
-                    return false;
-                }
+                const std::wstring localPath{ GetCacheFilePath(mCacheDataDir, fileObjKey.str()) };
 
                 if (!::DeleteFileW(localPath.c_str()))
                 {
@@ -236,7 +230,7 @@ bool AwsS3::deleteObject(CALLER_ARG const ObjectKey& argObjKey)
 }
 
 bool AwsS3::putObject(CALLER_ARG const ObjectKey& argObjKey,
-    const FSP_FSCTL_FILE_INFO& argFileInfo, const wchar_t* sourceFile /* nullable */)
+    const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR sourceFile /* nullable */)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.valid());

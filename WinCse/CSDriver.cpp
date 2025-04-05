@@ -5,7 +5,7 @@
 
 using namespace WCSE;
 
-static const wchar_t* const DEFAULT_IGNORE_PATTERNS = LR"(\b(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif)|\.DS_Store)$)";
+static PCWSTR const DEFAULT_IGNORE_PATTERNS = LR"(\b(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif)|\.DS_Store)$)";
 
 CSDriver::CSDriver(WINCSE_DRIVER_STATS* argStats,
 	const std::wstring& argTempDir, const std::wstring& argIniSection,

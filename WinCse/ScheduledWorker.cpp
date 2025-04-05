@@ -35,7 +35,7 @@ ScheduledWorker::~ScheduledWorker()
 	mEvent.close();
 }
 
-bool ScheduledWorker::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
+bool ScheduledWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem, PCWSTR PtfsPath)
 {
 	NEW_LOG_BLOCK();
 	APP_ASSERT(argWorkDir);

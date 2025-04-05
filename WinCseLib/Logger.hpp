@@ -17,7 +17,7 @@ private:
 	// ログ用ファイル (スレッド・ローカル)
 	static thread_local std::wofstream mTLFile;
 	static thread_local bool mTLFileOK;
-	static thread_local uint64_t mTLFlushTime;
+	static thread_local UINT64 mTLFlushTime;
 
 	// hidden
 	Logger() = default;
@@ -26,10 +26,10 @@ private:
 	bool internalInit(const std::wstring& argTempDir, const std::wstring& argTrcDir, const std::wstring& dllType);
 
 protected:
-	void traceW_write(const SYSTEMTIME* st, const wchar_t* buf) const;
+	void traceW_write(const SYSTEMTIME* st, PCWSTR buf) const;
 
 public:
-	const wchar_t* getOutputDirectory() override
+	PCWSTR getOutputDirectory() override
 	{
 		if (mTraceLogEnabled)
 		{
@@ -40,11 +40,11 @@ public:
 	}
 
 	// ログ出力
-	void traceA_impl(const int indent, const char*, const int, const char*, const char* format, ...) override;
-	void traceW_impl(const int indent, const wchar_t*, const int, const wchar_t*, const wchar_t* format, ...) override;
+	void traceA_impl(int indent, PCSTR, int, PCSTR, PCSTR format, ...) override;
+	void traceW_impl(int indent, PCWSTR, int, PCWSTR, PCWSTR format, ...) override;
 
 	// friend
-	friend bool CreateLogger(const wchar_t* argTempDir, const wchar_t* argTrcDir, const wchar_t* argDllType);
+	friend bool CreateLogger(PCWSTR argTempDir, PCWSTR argTrcDir, PCWSTR argDllType);
 	friend ILogger* GetLogger();
 	friend void DeleteLogger();
 };

@@ -113,7 +113,7 @@ bool GetCryptKeyFromRegistryW(std::wstring* pOutput)
     LONG result = STATUS_UNSUCCESSFUL;
     DWORD dataType = 0;
     DWORD dataSize = 0;
-    BYTE data[BUFSIZ] = {};     // データのバッファ
+    BYTE data[BUFSIZ];     // データのバッファ
 
     // レジストリキーを開く
 
@@ -174,6 +174,7 @@ exit:
     return ret;
 }
 
+#if 0
 static std::string BytesToHex(const std::vector<BYTE>& bytes)
 {
     std::ostringstream oss;
@@ -186,30 +187,44 @@ static std::string BytesToHex(const std::vector<BYTE>& bytes)
     return oss.str();
 }
 
-bool ComputeSHA256W(const std::wstring& input, std::wstring* pOutput)
+#else
+static std::string BytesToHex(const BYTE* bytes, const size_t bytesSize)
+{
+    std::ostringstream oss;
+
+    for (int i=0; i<bytesSize; i++)
+    {
+        oss << std::hex << std::setw(2) << std::setfill('0') << (int)bytes[i];
+    }
+
+    return oss.str();
+}
+
+#endif
+
+NTSTATUS ComputeSHA256W(const std::wstring& input, std::wstring* pOutput)
 {
     std::string output;
 
-    if (ComputeSHA256A(WC2MB(input), &output))
+    NTSTATUS ntstatus = ComputeSHA256A(WC2MB(input), &output);
+    if (NT_SUCCESS(ntstatus))
     {
         *pOutput = MB2WC(output);
-        return true;
     }
 
-    return false;
+    return ntstatus;
 }
 
-bool ComputeSHA256A(const std::string& input, std::string* pOutput)
+NTSTATUS ComputeSHA256A(const std::string& input, std::string* pOutput)
 {
-    bool ret = false;
-
     BCRYPT_ALG_HANDLE hAlg = nullptr;
     BCRYPT_HASH_HANDLE hHash = nullptr;
     DWORD hashObjectSize = 0;
     DWORD dataSize = 0;
 
     std::vector<BYTE> hashObject;
-    std::vector<BYTE> hashValue(32);        // SHA-256 のハッシュサイズは 32 バイト
+    //std::vector<BYTE> hashValue(32);        // SHA-256 のハッシュサイズは 32 バイト
+    BYTE hashValue[32];
 
     std::string output;
 
@@ -244,15 +259,16 @@ bool ComputeSHA256A(const std::string& input, std::string* pOutput)
         goto exit;
     }
 
-    ntstatus = ::BCryptFinishHash(hHash, hashValue.data(), (ULONG)hashValue.size(), 0);
+    ntstatus = ::BCryptFinishHash(hHash, hashValue, (ULONG)sizeof(hashValue), 0);
     if (!NT_SUCCESS(ntstatus))
     {
         goto exit;
     }
 
-    *pOutput = BytesToHex(hashValue);
+    //*pOutput = BytesToHex(hashValue);
+    *pOutput = BytesToHex(hashValue, sizeof(hashValue));
 
-    ret = true;
+    ntstatus = STATUS_SUCCESS;
 
 exit:
     if (hHash)
@@ -267,7 +283,7 @@ exit:
         hAlg = nullptr;
     }
 
-    return ret;
+    return ntstatus;
 }
 
 } // namespace WCSE

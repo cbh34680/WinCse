@@ -22,7 +22,7 @@ NTSTATUS CSDriver::DoGetFileInfo(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_
 }
 
 NTSTATUS CSDriver::DoGetSecurity(PTFS_FILE_CONTEXT* FileContext,
-	PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize)
+	PSECURITY_DESCRIPTOR SecurityDescriptor, PSIZE_T PSecurityDescriptorSize)
 {
 	StatsIncr(DoGetSecurity);
 
@@ -157,7 +157,7 @@ NTSTATUS CSDriver::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern
 					}
 				}
 
-				if (!FspFileSystemFillDirectoryBuffer(&FileContext->DirBuffer, dirInfo.get(), &DirBufferResult))
+				if (!FspFileSystemFillDirectoryBuffer(&FileContext->DirBuffer, dirInfo->data(), &DirBufferResult))
 				{
 					break;
 				}

@@ -7,7 +7,7 @@ using namespace WCSE;
 static NTSTATUS syncFileAttributes(CALLER_ARG
     const FSP_FSCTL_FILE_INFO& fileInfo, const std::wstring& localPath, bool* pNeedDownload);
 
-NTSTATUS AwsS3::prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, const UINT64 argOffset, const ULONG argLength)
+NTSTATUS AwsS3::prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, UINT64 argOffset, ULONG argLength)
 {
     NEW_LOG_BLOCK();
 
@@ -25,14 +25,7 @@ NTSTATUS AwsS3::prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, const UINT6
         {
             // AwsS3::open() 後の初回の呼び出し
 
-            std::wstring localPath;
-
-            if (!ctx->getCacheFilePath(&localPath))
-            {
-                //traceW(L"fault: getCacheFilePath");
-                //return STATUS_OBJECT_NAME_NOT_FOUND;
-                return FspNtStatusFromWin32(ERROR_FILE_NOT_FOUND);
-            }
+            const std::wstring localPath{ ctx->getCacheFilePath() };
 
             // ダウンロードが必要か判断
 

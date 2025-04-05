@@ -34,6 +34,7 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
     APP_ASSERT(dirInfo);
 
     const auto& result = outcome.GetResult();
+
     const auto fileSize = result.GetContentLength();
     const auto lastModified = UtcMillisToWinFileTime100ns(result.GetLastModified().Millis());
 
@@ -89,7 +90,7 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
 // ListObjectsV2 API を実行し結果を引数のポインタの指す変数に保存する
 // 引数の条件に合致するオブジェクトが見つからないときは false を返却
 //
-bool AwsS3::apicallListObjectsV2(CALLER_ARG const ObjectKey& argObjKey, const bool argDelimiter, const int argLimit, DirInfoListType* pDirInfoList)
+bool AwsS3::apicallListObjectsV2(CALLER_ARG const ObjectKey& argObjKey, bool argDelimiter, int argLimit, DirInfoListType* pDirInfoList)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(pDirInfoList);

@@ -10,7 +10,7 @@
 
 namespace WCSE {
 
-void AbnormalEnd(const char* file, const int line, const char* func, const int signum)
+void AbnormalEnd(PCSTR file, int line, PCSTR func, int signum)
 {
 	wchar_t szTempPath[MAX_PATH];
 	::GetTempPathW(MAX_PATH, szTempPath);
@@ -68,8 +68,8 @@ void AbnormalEnd(const char* file, const int line, const char* func, const int s
 	//
 	const int maxFrames = 62;
 	void* stack[maxFrames];
-	HANDLE process = ::GetCurrentProcess();
-	::SymInitialize(process, NULL, TRUE);
+	HANDLE hProcess = ::GetCurrentProcess();
+	::SymInitialize(hProcess, NULL, TRUE);
 
 	USHORT frames = ::CaptureStackBackTrace(0, maxFrames, stack, NULL);
 	SYMBOL_INFO* symbol = (SYMBOL_INFO*)malloc(sizeof(SYMBOL_INFO) + 256 * sizeof(char));
@@ -78,7 +78,7 @@ void AbnormalEnd(const char* file, const int line, const char* func, const int s
 
 	for (USHORT i = 0; i < frames; i++)
 	{
-		::SymFromAddr(process, (DWORD64)(stack[i]), 0, symbol);
+		::SymFromAddr(hProcess, (DWORD64)(stack[i]), 0, symbol);
 
 		std::stringstream ss;
 		ss << frames - i - 1;
@@ -103,6 +103,24 @@ void AbnormalEnd(const char* file, const int line, const char* func, const int s
 	ofs.close();
 
 	abort();
+}
+
+FatalError::FatalError(const std::string& argWhat, NTSTATUS argNtstatus)
+	:
+	mWhat(argWhat), mNtstatus(argNtstatus)
+{
+}
+
+FatalError::FatalError(const std::string& argWhat, DWORD argLastError)
+	:
+	mWhat(argWhat), mNtstatus(FspNtStatusFromWin32(argLastError))
+{
+}
+
+FatalError::FatalError(const std::string& argWhat)
+	:
+	mWhat(argWhat), mNtstatus(STATUS_UNSUCCESSFUL)
+{
 }
 
 //
@@ -136,7 +154,7 @@ void free_deleter(T* ptr)
 // ファイル名から FSP_FSCTL_DIR_INFO のヒープ領域を生成し、いくつかのメンバを設定して返却
 DirInfoType makeDirInfo(const std::wstring& argFileName)
 {
-	APP_ASSERT(!argFileName.empty());		// バケット名をキーに入れて利用することもあるので、hasKey では判定できない
+	APP_ASSERT(!argFileName.empty());
 
 	const auto keyLen = argFileName.length();
 	const auto keyLenBytes = keyLen * sizeof(WCHAR);
@@ -163,11 +181,11 @@ DirInfoType makeDirInfo(const std::wstring& argFileName)
 
 	memcpy(dirInfo->FileNameBuf, argFileName.c_str(), keyLenBytes);
 
-	return DirInfoType(dirInfo, free_deleter<FSP_FSCTL_DIR_INFO>);
+	return std::make_shared<DirInfoView>(dirInfo);
 }
 
 NTSTATUS HandleToSecurityInfo(HANDLE Handle,
-	PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize /* nullable */)
+	PSECURITY_DESCRIPTOR SecurityDescriptor, PSIZE_T PSecurityDescriptorSize /* nullable */)
 {
 	DWORD SecurityDescriptorSizeNeeded = 0;
 
@@ -257,9 +275,7 @@ bool SplitPath(const std::wstring& argKey, std::wstring* pParentDir /* nullable 
 	return true;
 }
 
-#define INI_LINE_BUFSIZ		(1024)
-
-int GetIniIntW(const std::wstring& confPath, const wchar_t* argSection, const wchar_t* keyName, const int defaultValue, const int minValue, const int maxValue)
+int GetIniIntW(const std::wstring& confPath, PCWSTR argSection, PCWSTR keyName, int defaultValue, int minValue, int maxValue)
 {
 	LastErrorBackup _backup;
 
@@ -279,14 +295,16 @@ int GetIniIntW(const std::wstring& confPath, const wchar_t* argSection, const wc
 	return ret;
 }
 
-bool GetIniStringW(const std::wstring& confPath, const wchar_t* argSection, const wchar_t* keyName, std::wstring* pValue)
+#define INI_LINE_BUFSIZ		(1024)
+
+bool GetIniStringW(const std::wstring& confPath, PCWSTR argSection, PCWSTR keyName, std::wstring* pValue)
 {
 	LastErrorBackup _backup;
 
 	APP_ASSERT(argSection);
 	APP_ASSERT(argSection[0]);
 
-	std::vector<wchar_t> buf(INI_LINE_BUFSIZ);
+	std::vector<WCHAR> buf(INI_LINE_BUFSIZ);
 
 	::SetLastError(ERROR_SUCCESS);
 	::GetPrivateProfileStringW(argSection, keyName, L"", buf.data(), (DWORD)buf.size(), confPath.c_str());
@@ -301,7 +319,7 @@ bool GetIniStringW(const std::wstring& confPath, const wchar_t* argSection, cons
 	return true;
 }
 
-bool GetIniStringA(const std::string& confPath, const char* argSection, const char* keyName, std::string* pValue)
+bool GetIniStringA(const std::string& confPath, PCSTR argSection, PCSTR keyName, std::string* pValue)
 {
 	LastErrorBackup _backup;
 
@@ -533,9 +551,9 @@ bool CSDeviceContext::isDir() const noexcept
 	return FA_IS_DIR(mFileInfo.FileAttributes);
 }
 
-bool CSDeviceContext::getCacheFilePath(std::wstring* pPath) const
+std::wstring CSDeviceContext::getCacheFilePath() const
 {
-	return GetCacheFilePath(mCacheDataDir, mObjKey.str(), pPath);
+	return GetCacheFilePath(mCacheDataDir, mObjKey.str());
 }
 
 //
@@ -610,8 +628,9 @@ LONGLONG FileHandle::getFileSize()
 static std::atomic<int> mCounter(0);
 static thread_local int mDepth = 0;
 
-LogBlock::LogBlock(const wchar_t* argFile, const int argLine, const wchar_t* argFunc)
-	: mFile(argFile), mLine(argLine), mFunc(argFunc)
+LogBlock::LogBlock(PCWSTR argFile, int argLine, PCWSTR argFunc)
+	:
+	mFile(argFile), mLine(argLine), mFunc(argFunc)
 {
 	mCounter++;
 

@@ -180,7 +180,6 @@
     <ClInclude Include="IWorker.hpp" />
     <ClInclude Include="Logger.hpp" />
     <ClInclude Include="WinCseLib.h" />
-    <ClInclude Include="WinFsp_c.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

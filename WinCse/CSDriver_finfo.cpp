@@ -5,7 +5,7 @@
 using namespace WCSE;
 
 
-NTSTATUS CSDriver::getFileInfoByName(CALLER_ARG const wchar_t* fileName, FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pType /* nullable */)
+NTSTATUS CSDriver::getFileInfoByName(CALLER_ARG PCWSTR fileName, FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pType /* nullable */)
 {
 	APP_ASSERT(pFileInfo);
 
@@ -79,7 +79,7 @@ NTSTATUS CSDriver::getFileInfoByName(CALLER_ARG const wchar_t* fileName, FSP_FSC
 	return FspNtStatusFromWin32(ERROR_FILE_NOT_FOUND);
 }
 
-NTSTATUS CSDriver::FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCTL_FILE_INFO* pFileInfo)
+NTSTATUS CSDriver::FileNameToFileInfo(CALLER_ARG PCWSTR FileName, FSP_FSCTL_FILE_INFO* pFileInfo)
 {
 	APP_ASSERT(FileName);
 	APP_ASSERT(pFileInfo);
@@ -90,8 +90,8 @@ NTSTATUS CSDriver::FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FS
 }
 
 NTSTATUS CSDriver::DoGetSecurityByName(
-	const wchar_t* FileName, PUINT32 PFileAttributes,
-	PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize)
+	PCWSTR FileName, PUINT32 PFileAttributes,
+	PSECURITY_DESCRIPTOR SecurityDescriptor, PSIZE_T PSecurityDescriptorSize)
 {
 	StatsIncr(DoGetSecurityByName);
 

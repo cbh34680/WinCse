@@ -54,9 +54,9 @@ private:
 		FileObject,
 		Bucket,
 	};
-	NTSTATUS getFileInfoByName(CALLER_ARG const wchar_t* fileName, FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pType /* nullable */);
+	NTSTATUS getFileInfoByName(CALLER_ARG PCWSTR fileName, FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pType /* nullable */);
 
-	NTSTATUS FileNameToFileInfo(CALLER_ARG const wchar_t* FileName, FSP_FSCTL_FILE_INFO* pFileInfo);
+	NTSTATUS FileNameToFileInfo(CALLER_ARG PCWSTR FileName, FSP_FSCTL_FILE_INFO* pFileInfo);
 
 protected:
 	bool shouldIgnoreFileName(const std::wstring& FileName);
@@ -69,33 +69,33 @@ public:
 	~CSDriver();
 
 	// WinFsp Ç©ÇÁåƒÇ—èoÇ≥ÇÍÇÈä÷êî
-	bool PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
-	bool OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
+	bool PreCreateFilesystem(FSP_SERVICE *Service, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
+	bool OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem, PCWSTR PtfsPath) override;
 	void OnSvcStop() override;
 
-	NTSTATUS DoGetSecurityByName(const wchar_t* FileName, PUINT32 PFileAttributes,
-		PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize) override;
+	NTSTATUS DoGetSecurityByName(PCWSTR FileName, PUINT32 PFileAttributes,
+		PSECURITY_DESCRIPTOR SecurityDescriptor, PSIZE_T PSecurityDescriptorSize) override;
 
-	NTSTATUS DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
+	NTSTATUS DoOpen(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
 		PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo) override;
 
-	NTSTATUS DoClose(PTFS_FILE_CONTEXT* FileContext) override;
+	VOID DoClose(PTFS_FILE_CONTEXT* FileContext) override;
 
 	VOID DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags) override;
 
-	NTSTATUS DoCreate(const wchar_t* FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
+	NTSTATUS DoCreate(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
 		UINT32 FileAttributes, PSECURITY_DESCRIPTOR SecurityDescriptor, UINT64 AllocationSize,
 		PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo) override;
 
-	NTSTATUS DoFlush(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO *FileInfo) override;
+	NTSTATUS DoFlush(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO* FileInfo) override;
 
 	NTSTATUS DoGetFileInfo(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO* FileInfo) override;
 
 	NTSTATUS DoGetSecurity(PTFS_FILE_CONTEXT* FileContext,
-		PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize) override;
+		PSECURITY_DESCRIPTOR SecurityDescriptor, PSIZE_T PSecurityDescriptorSize) override;
 
 	NTSTATUS DoOverwrite(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttributes,
-		BOOLEAN ReplaceFileAttributes, UINT64 AllocationSize, FSP_FSCTL_FILE_INFO *FileInfo) override;
+		BOOLEAN ReplaceFileAttributes, UINT64 AllocationSize, FSP_FSCTL_FILE_INFO* FileInfo) override;
 
 	NTSTATUS DoRead(PTFS_FILE_CONTEXT* FileContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred) override;
@@ -108,17 +108,17 @@ public:
 
 	NTSTATUS DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttributes,
 		UINT64 CreationTime, UINT64 LastAccessTime, UINT64 LastWriteTime, UINT64 ChangeTime,
-		FSP_FSCTL_FILE_INFO *FileInfo) override;
+		FSP_FSCTL_FILE_INFO* FileInfo) override;
 
 	NTSTATUS DoSetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize, BOOLEAN SetAllocationSize,
-		FSP_FSCTL_FILE_INFO *FileInfo) override;
+		FSP_FSCTL_FILE_INFO* FileInfo) override;
 
 	NTSTATUS DoSetSecurity(PTFS_FILE_CONTEXT* FileContext,
 		SECURITY_INFORMATION SecurityInformation, PSECURITY_DESCRIPTOR ModificationDescriptor) override;
 
 	NTSTATUS DoWrite(PTFS_FILE_CONTEXT* FileContext, PVOID Buffer, UINT64 Offset, ULONG Length,
 		BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
-		PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO *FileInfo) override;
+		PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO* FileInfo) override;
 
 	NTSTATUS DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOOLEAN deleteFile) override;
 };

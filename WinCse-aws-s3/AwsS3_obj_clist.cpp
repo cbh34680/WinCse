@@ -61,7 +61,10 @@ bool AwsS3::unsafeHeadObjectWithCache(CALLER_ARG const ObjectKey& argObjKey, FSP
 
     if (pFileInfo)
     {
-        (*pFileInfo) = dirInfo->FileInfo;
+        //FSP_FSCTL_FILE_INFO fileInfo = *dirInfo->FileInfo;
+        //*pFileInfo = fileInfo;
+
+        *pFileInfo = dirInfo->FileInfo;
     }
 
     return true;

@@ -104,7 +104,7 @@ void AwsS3::onIdle(CALLER_ARG0)
     APP_ASSERT(std::filesystem::is_directory(mCacheDataDir));
 
     const auto duration = now.time_since_epoch();
-    const uint64_t nowMillis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+    const UINT64 nowMillis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
     const int cacheFileRetentionMin = mConfig.cacheFileRetentionMin;
 
     //forEachFiles(mCacheDataDir, [this, &LOG_BLOCK(), nowMillis, cacheFileRetentionMin](const auto& wfd, const auto& fullPath)

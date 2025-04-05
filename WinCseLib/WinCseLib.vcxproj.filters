@@ -50,9 +50,6 @@
     <ClInclude Include="WinCseLib.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="WinFsp_c.h">
-      <Filter>ヘッダー ファイル</Filter>
-    </ClInclude>
     <ClInclude Include="ICSDevice.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>

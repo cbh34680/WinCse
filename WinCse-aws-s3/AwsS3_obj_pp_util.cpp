@@ -171,7 +171,7 @@ bool AwsS3::doMultipartDownload(CALLER_ARG OpenContext* ctx, const std::wstring&
 //      -1 以下     書き出しオフセット指定なし
 //      それ以外    CreateFile 後に SetFilePointerEx が実行される
 //
-static int64_t outputObjectResultToFile(CALLER_ARG
+static INT64 outputObjectResultToFile(CALLER_ARG
     const Aws::S3::Model::GetObjectResult& argResult, const FileOutputParams& argOutputParams)
 {
     NEW_LOG_BLOCK();
@@ -226,7 +226,7 @@ static int64_t outputObjectResultToFile(CALLER_ARG
         // バッファにデータを読み込む
 
         char* buffer = vbuffer.data();
-        const std::streamsize bytesRead = pbuf->sgetn(buffer, min(remainingTotal, (int64_t)vbuffer.size()));
+        const std::streamsize bytesRead = pbuf->sgetn(buffer, min(remainingTotal, (INT64)vbuffer.size()));
         if (bytesRead <= 0)
         {
             traceW(L"fault: Read error");
@@ -277,7 +277,7 @@ static int64_t outputObjectResultToFile(CALLER_ARG
 //      それ以外    CreateFile 後に SetFilePointerEx が実行される
 //
 
-int64_t AwsS3::getObjectAndWriteToFile(CALLER_ARG
+INT64 AwsS3::getObjectAndWriteToFile(CALLER_ARG
     const ObjectKey& argObjKey, const FileOutputParams& argOutputParams)
 {
     NEW_LOG_BLOCK();

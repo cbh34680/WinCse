@@ -84,10 +84,14 @@ bool AwsS3::headObject_Dir(CALLER_ARG const ObjectKey& argObjKey, FSP_FSCTL_FILE
     // ディレクトリの場合は FSP_FSCTL_FILE_INFO に適当な値を埋める
     // ... 取得した要素の情報([0]) がファイルの場合もあるので、編集が必要
 
-    const auto dirInfo{ makeDirInfo_dir(argObjKey.key(), (*dirInfoList.begin())->FileInfo.LastWriteTime) };
+    const auto it{ dirInfoList.begin() };
+    const auto dirInfo{ makeDirInfo_dir(argObjKey.key(), (*it)->FileInfo.LastWriteTime) };
 
     if (pFileInfo)
     {
+        //FSP_FSCTL_FILE_INFO fileInfo = *dirInfo->FileInfo;
+        //*pFileInfo = fileInfo;
+
         *pFileInfo = dirInfo->FileInfo;
     }
 

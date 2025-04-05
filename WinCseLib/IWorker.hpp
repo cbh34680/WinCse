@@ -6,7 +6,7 @@ namespace WCSE {
 
 struct ITask
 {
-	uint64_t mAddTime = 0ULL;
+	UINT64 mAddTime = 0ULL;
 	wchar_t* mCaller = nullptr;
 
 	virtual ~ITask()
@@ -63,7 +63,7 @@ struct ITaskTypedWorker : public IWorker
 
 typedef struct
 {
-	const wchar_t* name;
+	PCWSTR name;
 	IWorker* worker;
 }
 NamedWorker;

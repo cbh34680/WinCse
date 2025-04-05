@@ -33,7 +33,7 @@ std::string WC2MB(const std::wstring& wstr)
         return "";
     }
 
-    const wchar_t* pWstr = wstr.c_str();
+    PCWSTR pWstr = wstr.c_str();
 
     ::SetLastError(ERROR_SUCCESS);
     const int need = ::WideCharToMultiByte(CP_UTF8, 0, pWstr, -1, NULL, 0, NULL, NULL);
@@ -56,7 +56,7 @@ std::wstring MB2WC(const std::string& str)
         return L"";
     }
 
-    const char* pStr = str.c_str();
+    const auto pStr = str.c_str();
 
     ::SetLastError(ERROR_SUCCESS);
     const int need = ::MultiByteToWideChar(CP_UTF8, 0, pStr, -1, NULL, 0);

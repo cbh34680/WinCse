@@ -1,6 +1,6 @@
 #pragma once
 
-constexpr uint64_t PART_SIZE_BYTE = WCSE::FILESIZE_1MiBu * 4;
+constexpr UINT64 PART_SIZE_BYTE = WCSE::FILESIZE_1MiBu * 4;
 
 struct FilePart
 {

@@ -40,7 +40,7 @@ DelayedWorker::~DelayedWorker()
 	traceW(L"close event done");
 }
 
-bool DelayedWorker::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
+bool DelayedWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem, PCWSTR PtfsPath)
 {
 	NEW_LOG_BLOCK();
 	APP_ASSERT(argWorkDir);

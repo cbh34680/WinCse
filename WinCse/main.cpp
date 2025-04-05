@@ -32,7 +32,7 @@ static void app_terminate();
 static void app_sighandler(int signum);
 
 static void writeStats(
-    const wchar_t* logDir, const WINFSP_STATS* libStats,
+    PCWSTR logDir, const WINFSP_STATS* libStats,
     const WINCSE_DRIVER_STATS* appStats, const WINCSE_DEVICE_STATS* devStats);
 
 /*
@@ -67,7 +67,7 @@ struct DllModuleRAII
 
 #if DIRECT_LINK_TEST
 bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir,
-    const wchar_t* iniSection, NamedWorker workers[], DllModuleRAII* pDll)
+    PCWSTR iniSection, NamedWorker workers[], DllModuleRAII* pDll)
 {
     pDll->mCSDevice = NewCSDevice(tmpDir.c_str(), iniSection, workers);
 
@@ -81,7 +81,7 @@ bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir,
 // 戻り値は ICSDevice* になる。
 //
 bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir,
-    const wchar_t* iniSection, NamedWorker workers[], DllModuleRAII* pDll)
+    PCWSTR iniSection, NamedWorker workers[], DllModuleRAII* pDll)
 {
     NEW_LOG_BLOCK();
 
@@ -89,8 +89,8 @@ bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir,
 
 	const std::wstring dllName{ std::wstring(PROGNAME) + L'-' + dllType + L".dll" };
 
-	//typedef WCSE::ICSDevice* (*NewCSDevice)(const wchar_t* argTempDir, const wchar_t* argIniSection, NamedWorker workers[]);
-    using NewCSDevice = WCSE::ICSDevice* (*)(const wchar_t* argTempDir, const wchar_t* argIniSection, NamedWorker workers[]);
+	//typedef WCSE::ICSDevice* (*NewCSDevice)(PCWSTR argTempDir, PCWSTR argIniSection, NamedWorker workers[]);
+    using NewCSDevice = WCSE::ICSDevice* (*)(PCWSTR argTempDir, PCWSTR argIniSection, NamedWorker workers[]);
 
 	NewCSDevice dllFunc = nullptr;
     ICSDevice* pCSDevice = nullptr;
@@ -143,7 +143,7 @@ exit:
 #endif
 
 static int app_main(int argc, wchar_t** argv,
-    const wchar_t* iniSection, const wchar_t* trcDir, const std::wstring& dllType)
+    PCWSTR iniSection, PCWSTR trcDir, const std::wstring& dllType)
 {
     std::signal(SIGABRT, app_sighandler);
 
@@ -220,7 +220,7 @@ static int app_main(int argc, wchar_t** argv,
                     // app の生存期間より長くする
 
                     WINCSE_DRIVER_STATS appStats{};
-                    WINFSP_IF libif{};
+                    WINCSE_IF appif{};
 
                     {
                         CSDriver app(&appStats, tmpDir, iniSection, workers, dll.mCSDevice);
@@ -228,18 +228,18 @@ static int app_main(int argc, wchar_t** argv,
                         std::wcout << L"call WinFspMain" << std::endl;
                         traceW(L"call WinFspMain");
 
-                        libif.pDriver = &app;
+                        appif.pCSDriver = &app;
 
-                        rc = WinFspMain(argc, argv, PROGNAME, &libif);
+                        rc = WinFspMain(argc, argv, PROGNAME, &appif);
                     }
 
-                    const wchar_t* logDir = GetLogger()->getOutputDirectory();
+                    PCWSTR logDir = GetLogger()->getOutputDirectory();
                     if (logDir)
                     {
                         WINCSE_DEVICE_STATS devStats{};
                         dll.mCSDevice->queryStats(&devStats);
 
-                        writeStats(logDir, &libif.stats, &appStats, &devStats);
+                        writeStats(logDir, &appif.FspStats, &appStats, &devStats);
                     }
 
                     std::wcout << L"WinFspMain done. return=" << rc << std::endl;
@@ -435,7 +435,7 @@ static void app_terminate()
 }
 
 static void writeStats(
-    const wchar_t* logDir, const WINFSP_STATS* libStats,
+    PCWSTR logDir, const WINFSP_STATS* libStats,
     const WINCSE_DRIVER_STATS* appStats, const WINCSE_DEVICE_STATS* devStats)
 {
     SYSTEMTIME st;

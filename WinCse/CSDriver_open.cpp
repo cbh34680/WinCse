@@ -6,7 +6,7 @@
 using namespace WCSE;
 
 
-NTSTATUS CSDriver::DoCreate(const wchar_t* FileName,
+NTSTATUS CSDriver::DoCreate(PCWSTR FileName,
 	UINT32 CreateOptions, UINT32 GrantedAccess, UINT32 FileAttributes,
 	PSECURITY_DESCRIPTOR SecurityDescriptor, UINT64 AllocationSize,
 	PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo)
@@ -206,7 +206,7 @@ exit:
 	return ntstatus;
 }
 
-NTSTATUS CSDriver::DoOpen(const wchar_t* FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
+NTSTATUS CSDriver::DoOpen(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
 	PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo)
 {
 	StatsIncr(DoOpen);
@@ -347,7 +347,7 @@ VOID CSDriver::DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG F
 	}
 }
 
-NTSTATUS CSDriver::DoClose(PTFS_FILE_CONTEXT* FileContext)
+VOID CSDriver::DoClose(PTFS_FILE_CONTEXT* FileContext)
 {
 	StatsIncr(DoClose);
 
@@ -381,8 +381,6 @@ NTSTATUS CSDriver::DoClose(PTFS_FILE_CONTEXT* FileContext)
 	mResourceSweeper.remove(FileContext);
 
 	free(FileContext);
-
-	return STATUS_SUCCESS;
 }
 
 // EOF

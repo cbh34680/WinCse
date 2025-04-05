@@ -6,7 +6,7 @@
 namespace WCSE {
 
 // UTC ミリ秒を YYYY-MM-DD HH:MI:SS.NNN 文字列に変換
-std::wstring UtcMilliToLocalTimeStringW(uint64_t milliseconds)
+std::wstring UtcMilliToLocalTimeStringW(UINT64 milliseconds)
 {
 	namespace chrono = std::chrono;
 
@@ -36,12 +36,12 @@ std::wstring UtcMilliToLocalTimeStringW(uint64_t milliseconds)
 }
 
 // 100ns 単位の FILETIME を文字列に変換
-std::wstring WinFileTime100nsToLocalTimeStringW(uint64_t ft100ns)
+std::wstring WinFileTime100nsToLocalTimeStringW(UINT64 ft100ns)
 {
 	return UtcMilliToLocalTimeStringW(WinFileTime100nsToUtcMillis(ft100ns));
 }
 
-std::string WinFileTime100nsToLocalTimeStringA(uint64_t ft100ns)
+std::string WinFileTime100nsToLocalTimeStringA(UINT64 ft100ns)
 {
 	return WC2MB(UtcMilliToLocalTimeStringW(WinFileTime100nsToUtcMillis(ft100ns)));
 }
@@ -73,7 +73,7 @@ std::wstring TimePointToLocalTimeStringW(const std::chrono::system_clock::time_p
 }
 
 // 現在の時刻を UTC のミリ秒で取得
-uint64_t GetCurrentUtcMillis()
+UINT64 GetCurrentUtcMillis()
 {
 	FILETIME ft;
 	::GetSystemTimeAsFileTime(&ft);
@@ -81,7 +81,7 @@ uint64_t GetCurrentUtcMillis()
 	return WinFileTimeToUtcMillis(ft);
 }
 
-uint64_t GetCurrentWinFileTime100ns()
+UINT64 GetCurrentWinFileTime100ns()
 {
 	FILETIME ft;
 	::GetSystemTimeAsFileTime(&ft);
@@ -89,7 +89,7 @@ uint64_t GetCurrentWinFileTime100ns()
 	return WinFileTimeToWinFileTime100ns(ft);
 }
 
-uint64_t STCTimeToUTCMilliSecW(const std::wstring& path)
+UINT64 STCTimeToUTCMilliSecW(const std::wstring& path)
 {
 	APP_ASSERT(!path.empty());
 
@@ -103,23 +103,23 @@ uint64_t STCTimeToUTCMilliSecW(const std::wstring& path)
 	return st.st_ctime * (time_t)1000;
 }
 
-uint64_t STCTimeToUTCMilliSecA(const std::string& path)
+UINT64 STCTimeToUTCMilliSecA(const std::string& path)
 {
 	return STCTimeToUTCMilliSecW(MB2WC(path));
 }
 
-uint64_t STCTimeToWinFileTimeW(const std::wstring& path)
+UINT64 STCTimeToWinFileTimeW(const std::wstring& path)
 {
 	return UtcMillisToWinFileTime100ns(STCTimeToUTCMilliSecW(path));
 }
 
-uint64_t STCTimeToWinFileTimeA(const std::string& path)
+UINT64 STCTimeToWinFileTimeA(const std::string& path)
 {
 	return UtcMillisToWinFileTime100ns(STCTimeToUTCMilliSecA(path));
 }
 
 // UTC のミリ秒を FILETIME 構造体に変換
-void UtcMillisToWinFileTime(uint64_t utcMilliseconds, FILETIME* ft)
+void UtcMillisToWinFileTime(UINT64 utcMilliseconds, FILETIME* ft)
 {
 	APP_ASSERT(ft);
 
@@ -131,12 +131,12 @@ void UtcMillisToWinFileTime(uint64_t utcMilliseconds, FILETIME* ft)
 }
 
 // FILETIME 構造体を 100ns 単位の uitn64_t 値に変換
-uint64_t WinFileTimeToWinFileTime100ns(const FILETIME& ft)
+UINT64 WinFileTimeToWinFileTime100ns(const FILETIME& ft)
 {
 	return ((PLARGE_INTEGER)&ft)->QuadPart;
 }
 
-void WinFileTime100nsToWinFile(uint64_t ft100ns, FILETIME* ft)
+void WinFileTime100nsToWinFile(UINT64 ft100ns, FILETIME* ft)
 {
 	((PLARGE_INTEGER)ft)->QuadPart = ft100ns;
 }
@@ -151,19 +151,19 @@ void WinFileTime100nsToWinFile(uint64_t ft100ns, FILETIME* ft)
 #define EPOCH_DIFFERENCE_100NS					(116444736000000000ULL)
 
 // UTC のミリ秒を Windows のファイル時刻に変換
-uint64_t UtcMillisToWinFileTime100ns(uint64_t utcMilliseconds)
+UINT64 UtcMillisToWinFileTime100ns(UINT64 utcMilliseconds)
 {
 	return (utcMilliseconds + EPOCH_DIFFERENCE) * HUNDRED_NANOSECONDS_PER_MILLISECOND;
 }
 
 // Windows のファイル時刻を UTC のミリ秒 に変換
-uint64_t WinFileTime100nsToUtcMillis(uint64_t ft100ns)
+UINT64 WinFileTime100nsToUtcMillis(UINT64 ft100ns)
 {
 	return (ft100ns - EPOCH_DIFFERENCE_100NS) / HUNDRED_NANOSECONDS_PER_MILLISECOND;
 }
 
 // Windows のファイル時刻を UTC のミリ秒に変換
-uint64_t WinFileTimeToUtcMillis(const FILETIME &ft)
+UINT64 WinFileTimeToUtcMillis(const FILETIME &ft)
 {
 	// 差を引き、ミリ秒単位に変換
 	return (WinFileTimeToWinFileTime100ns(ft) - EPOCH_DIFFERENCE_100NS) / HUNDRED_NANOSECONDS_PER_MILLISECOND;

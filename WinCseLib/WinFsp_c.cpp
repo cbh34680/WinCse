@@ -44,7 +44,7 @@ WCHAR* PROGNAME;
 
 typedef struct
 {
-    FSP_FILE_SYSTEM *FileSystem;
+    FSP_FILE_SYSTEM* FileSystem;
     PWSTR Path;
 } PTFS;
 
@@ -56,21 +56,12 @@ typedef struct
 } PTFS_FILE_CONTEXT;
 */
 
-WINFSP_IF* gWinFspIf;
-#define StatsIncr(fname)    if (gWinFspIf) InterlockedIncrement(& (gWinFspIf->stats.fname))
-
-#if !WINFSP_PASSTHROUGH
-WCSE::ICSDriver* getCSDriver()
-{
-    ::SetLastError(ERROR_SUCCESS);
-
-    return gWinFspIf->pDriver;
-}
-#endif
+WINFSP_STATS* gFspStats;
+#define StatsIncr(fname)    if (gFspStats) InterlockedIncrement(& (gFspStats->fname))
 
 static const FSP_FILE_SYSTEM_INTERFACE* getPtfsInterface();
 
-/*static*/ NTSTATUS GetFileInfoInternal(HANDLE Handle, FSP_FSCTL_FILE_INFO *FileInfo)
+/*static*/ NTSTATUS GetFileInfoInternal(HANDLE Handle, FSP_FSCTL_FILE_INFO* FileInfo)
 {
     StatsIncr(GetFileInfoInternal);
 
@@ -101,7 +92,7 @@ static const FSP_FILE_SYSTEM_INTERFACE* getPtfsInterface();
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS GetVolumeInfo(FSP_FILE_SYSTEM *FileSystem,
+static NTSTATUS GetVolumeInfo(FSP_FILE_SYSTEM* FileSystem,
     FSP_FSCTL_VOLUME_INFO *VolumeInfo)
 {
     StatsIncr(GetVolumeInfo);
@@ -122,7 +113,7 @@ static NTSTATUS GetVolumeInfo(FSP_FILE_SYSTEM *FileSystem,
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS SetVolumeLabel_(FSP_FILE_SYSTEM *FileSystem,
+static NTSTATUS SetVolumeLabel_(FSP_FILE_SYSTEM* FileSystem,
     PWSTR VolumeLabel,
     FSP_FSCTL_VOLUME_INFO *VolumeInfo)
 {
@@ -132,14 +123,110 @@ static NTSTATUS SetVolumeLabel_(FSP_FILE_SYSTEM *FileSystem,
     return STATUS_INVALID_DEVICE_REQUEST;
 }
 
-static NTSTATUS GetSecurityByName(FSP_FILE_SYSTEM *FileSystem,
-    PWSTR FileName, PUINT32 PFileAttributes,
-    PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T *PSecurityDescriptorSize)
+#if !WINFSP_PASSTHROUGH
+
+NTSTATUS (WCSE::ICSDriver::*DoGetSecurityByName)(PCWSTR FileName, PUINT32 PFileAttributes, PSECURITY_DESCRIPTOR SecurityDescriptor, PSIZE_T PSecurityDescriptorSize);
+NTSTATUS (WCSE::ICSDriver::*DoCreate)(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedAccess, UINT32 FileAttributes, PSECURITY_DESCRIPTOR SecurityDescriptor, UINT64 AllocationSize, PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo);
+NTSTATUS (WCSE::ICSDriver::*DoOpen)(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedAccess, PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo);
+NTSTATUS (WCSE::ICSDriver::*DoOverwrite)(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttributes, BOOLEAN ReplaceFileAttributes, UINT64 AllocationSize, FSP_FSCTL_FILE_INFO* FileInfo);
+VOID (WCSE::ICSDriver::*DoCleanup)(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags);
+VOID (WCSE::ICSDriver::*DoClose)(PTFS_FILE_CONTEXT* FileContext);
+NTSTATUS (WCSE::ICSDriver::*DoRead)(PTFS_FILE_CONTEXT* FileContext, PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred);
+NTSTATUS (WCSE::ICSDriver::*DoWrite)(PTFS_FILE_CONTEXT* FileContext, PVOID Buffer, UINT64 Offset, ULONG Length, BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo, PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO* FileInfo);
+NTSTATUS (WCSE::ICSDriver::*DoFlush)(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO* FileInfo);
+NTSTATUS (WCSE::ICSDriver::*DoGetFileInfo)(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO* FileInfo);
+NTSTATUS (WCSE::ICSDriver::*DoSetBasicInfo)(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttributes, UINT64 CreationTime, UINT64 LastAccessTime, UINT64 LastWriteTime, UINT64 ChangeTime, FSP_FSCTL_FILE_INFO* FileInfo);
+NTSTATUS (WCSE::ICSDriver::*DoSetFileSize)(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize, BOOLEAN SetAllocationSize, FSP_FSCTL_FILE_INFO* FileInfo);
+NTSTATUS (WCSE::ICSDriver::*DoRename)(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName,PWSTR NewFileName, BOOLEAN ReplaceIfExists);
+NTSTATUS (WCSE::ICSDriver::*DoGetSecurity)(PTFS_FILE_CONTEXT* FileContext, PSECURITY_DESCRIPTOR SecurityDescriptor, PSIZE_T PSecurityDescriptorSize);
+NTSTATUS (WCSE::ICSDriver::*DoSetSecurity)(PTFS_FILE_CONTEXT* FileContext, SECURITY_INFORMATION SecurityInformation, PSECURITY_DESCRIPTOR ModificationDescriptor);
+NTSTATUS (WCSE::ICSDriver::*DoReadDirectory)(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern, PWSTR Marker, PVOID Buffer, ULONG BufferLength, PULONG PBytesTransferred);
+NTSTATUS (WCSE::ICSDriver::*DoSetDelete)(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOOLEAN deleteFile);
+
+//WINCSE_IF* gWinCseIf;
+WCSE::ICSDriver* gCSDriver;
+
+#define SET_METHOD_ADDR(name)   name = &WCSE::ICSDriver::name
+
+void setupWinCseGlobal(WINCSE_IF* argWinCseIf)
+{
+    //gWinCseIf = argWinCseIf;
+    gFspStats = &argWinCseIf->FspStats;
+    gCSDriver = argWinCseIf->pCSDriver;
+
+    SET_METHOD_ADDR(DoGetSecurityByName);
+    SET_METHOD_ADDR(DoCreate);
+    SET_METHOD_ADDR(DoOpen);
+    SET_METHOD_ADDR(DoOverwrite);
+    SET_METHOD_ADDR(DoCleanup);
+    SET_METHOD_ADDR(DoClose);
+    SET_METHOD_ADDR(DoRead);
+    SET_METHOD_ADDR(DoWrite);
+    SET_METHOD_ADDR(DoFlush);
+    SET_METHOD_ADDR(DoGetFileInfo);
+    SET_METHOD_ADDR(DoSetBasicInfo);
+    SET_METHOD_ADDR(DoSetFileSize);
+    SET_METHOD_ADDR(DoRename);
+    SET_METHOD_ADDR(DoGetSecurity);
+    SET_METHOD_ADDR(DoSetSecurity);
+    SET_METHOD_ADDR(DoReadDirectory);
+    SET_METHOD_ADDR(DoSetDelete);
+}
+
+template<typename MethodType, typename... Args>
+NTSTATUS relayReturnable(MethodType method, Args... args)
+{
+    try
+    {
+        return (gCSDriver->*method)(args...);
+    }
+    catch (const WCSE::FatalError& e)
+    {
+        return e.mNtstatus;
+    }
+#ifdef _RELEASE
+    catch (...)
+    {
+        return STATUS_UNSUCCESSFUL;
+    }
+#endif
+}
+
+template<typename MethodType, typename... Args>
+VOID relayNonReturnable(MethodType method, Args... args)
+{
+    try
+    {
+        (gCSDriver->*method)(args...);
+    }
+    catch (const WCSE::FatalError& e)
+    {
+    }
+#ifdef _RELEASE
+    catch (...)
+    {
+    }
+#endif
+}
+
+
+WCSE::ICSDriver* getCSDriver()
+{
+    ::SetLastError(ERROR_SUCCESS);
+
+    return gCSDriver;
+}
+
+#endif
+
+static NTSTATUS GetSecurityByName(FSP_FILE_SYSTEM* FileSystem, PWSTR FileName,
+    PUINT32 PFileAttributes, PSECURITY_DESCRIPTOR SecurityDescriptor, PSIZE_T PSecurityDescriptorSize)
 {
     StatsIncr(GetSecurityByName);
 
 #if !WINFSP_PASSTHROUGH
-    return getCSDriver()->DoGetSecurityByName(FileName, PFileAttributes, SecurityDescriptor, PSecurityDescriptorSize);
+    return relayReturnable(DoGetSecurityByName, FileName, PFileAttributes, SecurityDescriptor, PSecurityDescriptorSize);
+    //return getCSDriver()->DoGetSecurityByName(FileName, PFileAttributes, SecurityDescriptor, PSecurityDescriptorSize);
 
 #else
     PTFS* Ptfs = (PTFS*)FileSystem->UserContext;
@@ -198,15 +285,15 @@ exit:
 #endif
 }
 
-static NTSTATUS Create(FSP_FILE_SYSTEM *FileSystem,
-    PWSTR FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
-    UINT32 FileAttributes, PSECURITY_DESCRIPTOR SecurityDescriptor, UINT64 AllocationSize,
-    PVOID *PFileContext, FSP_FSCTL_FILE_INFO *FileInfo)
+static NTSTATUS Create(FSP_FILE_SYSTEM* FileSystem, PWSTR FileName, UINT32 CreateOptions,
+    UINT32 GrantedAccess, UINT32 FileAttributes, PSECURITY_DESCRIPTOR SecurityDescriptor,
+    UINT64 AllocationSize, PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo)
 {
     StatsIncr(Create);
 
 #if !WINFSP_PASSTHROUGH
-    return getCSDriver()->DoCreate(FileName, CreateOptions, GrantedAccess, FileAttributes, SecurityDescriptor, AllocationSize, PFileContext, FileInfo);
+    return relayReturnable(DoCreate, FileName, CreateOptions, GrantedAccess, FileAttributes, SecurityDescriptor, AllocationSize, PFileContext, FileInfo);
+    //return getCSDriver()->DoCreate(FileName, CreateOptions, GrantedAccess, FileAttributes, SecurityDescriptor, AllocationSize, PFileContext, FileInfo);
 
 #else
     PTFS* Ptfs = (PTFS*)FileSystem->UserContext;
@@ -265,14 +352,14 @@ static NTSTATUS Create(FSP_FILE_SYSTEM *FileSystem,
 #endif
 }
 
-static NTSTATUS Open(FSP_FILE_SYSTEM *FileSystem,
-    PWSTR FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
-    PVOID *PFileContext, FSP_FSCTL_FILE_INFO *FileInfo)
+static NTSTATUS Open(FSP_FILE_SYSTEM* FileSystem, PWSTR FileName, UINT32 CreateOptions,
+    UINT32 GrantedAccess, PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo)
 {
     StatsIncr(Open);
 
 #if !WINFSP_PASSTHROUGH
-    return getCSDriver()->DoOpen(FileName, CreateOptions, GrantedAccess, PFileContext, FileInfo);
+    return relayReturnable(DoOpen, FileName, CreateOptions, GrantedAccess, PFileContext, FileInfo);
+    //return getCSDriver()->DoOpen(FileName, CreateOptions, GrantedAccess, PFileContext, FileInfo);
 
 #else
     PTFS *Ptfs = (PTFS *)FileSystem->UserContext;
@@ -307,15 +394,15 @@ static NTSTATUS Open(FSP_FILE_SYSTEM *FileSystem,
 #endif
 }
 
-static NTSTATUS Overwrite(FSP_FILE_SYSTEM *FileSystem,
+static NTSTATUS Overwrite(FSP_FILE_SYSTEM* FileSystem,
     PVOID FileContext, UINT32 FileAttributes, BOOLEAN ReplaceFileAttributes, UINT64 AllocationSize,
-    FSP_FSCTL_FILE_INFO *FileInfo)
+    FSP_FSCTL_FILE_INFO* FileInfo)
 {
     StatsIncr(Overwrite);
 
 #if !WINFSP_PASSTHROUGH
-    return getCSDriver()->DoOverwrite((PTFS_FILE_CONTEXT*)FileContext,
-        FileAttributes, ReplaceFileAttributes, AllocationSize, FileInfo);
+    return relayReturnable(DoOverwrite, (PTFS_FILE_CONTEXT*)FileContext, FileAttributes, ReplaceFileAttributes, AllocationSize, FileInfo);
+    //return getCSDriver()->DoOverwrite((PTFS_FILE_CONTEXT*)FileContext, FileAttributes, ReplaceFileAttributes, AllocationSize, FileInfo);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -356,13 +443,14 @@ static NTSTATUS Overwrite(FSP_FILE_SYSTEM *FileSystem,
 #endif
 }
 
-static VOID Cleanup(FSP_FILE_SYSTEM *FileSystem,
+static VOID Cleanup(FSP_FILE_SYSTEM* FileSystem,
     PVOID FileContext, PWSTR FileName, ULONG Flags)
 {
     StatsIncr(Cleanup);
 
 #if !WINFSP_PASSTHROUGH
-    getCSDriver()->DoCleanup((PTFS_FILE_CONTEXT*)FileContext, FileName, Flags);
+    relayNonReturnable(DoCleanup, (PTFS_FILE_CONTEXT*)FileContext, FileName, Flags);
+    //getCSDriver()->DoCleanup((PTFS_FILE_CONTEXT*)FileContext, FileName, Flags);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -377,15 +465,15 @@ static VOID Cleanup(FSP_FILE_SYSTEM *FileSystem,
 #endif
 }
 
-static VOID Close(FSP_FILE_SYSTEM *FileSystem,
-    PVOID FileContext0)
+static VOID Close(FSP_FILE_SYSTEM* FileSystem, PVOID FileContext0)
 {
     StatsIncr(Close);
 
     PTFS_FILE_CONTEXT *FileContext = (PTFS_FILE_CONTEXT*)FileContext0;
 
 #if !WINFSP_PASSTHROUGH
-    getCSDriver()->DoClose(FileContext);
+    relayNonReturnable(DoClose, FileContext);
+    //getCSDriver()->DoClose(FileContext);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -397,14 +485,14 @@ static VOID Close(FSP_FILE_SYSTEM *FileSystem,
 #endif
 }
 
-static NTSTATUS Read(FSP_FILE_SYSTEM *FileSystem,
-    PVOID FileContext, PVOID Buffer, UINT64 Offset, ULONG Length,
-    PULONG PBytesTransferred)
+static NTSTATUS Read(FSP_FILE_SYSTEM* FileSystem, PVOID FileContext, PVOID Buffer,
+    UINT64 Offset, ULONG Length, PULONG PBytesTransferred)
 {
     StatsIncr(Read);
 
 #if !WINFSP_PASSTHROUGH
-    return getCSDriver()->DoRead((PTFS_FILE_CONTEXT*)FileContext, Buffer, Offset, Length, PBytesTransferred);
+    return relayReturnable(DoRead, (PTFS_FILE_CONTEXT*)FileContext, Buffer, Offset, Length, PBytesTransferred);
+    //return getCSDriver()->DoRead((PTFS_FILE_CONTEXT*)FileContext, Buffer, Offset, Length, PBytesTransferred);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -422,15 +510,15 @@ static NTSTATUS Read(FSP_FILE_SYSTEM *FileSystem,
 #endif
 }
 
-static NTSTATUS Write(FSP_FILE_SYSTEM *FileSystem,
-    PVOID FileContext, PVOID Buffer, UINT64 Offset, ULONG Length,
-    BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
-    PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO *FileInfo)
+static NTSTATUS Write(FSP_FILE_SYSTEM* FileSystem, PVOID FileContext, PVOID Buffer,
+    UINT64 Offset, ULONG Length, BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
+    PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO* FileInfo)
 {
     StatsIncr(Write);
 
 #if !WINFSP_PASSTHROUGH
-    return getCSDriver()->DoWrite((PTFS_FILE_CONTEXT*)FileContext, Buffer, Offset, Length, WriteToEndOfFile, ConstrainedIo, PBytesTransferred, FileInfo);
+    return relayReturnable(DoWrite, (PTFS_FILE_CONTEXT*)FileContext, Buffer, Offset, Length, WriteToEndOfFile, ConstrainedIo, PBytesTransferred, FileInfo);
+    //return getCSDriver()->DoWrite((PTFS_FILE_CONTEXT*)FileContext, Buffer, Offset, Length, WriteToEndOfFile, ConstrainedIo, PBytesTransferred, FileInfo);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -458,14 +546,13 @@ static NTSTATUS Write(FSP_FILE_SYSTEM *FileSystem,
 #endif
 }
 
-static NTSTATUS Flush(FSP_FILE_SYSTEM *FileSystem,
-    PVOID FileContext,
-    FSP_FSCTL_FILE_INFO *FileInfo)
+static NTSTATUS Flush(FSP_FILE_SYSTEM* FileSystem, PVOID FileContext, FSP_FSCTL_FILE_INFO* FileInfo)
 {
     StatsIncr(Flush);
 
 #if !WINFSP_PASSTHROUGH
-    return getCSDriver()->DoFlush((PTFS_FILE_CONTEXT*)FileContext, FileInfo);
+    return relayReturnable(DoFlush, (PTFS_FILE_CONTEXT*)FileContext, FileInfo);
+    //return getCSDriver()->DoFlush((PTFS_FILE_CONTEXT*)FileContext, FileInfo);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -481,14 +568,13 @@ static NTSTATUS Flush(FSP_FILE_SYSTEM *FileSystem,
 #endif
 }
 
-static NTSTATUS GetFileInfo(FSP_FILE_SYSTEM *FileSystem,
-    PVOID FileContext0,
-    FSP_FSCTL_FILE_INFO *FileInfo)
+static NTSTATUS GetFileInfo(FSP_FILE_SYSTEM* FileSystem, PVOID FileContext0, FSP_FSCTL_FILE_INFO* FileInfo)
 {
     StatsIncr(GetFileInfo);
 
 #if !WINFSP_PASSTHROUGH
-    return getCSDriver()->DoGetFileInfo((PTFS_FILE_CONTEXT*)FileContext0, FileInfo);
+    return relayReturnable(DoGetFileInfo, (PTFS_FILE_CONTEXT*)FileContext0, FileInfo);
+    //return getCSDriver()->DoGetFileInfo((PTFS_FILE_CONTEXT*)FileContext0, FileInfo);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext0);
@@ -497,16 +583,15 @@ static NTSTATUS GetFileInfo(FSP_FILE_SYSTEM *FileSystem,
 #endif
 }
 
-static NTSTATUS SetBasicInfo(FSP_FILE_SYSTEM *FileSystem,
-    PVOID FileContext, UINT32 FileAttributes,
+static NTSTATUS SetBasicInfo(FSP_FILE_SYSTEM* FileSystem, PVOID FileContext, UINT32 FileAttributes,
     UINT64 CreationTime, UINT64 LastAccessTime, UINT64 LastWriteTime, UINT64 ChangeTime,
-    FSP_FSCTL_FILE_INFO *FileInfo)
+    FSP_FSCTL_FILE_INFO* FileInfo)
 {
     StatsIncr(SetBasicInfo);
 
 #if !WINFSP_PASSTHROUGH
-    return getCSDriver()->DoSetBasicInfo((PTFS_FILE_CONTEXT*)FileContext, FileAttributes,
-        CreationTime, LastAccessTime, LastWriteTime, ChangeTime, FileInfo);
+    return relayReturnable(DoSetBasicInfo, (PTFS_FILE_CONTEXT*)FileContext, FileAttributes, CreationTime, LastAccessTime, LastWriteTime, ChangeTime, FileInfo);
+    //return getCSDriver()->DoSetBasicInfo((PTFS_FILE_CONTEXT*)FileContext, FileAttributes, CreationTime, LastAccessTime, LastWriteTime, ChangeTime, FileInfo);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -532,14 +617,14 @@ static NTSTATUS SetBasicInfo(FSP_FILE_SYSTEM *FileSystem,
 #endif
 }
 
-static NTSTATUS SetFileSize(FSP_FILE_SYSTEM *FileSystem,
-    PVOID FileContext, UINT64 NewSize, BOOLEAN SetAllocationSize,
-    FSP_FSCTL_FILE_INFO *FileInfo)
+static NTSTATUS SetFileSize(FSP_FILE_SYSTEM* FileSystem, PVOID FileContext,
+    UINT64 NewSize, BOOLEAN SetAllocationSize, FSP_FSCTL_FILE_INFO* FileInfo)
 {
     StatsIncr(SetFileSize);
 
 #if !WINFSP_PASSTHROUGH
-    return getCSDriver()->DoSetFileSize((PTFS_FILE_CONTEXT*)FileContext, NewSize, SetAllocationSize, FileInfo);
+    return relayReturnable(DoSetFileSize, (PTFS_FILE_CONTEXT*)FileContext, NewSize, SetAllocationSize, FileInfo);
+    //return getCSDriver()->DoSetFileSize((PTFS_FILE_CONTEXT*)FileContext, NewSize, SetAllocationSize, FileInfo);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -578,14 +663,14 @@ static NTSTATUS SetFileSize(FSP_FILE_SYSTEM *FileSystem,
 #endif
 }
 
-static NTSTATUS Rename(FSP_FILE_SYSTEM *FileSystem,
-    PVOID FileContext,
+static NTSTATUS Rename(FSP_FILE_SYSTEM* FileSystem, PVOID FileContext,
     PWSTR FileName, PWSTR NewFileName, BOOLEAN ReplaceIfExists)
 {
     StatsIncr(Rename);
 
 #if !WINFSP_PASSTHROUGH
-    return getCSDriver()->DoRename((PTFS_FILE_CONTEXT*)FileContext, FileName, NewFileName, ReplaceIfExists);
+    return relayReturnable(DoRename, (PTFS_FILE_CONTEXT*)FileContext, FileName, NewFileName, ReplaceIfExists);
+    //return getCSDriver()->DoRename((PTFS_FILE_CONTEXT*)FileContext, FileName, NewFileName, ReplaceIfExists);
 
 #else
     PTFS* Ptfs = (PTFS*)FileSystem->UserContext;
@@ -604,14 +689,14 @@ static NTSTATUS Rename(FSP_FILE_SYSTEM *FileSystem,
 #endif
 }
 
-static NTSTATUS GetSecurity(FSP_FILE_SYSTEM *FileSystem,
-    PVOID FileContext,
-    PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T *PSecurityDescriptorSize)
+static NTSTATUS GetSecurity(FSP_FILE_SYSTEM* FileSystem, PVOID FileContext,
+    PSECURITY_DESCRIPTOR SecurityDescriptor, PSIZE_T PSecurityDescriptorSize)
 {
     StatsIncr(GetSecurity);
 
 #if !WINFSP_PASSTHROUGH
-    return getCSDriver()->DoGetSecurity((PTFS_FILE_CONTEXT*)FileContext, SecurityDescriptor, PSecurityDescriptorSize);
+    return relayReturnable(DoGetSecurity, (PTFS_FILE_CONTEXT*)FileContext, SecurityDescriptor, PSecurityDescriptorSize);
+    //return getCSDriver()->DoGetSecurity((PTFS_FILE_CONTEXT*)FileContext, SecurityDescriptor, PSecurityDescriptorSize);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -631,14 +716,14 @@ static NTSTATUS GetSecurity(FSP_FILE_SYSTEM *FileSystem,
 #endif
 }
 
-static NTSTATUS SetSecurity(FSP_FILE_SYSTEM *FileSystem,
-    PVOID FileContext,
+static NTSTATUS SetSecurity(FSP_FILE_SYSTEM* FileSystem, PVOID FileContext,
     SECURITY_INFORMATION SecurityInformation, PSECURITY_DESCRIPTOR ModificationDescriptor)
 {
     StatsIncr(SetSecurity);
 
 #if !WINFSP_PASSTHROUGH
-    return getCSDriver()->DoSetSecurity((PTFS_FILE_CONTEXT*)FileContext, SecurityInformation, ModificationDescriptor);
+    return relayReturnable(DoSetSecurity, (PTFS_FILE_CONTEXT*)FileContext, SecurityInformation, ModificationDescriptor);
+    //return getCSDriver()->DoSetSecurity((PTFS_FILE_CONTEXT*)FileContext, SecurityInformation, ModificationDescriptor);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -650,9 +735,8 @@ static NTSTATUS SetSecurity(FSP_FILE_SYSTEM *FileSystem,
 #endif
 }
 
-static NTSTATUS ReadDirectory(FSP_FILE_SYSTEM *FileSystem,
-    PVOID FileContext0, PWSTR Pattern, PWSTR Marker,
-    PVOID Buffer, ULONG BufferLength, PULONG PBytesTransferred)
+static NTSTATUS ReadDirectory(FSP_FILE_SYSTEM* FileSystem, PVOID FileContext0,
+    PWSTR Pattern, PWSTR Marker, PVOID Buffer, ULONG BufferLength, PULONG PBytesTransferred)
 {
     StatsIncr(ReadDirectory);
 
@@ -660,7 +744,8 @@ static NTSTATUS ReadDirectory(FSP_FILE_SYSTEM *FileSystem,
     PTFS_FILE_CONTEXT *FileContext = (PTFS_FILE_CONTEXT*)FileContext0;
 
 #if !WINFSP_PASSTHROUGH
-    return getCSDriver()->DoReadDirectory(FileContext, Pattern, Marker, Buffer, BufferLength, PBytesTransferred);
+    return relayReturnable(DoReadDirectory, FileContext, Pattern, Marker, Buffer, BufferLength, PBytesTransferred);
+    //return getCSDriver()->DoReadDirectory(FileContext, Pattern, Marker, Buffer, BufferLength, PBytesTransferred);
 
 #else
     HANDLE Handle = HandleFromContext(FileContext);
@@ -746,13 +831,13 @@ static NTSTATUS ReadDirectory(FSP_FILE_SYSTEM *FileSystem,
 #endif
 }
 
-static NTSTATUS SetDelete(FSP_FILE_SYSTEM *FileSystem,
-    PVOID FileContext, PWSTR FileName, BOOLEAN DeleteFile)
+static NTSTATUS SetDelete(FSP_FILE_SYSTEM* FileSystem, PVOID FileContext, PWSTR FileName, BOOLEAN deleteFile)
 {
     StatsIncr(SetDelete);
 
 #if !WINFSP_PASSTHROUGH
-    return getCSDriver()->DoSetDelete((PTFS_FILE_CONTEXT*)FileContext, FileName, DeleteFile);
+    return relayReturnable(DoSetDelete, (PTFS_FILE_CONTEXT*)FileContext, FileName, deleteFile);
+    //return getCSDriver()->DoSetDelete((PTFS_FILE_CONTEXT*)FileContext, FileName, deleteFile);
 
     /*
     https://stackoverflow.com/questions/36217150/deleting-a-file-based-on-disk-id
@@ -764,7 +849,7 @@ static NTSTATUS SetDelete(FSP_FILE_SYSTEM *FileSystem,
     HANDLE Handle = HandleFromContext(FileContext);
     FILE_DISPOSITION_INFO DispositionInfo = { 0 };
 
-    DispositionInfo.DeleteFile = DeleteFile;
+    DispositionInfo.DeleteFile = deleteFile;
 
     if (!SetFileInformationByHandle(Handle,
         FileDispositionInfo, &DispositionInfo, sizeof DispositionInfo))
@@ -903,12 +988,10 @@ static NTSTATUS PtfsCreate(PWSTR Path, PWSTR VolumePrefix, PWSTR MountPoint, UIN
 
     if (0 != VolumePrefix)
     {
-        wcscpy_s(VolumeParams->Prefix, _countof(VolumeParams->Prefix), VolumePrefix);
-        //wcscpy_s(VolumeParams->Prefix, sizeof VolumeParams->Prefix / sizeof(WCHAR), VolumePrefix);
+        wcscpy_s(VolumeParams->Prefix, sizeof VolumeParams->Prefix / sizeof(WCHAR), VolumePrefix);
     }
 
-    wcscpy_s(VolumeParams->FileSystemName, _countof(VolumeParams->FileSystemName), PROGNAME);
-    //wcscpy_s(VolumeParams->FileSystemName, sizeof VolumeParams->FileSystemName / sizeof(WCHAR), PROGNAME);
+    wcscpy_s(VolumeParams->FileSystemName, sizeof VolumeParams->FileSystemName / sizeof(WCHAR), PROGNAME);
 
     {
         WCHAR STRING_NET[] = L"" FSP_FSCTL_NET_DEVICE_NAME;
@@ -1137,7 +1220,7 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
     }
 
 #if !WINFSP_PASSTHROUGH
-    if (!getCSDriver()->OnSvcStart(PassThrough, Ptfs->FileSystem))
+    if (!getCSDriver()->OnSvcStart(PassThrough, Ptfs->FileSystem, Ptfs->Path))
     {
         fail(L"fault: OnSvcStart");
 
@@ -1240,11 +1323,11 @@ static const FSP_FILE_SYSTEM_INTERFACE* getPtfsInterface()
     return &gPtfsInterface_;
 }
 
-//int wmain(int argc, wchar_t **argv)
-int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINFSP_IF* argWinFspIf)
+int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINCSE_IF* argWinCseIf)
 {
-    gWinFspIf = argWinFspIf;
     PROGNAME = progname;
+
+    setupWinCseGlobal(argWinCseIf);
 
     if (!NT_SUCCESS(FspLoad(0)))
         return ERROR_DELAY_LOAD_FAILED;

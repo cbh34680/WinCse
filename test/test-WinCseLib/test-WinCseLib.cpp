@@ -33,8 +33,8 @@ void test1()
         cout << tmp << endl;
     }
 
-    cout << URLEncodeA("https://company.com/s /p+/m-/u_/d$") << endl;
-    cout << URLDecodeA("https%3A%2F%2Fcompany.com%2Fs%20%2Fp%2B%2Fm-%2Fu_%2Fd%24") << endl;
+    //cout << URLEncodeA("https://company.com/s /p+/m-/u_/d$") << endl;
+    //cout << URLDecodeA("https%3A%2F%2Fcompany.com%2Fs%20%2Fp%2B%2Fm-%2Fu_%2Fd%24") << endl;
 
     wcout << TrimW(L" \t [a][\t][ ][b]\t \t") << std::endl;
 
@@ -176,7 +176,7 @@ void test3()
 
 void test4()
 {
-    const wchar_t* pats = L"\\\\(desktop\\.ini|autorun\\.inf|(eh)?thumbs\\.db|AlbumArtSmall\\.jpg|folder\\.(ico|jpg|gif)|\\.DS_Store)$";
+    PCWSTR pats = L"\\\\(desktop\\.ini|autorun\\.inf|(eh)?thumbs\\.db|AlbumArtSmall\\.jpg|folder\\.(ico|jpg|gif)|\\.DS_Store)$";
 
     //std::wregex pattern{  L".*\\\\(desktop\\.ini|autorun\\.inf|thumbs\\.db|\\.DS_Store)$", std::regex_constants::icase };
     std::wregex pattern{ pats, std::regex_constants::icase };
@@ -494,7 +494,7 @@ void test11()
     std::cout << (b5 ? "true" : "false") << std::endl;
 
     auto orig = ObjectKey{ L"bucket", L"key" };
-    auto dest = std::move(orig);
+    ObjectKey dest = std::move(orig);
 
     std::wcout << orig.c_str() << std::endl;
     std::wcout << dest.c_str() << std::endl;
@@ -527,7 +527,7 @@ void test12_worker(bool del)
         DispositionInfo.DeleteFile = TRUE;
 
         const auto rc = SetFileInformationByHandle(h,
-            FileDispositionInfo, &DispositionInfo, sizeof DispositionInfo);
+            FileDispositionInfo, &DispositionInfo, sizeof(DispositionInfo));
 
         const auto lerr = ::GetLastError();
 
@@ -760,6 +760,45 @@ void test19()
     std::cout << "done." << std::endl;
 }
 
+class If21 {
+public:
+    virtual void printInt(int, int) = 0;
+    virtual ~If21() {}
+};
+
+class Klass21 : public If21 {
+public:
+    void printInt(int i, int j) override {
+        std::cout << "Klass21::printInt called with i = " << i << ", j = " << j << std::endl;
+    }
+};
+
+// テンプレートを使用した安全なメンバー関数呼び出し
+template<typename ClassType, typename MethodType, typename... Args>
+void test21_sub(ClassType* obj, MethodType method, Args... args)
+{
+    if (obj && method)
+    {
+        (obj->*method)(args...);  // メンバー関数を安全に呼び出し
+    }
+    else
+    {
+        std::cout << "Invalid method or object!" << std::endl;
+    }
+}
+
+void test21() {
+    Klass21 k21;
+
+    // Klass21::printInt を呼び出すためのメンバー関数ポインタ
+    void (If21::*PrintInt)(int, int) = &If21::printInt;
+
+    // test21_sub を使ってメンバー関数を呼び出し
+    test21_sub(&k21, PrintInt, 1, 2);
+
+    std::cout << "done." << std::endl;
+}
+
 int main()
 {
     // chcp 65001
@@ -793,7 +832,9 @@ int main()
     //test19();
 
     int test20();
-    test20();
+    //test20();
+
+    test21();
 
     return EXIT_SUCCESS;
 }

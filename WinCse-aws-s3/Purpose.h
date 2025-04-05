@@ -8,6 +8,6 @@ enum class Purpose
 	CheckFileExists = 3,
 };
 
-extern const wchar_t* PurposeString(const Purpose);
+extern PCWSTR PurposeString(const Purpose);
 
 // EOF

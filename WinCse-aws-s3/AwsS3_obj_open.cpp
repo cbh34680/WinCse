@@ -6,8 +6,8 @@ using namespace WCSE;
 
 
 CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
-    const FSP_FSCTL_FILE_INFO& fileInfo, const UINT32 CreateOptions,
-    const UINT32 GrantedAccess, const UINT32 argFileAttributes)
+    const FSP_FSCTL_FILE_INFO& fileInfo, UINT32 CreateOptions,
+    UINT32 GrantedAccess, UINT32 argFileAttributes)
 {
     StatsIncr(create);
     NEW_LOG_BLOCK();
@@ -28,13 +28,7 @@ CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
         }
         else
         {
-            std::wstring localPath;
-
-            if (!GetCacheFilePath(mCacheDataDir, argObjKey.str(), &localPath))
-            {
-                traceW(L"fault: GetCacheFilePath");
-                return nullptr;
-            }
+            const std::wstring localPath{ GetCacheFilePath(mCacheDataDir, argObjKey.str()) };
 
             //traceW(L"localPath=%s", localPath.c_str());
 
@@ -106,8 +100,7 @@ CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
 }
 
 CSDeviceContext* AwsS3::open(CALLER_ARG const ObjectKey& argObjKey,
-    const UINT32 CreateOptions, const UINT32 GrantedAccess,
-    const FSP_FSCTL_FILE_INFO& FileInfo)
+    UINT32 CreateOptions, UINT32 GrantedAccess, const FSP_FSCTL_FILE_INFO& FileInfo)
 {
     StatsIncr(open);
     NEW_LOG_BLOCK();
@@ -140,12 +133,7 @@ void AwsS3::close(CALLER_ARG WCSE::CSDeviceContext* ctx)
 
         // キャッシュ・ファイル名
 
-        std::wstring localPath;
-        if (!ctx->getCacheFilePath(&localPath))
-        {
-            traceW(L"fault: getCacheFilePath");
-            return;
-        }
+        const std::wstring localPath{ ctx->getCacheFilePath() };
 
         // 閉じる前に属性情報を取得
 

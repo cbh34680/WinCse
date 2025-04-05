@@ -7,7 +7,7 @@ using namespace WCSE;
 // AwsS3
 //
 WCSE::ICSDevice* NewCSDevice(
-    const wchar_t* argTempDir, const wchar_t* argIniSection,
+    PCWSTR argTempDir, PCWSTR argIniSection,
     NamedWorker argWorkers[])
 {
     std::unordered_map<std::wstring, IWorker*> workers;
@@ -70,7 +70,7 @@ bool AwsS3::isInBucketFilters(const std::wstring& arg)
     return it != mBucketFilters.end();
 }
 
-DirInfoType AwsS3::makeDirInfo_attr(const std::wstring& argFileName, const UINT64 argFileTime, const UINT32 argFileAttributes)
+DirInfoType AwsS3::makeDirInfo_attr(const std::wstring& argFileName, UINT64 argFileTime, UINT32 argFileAttributes)
 {
     APP_ASSERT(!argFileName.empty());
 
@@ -96,7 +96,7 @@ DirInfoType AwsS3::makeDirInfo_attr(const std::wstring& argFileName, const UINT6
     return dirInfo;
 }
 
-DirInfoType AwsS3::makeDirInfo_byName(const std::wstring& argFileName, const UINT64 argFileTime)
+DirInfoType AwsS3::makeDirInfo_byName(const std::wstring& argFileName, UINT64 argFileTime)
 {
     APP_ASSERT(!argFileName.empty());
 
@@ -105,14 +105,13 @@ DirInfoType AwsS3::makeDirInfo_byName(const std::wstring& argFileName, const UIN
     return makeDirInfo_attr(argFileName, argFileTime, lastChar == L'/' ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL);
 }
 
-DirInfoType AwsS3::makeDirInfo_dir(const std::wstring& argFileName, const UINT64 argFileTime)
+DirInfoType AwsS3::makeDirInfo_dir(const std::wstring& argFileName, UINT64 argFileTime)
 {
     return makeDirInfo_attr(argFileName, argFileTime, FILE_ATTRIBUTE_DIRECTORY);
 }
 
 NTSTATUS AwsS3::getHandleFromContext(CALLER_ARG
-    WCSE::CSDeviceContext* argCSDeviceContext,
-    const DWORD argDesiredAccess, const DWORD argCreationDisposition, PHANDLE pHandle)
+    WCSE::CSDeviceContext* argCSDeviceContext, DWORD argDesiredAccess, DWORD argCreationDisposition, PHANDLE pHandle)
 {
     NEW_LOG_BLOCK();
 
@@ -155,19 +154,13 @@ NTSTATUS AwsS3::getHandleFromContext(CALLER_ARG
 //
 // OpenContext
 //
-NTSTATUS OpenContext::openFileHandle(CALLER_ARG const DWORD argDesiredAccess, const DWORD argCreationDisposition)
+NTSTATUS OpenContext::openFileHandle(CALLER_ARG DWORD argDesiredAccess, DWORD argCreationDisposition)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(isFile());
     APP_ASSERT(mObjKey.meansFile());
 
-    std::wstring localPath;
-    if (!getCacheFilePath(&localPath))
-    {
-        traceW(L"fault: getCacheFilePath");
-        //return STATUS_OBJECT_NAME_NOT_FOUND;
-        return FspNtStatusFromWin32(ERROR_FILE_NOT_FOUND);
-    }
+    const std::wstring localPath{ getCacheFilePath() };
 
     const DWORD dwDesiredAccess = mGrantedAccess | argDesiredAccess;
 
@@ -177,11 +170,11 @@ NTSTATUS OpenContext::openFileHandle(CALLER_ARG const DWORD argDesiredAccess, co
     if (mCreateOptions & FILE_DELETE_ON_CLOSE)
         CreateFlags |= FILE_FLAG_DELETE_ON_CLOSE;
 
-    HANDLE hFile = ::CreateFileW(localPath.c_str(),
+    HANDLE Handle = ::CreateFileW(localPath.c_str(),
         dwDesiredAccess, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
         argCreationDisposition, CreateFlags, 0);
 
-    if (hFile == INVALID_HANDLE_VALUE)
+    if (Handle == INVALID_HANDLE_VALUE)
     {
         const auto lerr = ::GetLastError();
         traceW(L"fault: CreateFileW lerr=%lu", lerr);
@@ -189,7 +182,7 @@ NTSTATUS OpenContext::openFileHandle(CALLER_ARG const DWORD argDesiredAccess, co
         return FspNtStatusFromWin32(lerr);
     }
 
-    mFile = hFile;
+    mFile = Handle;
 
     return STATUS_SUCCESS;
 }

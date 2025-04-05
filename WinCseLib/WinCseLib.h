@@ -17,7 +17,44 @@
 // 一番最初に include しなければならない
 //
 #include "internal_define_alloc.h"
-#include "WinFsp_c.h"
+
+//
+// オリジナルの "passthrough.c" と同じ動きをさせるためのスイッチ
+//
+#define WINFSP_PASSTHROUGH				(0)
+
+//
+// "ntstatus.h" を include するためには以下の記述 (define/undef) が必要だが
+// 同じことが "winfsp/winfsp.h" で行われているのでコメント化
+// 
+//#define WIN32_NO_STATUS
+//#include <windows.h>
+//#undef WIN32_NO_STATUS
+
+#pragma warning(push, 0)
+#include <winfsp/winfsp.h>
+#pragma warning(pop)
+
+//
+// passthrough.c に定義されていたもののうち、アプリケーションに
+// 必要となるものを外だし
+//
+#define ALLOCATION_UNIT                 (4096)
+
+typedef struct
+{
+#if WINFSP_PASSTHROUGH
+	HANDLE Handle;
+
+#endif
+	PVOID DirBuffer;
+
+	// 追加情報
+	PWSTR FileName;
+	FSP_FSCTL_FILE_INFO FileInfo;
+	PVOID UParam;
+}
+PTFS_FILE_CONTEXT;
 
 #include <string>
 #include <list>
@@ -28,6 +65,9 @@
 #include <mutex>
 #include <functional>
 
+//
+// インターフェース定義で使うので、ここで define
+//
 #define CALLER_ARG0				const std::wstring& caller_
 #define CALLER_ARG				CALLER_ARG0,
 
@@ -39,51 +79,7 @@
 #define CONT_CALLER0			CALL_CHAIN()
 #define CONT_CALLER				CONT_CALLER0,
 
-
 namespace WCSE {
-
-// ファイルサイズ
-
-constexpr int64_t FILESIZE_1B = 1LL;
-constexpr uint64_t FILESIZE_1Bu = 1ULL;
-
-constexpr int64_t FILESIZE_1KiB = FILESIZE_1B * 1024LL;
-constexpr uint64_t FILESIZE_1KiBu = FILESIZE_1Bu * 1024ULL;
-
-constexpr int64_t FILESIZE_1MiB = FILESIZE_1KiB * 1024LL;
-constexpr uint64_t FILESIZE_1MiBu = FILESIZE_1KiBu * 1024ULL;
-
-constexpr int64_t FILESIZE_1GiB = FILESIZE_1MiB * 1024LL;
-constexpr uint64_t FILESIZE_1GiBu = FILESIZE_1MiBu * 1024ULL;
-
-// 時間 (DWORD)
-
-constexpr int32_t TIMEMILLIS_1SEC = 1000L;
-constexpr uint32_t TIMEMILLIS_1SECu = 1000UL;
-
-constexpr int32_t TIMEMILLIS_1MIN = TIMEMILLIS_1SEC * 60;
-constexpr uint32_t TIMEMILLIS_1MINu = TIMEMILLIS_1SECu * 60;
-
-constexpr int32_t TIMEMILLIS_1HOUR = TIMEMILLIS_1MIN * 60;
-constexpr uint32_t TIMEMILLIS_1HOURu = TIMEMILLIS_1MINu * 60;
-
-constexpr int32_t TIMEMILLIS_1DAY = TIMEMILLIS_1HOUR * 24;
-constexpr uint32_t TIMEMILLIS_1DAYu = TIMEMILLIS_1HOURu * 60;
-
-// 時間 (int64_t, uint64_t)
-
-constexpr int64_t TIMEMILLIS_1SECll = 1000LL;
-constexpr uint64_t TIMEMILLIS_1SECull = 1000ULL;
-
-constexpr int64_t TIMEMILLIS_1MINll = TIMEMILLIS_1SECll * 60;
-constexpr uint64_t TIMEMILLIS_1MINull = TIMEMILLIS_1SECull * 60;
-
-constexpr int64_t TIMEMILLIS_1HOURll = TIMEMILLIS_1MINll * 60;
-constexpr uint64_t TIMEMILLIS_1HOURull = TIMEMILLIS_1MINull * 60;
-
-constexpr int64_t TIMEMILLIS_1DAYll = TIMEMILLIS_1HOURll * 24;
-constexpr uint64_t TIMEMILLIS_1DAYull = TIMEMILLIS_1HOURull * 60;
-
 
 // HANDLE 用 RAII
 
@@ -152,7 +148,38 @@ public:
 	using HandleRAII<(HANDLE)NULL>::HandleRAII;
 };
 
-using DirInfoType = std::shared_ptr<FSP_FSCTL_DIR_INFO>;
+//
+// FSP_FSCTL_DIR_INFO に付与したい項目があるが、WinFsp のリソースであり
+// 直接拡張するわけにはいかないので、内部に持たせ View として機能させる
+//
+class DirInfoView
+{
+	FSP_FSCTL_DIR_INFO* const mDirInfo;
+
+public:
+	FSP_FSCTL_FILE_INFO& FileInfo;
+	const WCHAR* const FileNameBuf;
+
+	DirInfoView(FSP_FSCTL_DIR_INFO* argDirInfo)
+		:
+		mDirInfo(argDirInfo),
+		FileInfo(mDirInfo->FileInfo),
+		FileNameBuf(mDirInfo->FileNameBuf)
+	{
+	}
+
+	FSP_FSCTL_DIR_INFO* data()
+	{
+		return mDirInfo;
+	}
+
+	~DirInfoView()
+	{
+		free(mDirInfo);
+	}
+};
+
+using DirInfoType = std::shared_ptr<DirInfoView>;
 using DirInfoListType = std::list<DirInfoType>;
 
 }
@@ -171,7 +198,7 @@ namespace WCSE {
 //
 // グローバル関数
 //
-WINCSELIB_API bool GetCacheFilePath(const std::wstring& argDir, const std::wstring& argName, std::wstring* pPath);
+WINCSELIB_API std::wstring GetCacheFilePath(const std::wstring& argDir, const std::wstring& argName);
 WINCSELIB_API bool PathToFileInfoW(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo);
 WINCSELIB_API bool PathToFileInfoA(const std::string& path, FSP_FSCTL_FILE_INFO* pFileInfo);
 WINCSELIB_API bool MkdirIfNotExists(const std::wstring& dir);
@@ -179,6 +206,7 @@ WINCSELIB_API bool forEachFiles(const std::wstring& argDir, const std::function<
 
 WINCSELIB_API bool Base64EncodeA(const std::string& src, std::string* pDst);
 WINCSELIB_API bool Base64DecodeA(const std::string& src, std::string* pDst);
+/*
 WINCSELIB_API std::string URLEncodeA(const std::string& str);
 WINCSELIB_API std::string URLDecodeA(const std::string& str);
 
@@ -187,33 +215,34 @@ WINCSELIB_API bool DecodeLocalNameToFileNameA(const std::string& src, std::strin
 WINCSELIB_API bool EncodeFileNameToLocalNameW(const std::wstring& src, std::wstring* pDst);
 WINCSELIB_API bool DecodeLocalNameToFileNameW(const std::wstring& src, std::wstring* pDst);
 
-//WINCSELIB_API bool HandleToPath(HANDLE Handle, std::wstring& wstr);
-//WINCSELIB_API bool PathToSDStr(const std::wstring& path, std::wstring& sdstr);
+WINCSELIB_API bool HandleToPath(HANDLE Handle, std::wstring& wstr);
+WINCSELIB_API bool PathToSDStr(const std::wstring& path, std::wstring& sdstr);
+*/
 
-WINCSELIB_API uint64_t UtcMillisToWinFileTime100ns(uint64_t utcMilliseconds);
-WINCSELIB_API uint64_t WinFileTime100nsToUtcMillis(uint64_t fileTime100ns);
+WINCSELIB_API UINT64 UtcMillisToWinFileTime100ns(UINT64 utcMilliseconds);
+WINCSELIB_API UINT64 WinFileTime100nsToUtcMillis(UINT64 fileTime100ns);
 
-WINCSELIB_API uint64_t WinFileTimeToWinFileTime100ns(const FILETIME& ft);
-WINCSELIB_API void WinFileTime100nsToWinFile(uint64_t ft100ns, FILETIME* ft);
+WINCSELIB_API UINT64 WinFileTimeToWinFileTime100ns(const FILETIME& ft);
+WINCSELIB_API void WinFileTime100nsToWinFile(UINT64 ft100ns, FILETIME* ft);
 
-WINCSELIB_API void UtcMillisToWinFileTime(uint64_t utcMilliseconds, FILETIME* ft);
-WINCSELIB_API uint64_t WinFileTimeToUtcMillis(const FILETIME &ft);
+WINCSELIB_API void UtcMillisToWinFileTime(UINT64 utcMilliseconds, FILETIME* ft);
+WINCSELIB_API UINT64 WinFileTimeToUtcMillis(const FILETIME &ft);
 WINCSELIB_API bool PathToWinFileTimes(const std::wstring& path, FILETIME* pFtCreate, FILETIME* pFtAccess, FILETIME* pFtWrite);
-WINCSELIB_API uint64_t GetCurrentUtcMillis();
-WINCSELIB_API uint64_t GetCurrentWinFileTime100ns();
+WINCSELIB_API UINT64 GetCurrentUtcMillis();
+WINCSELIB_API UINT64 GetCurrentWinFileTime100ns();
 
 WINCSELIB_API long long int TimePointToUtcMillis(const std::chrono::system_clock::time_point& tp);
 WINCSELIB_API long long int TimePointToUtcSecs(const std::chrono::system_clock::time_point& tp);
 WINCSELIB_API std::wstring TimePointToLocalTimeStringW(const std::chrono::system_clock::time_point& tp);
 
-WINCSELIB_API std::wstring UtcMilliToLocalTimeStringW(uint64_t milliseconds);
-WINCSELIB_API std::wstring WinFileTime100nsToLocalTimeStringW(uint64_t fileTime100ns);
-WINCSELIB_API std::string WinFileTime100nsToLocalTimeStringA(uint64_t ft100ns);
+WINCSELIB_API std::wstring UtcMilliToLocalTimeStringW(UINT64 milliseconds);
+WINCSELIB_API std::wstring WinFileTime100nsToLocalTimeStringW(UINT64 fileTime100ns);
+WINCSELIB_API std::string WinFileTime100nsToLocalTimeStringA(UINT64 ft100ns);
 
-WINCSELIB_API uint64_t STCTimeToUTCMilliSecW(const std::wstring& path);
-WINCSELIB_API uint64_t STCTimeToWinFileTimeW(const std::wstring& path);
-WINCSELIB_API uint64_t STCTimeToUTCMilliSecA(const std::string& path);
-WINCSELIB_API uint64_t STCTimeToWinFileTimeA(const std::string& path);
+WINCSELIB_API UINT64 STCTimeToUTCMilliSecW(const std::wstring& path);
+WINCSELIB_API UINT64 STCTimeToWinFileTimeW(const std::wstring& path);
+WINCSELIB_API UINT64 STCTimeToUTCMilliSecA(const std::string& path);
+WINCSELIB_API UINT64 STCTimeToWinFileTimeA(const std::string& path);
 
 WINCSELIB_API std::wstring MB2WC(const std::string& str);
 WINCSELIB_API std::string WC2MB(const std::wstring& wstr);
@@ -224,32 +253,29 @@ WINCSELIB_API std::string TrimA(const std::string& str);
 WINCSELIB_API std::wstring WildcardToRegexW(const std::wstring& wildcard);
 WINCSELIB_API std::string WildcardToRegexA(const std::string& wildcard);
 
-WINCSELIB_API std::vector<std::wstring> SplitString(const std::wstring& input, const wchar_t sep, const bool ignoreEmpty);
-WINCSELIB_API std::wstring JoinStrings(const std::vector<std::wstring>& tokens, const wchar_t sep, const bool ignoreEmpty);
+WINCSELIB_API std::vector<std::wstring> SplitString(const std::wstring& input, wchar_t sep, bool ignoreEmpty);
+WINCSELIB_API std::wstring JoinStrings(const std::vector<std::wstring>& tokens, wchar_t sep, bool ignoreEmpty);
 WINCSELIB_API std::wstring ToUpper(const std::wstring& input);
 
-WINCSELIB_API int GetIniIntW(const std::wstring& confPath, const wchar_t* argSection, const wchar_t* keyName, const int defaultValue, const int minValue, const int maxValue);
-WINCSELIB_API bool GetIniStringW(const std::wstring& confPath, const wchar_t* argSection, const wchar_t* keyName, std::wstring* pValue);
-WINCSELIB_API bool GetIniStringA(const std::string& confPath, const char* argSection, const char* keyName, std::string* pValue);
+WINCSELIB_API int GetIniIntW(const std::wstring& confPath, PCWSTR argSection, PCWSTR keyName, int defaultValue, int minValue, int maxValue);
+WINCSELIB_API bool GetIniStringW(const std::wstring& confPath, PCWSTR argSection, PCWSTR keyName, std::wstring* pValue);
+WINCSELIB_API bool GetIniStringA(const std::string& confPath, PCSTR argSection, PCSTR keyName, std::string* pValue);
 
 WINCSELIB_API size_t HashString(const std::wstring& str);
 
 WINCSELIB_API bool DecryptAES(const std::vector<BYTE>& key, const std::vector<BYTE>& iv, const std::vector<BYTE>& encrypted, std::vector<BYTE>* pDecrypted);
 WINCSELIB_API bool GetCryptKeyFromRegistryA(std::string* pOutput);
 WINCSELIB_API bool GetCryptKeyFromRegistryW(std::wstring* pOutput);
-WINCSELIB_API bool ComputeSHA256A(const std::string& input, std::string* pOutput);
-WINCSELIB_API bool ComputeSHA256W(const std::wstring& input, std::wstring* pOutput);
+WINCSELIB_API NTSTATUS ComputeSHA256A(const std::string& input, std::string* pOutput);
+WINCSELIB_API NTSTATUS ComputeSHA256W(const std::wstring& input, std::wstring* pOutput);
 
-WINCSELIB_API void AbnormalEnd(const char* file, const int line, const char* func, const int signum);
+WINCSELIB_API void AbnormalEnd(PCSTR file, int line, PCSTR func, int signum);
 WINCSELIB_API int NamedWorkersToMap(NamedWorker workers[], std::unordered_map<std::wstring, IWorker*>* pWorkerMap);
 
-//WINCSELIB_API NTSTATUS HandleToInfo(HANDLE handle, PUINT32 PFileAttributes /* nullable */, PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize /* nullable */);
-
 WINCSELIB_API NTSTATUS HandleToSecurityInfo(HANDLE Handle,
-	PSECURITY_DESCRIPTOR SecurityDescriptor, SIZE_T* PSecurityDescriptorSize /* nullable */);
+	PSECURITY_DESCRIPTOR SecurityDescriptor, PSIZE_T PSecurityDescriptorSize /* nullable */);
 
-
-WINCSELIB_API bool CreateLogger(const wchar_t* argTempDir, const wchar_t* argTrcDir, const wchar_t* argDllType);
+WINCSELIB_API bool CreateLogger(PCWSTR argTempDir, PCWSTR argTrcDir, PCWSTR argDllType);
 WINCSELIB_API ILogger* GetLogger();
 WINCSELIB_API void DeleteLogger();
 
@@ -264,12 +290,12 @@ WINCSELIB_API bool SplitPath(const std::wstring& argKey,
 //
 class WINCSELIB_API LogBlock
 {
-	const wchar_t* mFile;
+	PCWSTR mFile;
 	const int mLine;
-	const wchar_t* mFunc;
+	PCWSTR mFunc;
 
 public:
-	LogBlock(const wchar_t* argFile, const int argLine, const wchar_t* argFunc);
+	LogBlock(PCWSTR argFile, int argLine, PCWSTR argFunc);
 	~LogBlock();
 
 	int depth();
@@ -294,6 +320,21 @@ public:
 	}
 };
 
+struct FatalError : public std::exception
+{
+	const std::string mWhat;
+	const NTSTATUS mNtstatus;
+
+	WINCSELIB_API FatalError(const std::string& argWhat, NTSTATUS argNtstatus);
+	WINCSELIB_API FatalError(const std::string& argWhat, DWORD argLastError);
+	WINCSELIB_API FatalError(const std::string& argWhat);
+
+	const char* what() const noexcept override
+	{
+		return mWhat.c_str();
+	}
+};
+
 template <typename T>
 std::string getDerivedClassNamesA(T* baseClass)
 {
@@ -307,6 +348,49 @@ std::wstring getDerivedClassNamesW(T* baseClass)
 	const std::type_info& typeInfo = typeid(*baseClass);
 	return MB2WC(typeInfo.name());
 }
+
+// ファイルサイズ
+
+constexpr INT64 FILESIZE_1B = 1LL;
+constexpr UINT64 FILESIZE_1Bu = 1ULL;
+
+constexpr INT64 FILESIZE_1KiB = FILESIZE_1B * 1024LL;
+constexpr UINT64 FILESIZE_1KiBu = FILESIZE_1Bu * 1024ULL;
+
+constexpr INT64 FILESIZE_1MiB = FILESIZE_1KiB * 1024LL;
+constexpr UINT64 FILESIZE_1MiBu = FILESIZE_1KiBu * 1024ULL;
+
+constexpr INT64 FILESIZE_1GiB = FILESIZE_1MiB * 1024LL;
+constexpr UINT64 FILESIZE_1GiBu = FILESIZE_1MiBu * 1024ULL;
+
+// 時間 (DWORD)
+
+constexpr int32_t TIMEMILLIS_1SEC = 1000L;
+constexpr uint32_t TIMEMILLIS_1SECu = 1000UL;
+
+constexpr int32_t TIMEMILLIS_1MIN = TIMEMILLIS_1SEC * 60;
+constexpr uint32_t TIMEMILLIS_1MINu = TIMEMILLIS_1SECu * 60;
+
+constexpr int32_t TIMEMILLIS_1HOUR = TIMEMILLIS_1MIN * 60;
+constexpr uint32_t TIMEMILLIS_1HOURu = TIMEMILLIS_1MINu * 60;
+
+constexpr int32_t TIMEMILLIS_1DAY = TIMEMILLIS_1HOUR * 24;
+constexpr uint32_t TIMEMILLIS_1DAYu = TIMEMILLIS_1HOURu * 60;
+
+// 時間 (INT64, UINT64)
+
+constexpr INT64 TIMEMILLIS_1SECll = 1000LL;
+constexpr UINT64 TIMEMILLIS_1SECull = 1000ULL;
+
+constexpr INT64 TIMEMILLIS_1MINll = TIMEMILLIS_1SECll * 60;
+constexpr UINT64 TIMEMILLIS_1MINull = TIMEMILLIS_1SECull * 60;
+
+constexpr INT64 TIMEMILLIS_1HOURll = TIMEMILLIS_1MINll * 60;
+constexpr UINT64 TIMEMILLIS_1HOURull = TIMEMILLIS_1MINull * 60;
+
+constexpr INT64 TIMEMILLIS_1DAYll = TIMEMILLIS_1HOURll * 24;
+constexpr UINT64 TIMEMILLIS_1DAYull = TIMEMILLIS_1HOURull * 60;
+
 
 } // namespace WCSE
 
@@ -337,14 +421,15 @@ WINFSP_STATS;
 
 typedef struct
 {
-	WCSE::ICSDriver* pDriver;
-	WINFSP_STATS stats;
+	WCSE::ICSDriver* pCSDriver;
+	WINFSP_STATS FspStats;
 }
-WINFSP_IF;
+WINCSE_IF;
 
 extern "C"
 {
-	WINCSELIB_API int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINFSP_IF* appif);
+	WINCSELIB_API NTSTATUS GetFileInfoInternal(HANDLE Handle, FSP_FSCTL_FILE_INFO* FileInfo);
+	WINCSELIB_API int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINCSE_IF* appif);
 }
 
 // -----------------------------

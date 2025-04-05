@@ -5,9 +5,9 @@
 using namespace WCSE;
 
 
-static const wchar_t* CONFIGFILE_FNAME = L"WinCse.conf";
-static const wchar_t* CACHE_DATA_DIR_FNAME = L"aws-s3\\cache\\data";
-static const wchar_t* CACHE_REPORT_DIR_FNAME = L"aws-s3\\cache\\report";
+static PCWSTR CONFIGFILE_FNAME = L"WinCse.conf";
+static PCWSTR CACHE_DATA_DIR_FNAME = L"aws-s3\\cache\\data";
+static PCWSTR CACHE_REPORT_DIR_FNAME = L"aws-s3\\cache\\report";
 
 static bool decryptIfNecessary(const std::string& secureKeyStr, std::string* pInOut)
 {
@@ -78,7 +78,7 @@ static bool decryptIfNecessary(const std::string& secureKeyStr, std::string* pIn
     return true;
 }
 
-bool AwsS3::PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams)
+bool AwsS3::PreCreateFilesystem(FSP_SERVICE *Service, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(argWorkDir);
@@ -123,7 +123,7 @@ bool AwsS3::PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir,
 
         //traceW(L"Detect credentials file path is %s", confPath.c_str());
 
-        const wchar_t* iniSection = mIniSection.c_str();
+        PCWSTR iniSection = mIniSection.c_str();
         const auto iniSectionA{ WC2MB(mIniSection) };
 
         // AWS îFèÿèÓïÒ

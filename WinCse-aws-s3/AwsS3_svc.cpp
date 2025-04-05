@@ -9,7 +9,7 @@ static std::atomic<bool> gEndWorkerFlag;
 static std::thread* gNotifWorker;
 
 static HANDLE gNotifEvents[2];
-static const wchar_t* gEventNames[] =
+static PCWSTR gEventNames[] =
 {
     L"Global\\WinCse-AwsS3-util-print-report",
     L"Global\\WinCse-AwsS3-util-clear-cache",
@@ -17,7 +17,7 @@ static const wchar_t* gEventNames[] =
 
 static const int gNumNotifEvents = _countof(gNotifEvents);
 
-bool AwsS3::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
+bool AwsS3::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem, PCWSTR PtfsPath)
 {
     StatsIncr(OnSvcStart);
 
@@ -28,7 +28,7 @@ bool AwsS3::OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 
     bool ret = false;
 
-    mFileSystem = FileSystem;
+    //mFileSystem = FileSystem;
 
     // í∑Ç≠Ç»Ç¡ÇΩÇÃÇ≈ÅAäOÇæÇµ
 

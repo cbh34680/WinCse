@@ -10,7 +10,7 @@ using namespace WCSE;
 //
 
 NTSTATUS CSDriver::DoSetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize, BOOLEAN SetAllocationSize,
-	FSP_FSCTL_FILE_INFO *FileInfo)
+	FSP_FSCTL_FILE_INFO* FileInfo)
 {
 	StatsIncr(DoSetFileSize);
 	NEW_LOG_BLOCK();
@@ -67,7 +67,7 @@ NTSTATUS CSDriver::DoSetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize,
 	return GetFileInfoInternal(Handle, FileInfo);
 }
 
-NTSTATUS CSDriver::DoFlush(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO *FileInfo)
+NTSTATUS CSDriver::DoFlush(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO* FileInfo)
 {
 	StatsIncr(DoFlush);
 	NEW_LOG_BLOCK();
@@ -104,7 +104,7 @@ NTSTATUS CSDriver::DoFlush(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO *
 //
 
 NTSTATUS CSDriver::DoOverwrite(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttributes,
-	BOOLEAN ReplaceFileAttributes, UINT64 AllocationSize, FSP_FSCTL_FILE_INFO *FileInfo)
+	BOOLEAN ReplaceFileAttributes, UINT64 AllocationSize, FSP_FSCTL_FILE_INFO* FileInfo)
 {
 	StatsIncr(DoOverwrite);
 	NEW_LOG_BLOCK();
@@ -182,7 +182,7 @@ NTSTATUS CSDriver::DoOverwrite(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttrib
 
 NTSTATUS CSDriver::DoWrite(PTFS_FILE_CONTEXT* FileContext, PVOID Buffer, UINT64 Offset, ULONG Length,
 	BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
-	PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO *FileInfo)
+	PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO* FileInfo)
 {
 	StatsIncr(DoWrite);
 	NEW_LOG_BLOCK();
@@ -282,9 +282,9 @@ NTSTATUS CSDriver::DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, B
 	return STATUS_SUCCESS;
 }
 
-NTSTATUS CSDriver::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, const UINT32 argFileAttributes,
-	const UINT64 argCreationTime, const UINT64 argLastAccessTime, const UINT64 argLastWriteTime,
-	const UINT64 argChangeTime, FSP_FSCTL_FILE_INFO *FileInfo)
+NTSTATUS CSDriver::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, UINT32 argFileAttributes,
+	UINT64 argCreationTime, UINT64 argLastAccessTime, UINT64 argLastWriteTime,
+	UINT64 argChangeTime, FSP_FSCTL_FILE_INFO* FileInfo)
 {
 	StatsIncr(DoSetBasicInfo);
 	NEW_LOG_BLOCK();

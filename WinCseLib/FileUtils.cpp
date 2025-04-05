@@ -7,14 +7,17 @@
 
 namespace WCSE {
 
-bool GetCacheFilePath(const std::wstring& argDir, const std::wstring& argName, std::wstring* pPath)
+std::wstring GetCacheFilePath(const std::wstring& argDir, const std::wstring& argName)
 {
 	std::wstring nameSha256;
 
-	if (!ComputeSHA256W(argName, &nameSha256))
+	NTSTATUS ntstatus = ComputeSHA256W(argName, &nameSha256);
+	if (!NT_SUCCESS(ntstatus))
 	{
-		return false;
+		throw FatalError(__FUNCTION__, ntstatus);
 	}
+
+	// 先頭の 2Byte はディレクトリ名
 
 	std::filesystem::path filePath{ argDir };
 	filePath.append(nameSha256.substr(0, 2));
@@ -24,14 +27,12 @@ bool GetCacheFilePath(const std::wstring& argDir, const std::wstring& argName, s
 
 	if (ec)
 	{
-		return false;
+		throw FatalError(__FUNCTION__);
 	}
 
 	filePath.append(nameSha256.substr(2));
 
-	*pPath = filePath.wstring();
-
-	return true;
+	return filePath.wstring();
 }
 
 bool PathToFileInfoW(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo)
@@ -125,11 +126,11 @@ bool MkdirIfNotExists(const std::wstring& arg)
 bool forEachFiles(const std::wstring& argDir, const std::function<void(const WIN32_FIND_DATA& wfd, const std::wstring& fullPath)>& callback)
 {
 	WIN32_FIND_DATA wfd = {};
-	HANDLE hFind = ::FindFirstFileW((argDir + L"\\*").c_str(), &wfd);
+	HANDLE Handle = ::FindFirstFileW((argDir + L"\\*").c_str(), &wfd);
 
 	const std::filesystem::path dir{ argDir };
 
-	if (hFind == INVALID_HANDLE_VALUE)
+	if (Handle == INVALID_HANDLE_VALUE)
 	{
 		return false;
 	}
@@ -155,9 +156,9 @@ bool forEachFiles(const std::wstring& argDir, const std::function<void(const WIN
 			callback(wfd, curPath.wstring());
 		}
 	}
-	while (::FindNextFile(hFind, &wfd) != 0);
+	while (::FindNextFile(Handle, &wfd) != 0);
 
-	::FindClose(hFind);
+	::FindClose(Handle);
 
 	return true;
 }

@@ -15,7 +15,7 @@ namespace WCSE {
 //
 thread_local std::wofstream Logger::mTLFile;
 thread_local bool Logger::mTLFileOK = true;
-thread_local uint64_t Logger::mTLFlushTime = 0;
+thread_local UINT64 Logger::mTLFlushTime = 0;
 
 //
 // プログラム引数 "-T" で指定されたディレクトリをログ出力用に保存する
@@ -77,7 +77,7 @@ bool Logger::internalInit(const std::wstring& argTempDir, const std::wstring& ar
 #define FORMAT1		FORMAT_DT "\t" FORMAT_ERR "\t" FORMAT_SRC "\t" FORMAT_FUNC "\t"
 #define FORMAT2		"\n"
 
-void Logger::traceW_impl(const int indent, const wchar_t* fullPath, const int line, const wchar_t* func, const wchar_t* format, ...)
+void Logger::traceW_impl(int indent, PCWSTR fullPath, int line, PCWSTR func, PCWSTR format, ...)
 {
 	LastErrorBackup _backup;
 
@@ -90,7 +90,7 @@ void Logger::traceW_impl(const int indent, const wchar_t* fullPath, const int li
 
 	const auto err = ::GetLastError();
 	const auto callFromFile(std::filesystem::path(fullPath).filename().wstring());
-	const wchar_t* file = callFromFile.c_str();
+	PCWSTR file = callFromFile.c_str();
 
 	SYSTEMTIME st;
 	::GetLocalTime(&st);
@@ -131,7 +131,7 @@ void Logger::traceW_impl(const int indent, const wchar_t* fullPath, const int li
 	traceW_write(&st, buf);
 }
 
-void Logger::traceA_impl(const int indent, const char* fullPath, const int line, const char* func, const char* format, ...)
+void Logger::traceA_impl(int indent, PCSTR fullPath, int line, PCSTR func, PCSTR format, ...)
 {
 	LastErrorBackup _backup;
 
@@ -144,7 +144,7 @@ void Logger::traceA_impl(const int indent, const char* fullPath, const int line,
 
 	const auto err = ::GetLastError();
 	const auto callFromFile(std::filesystem::path(fullPath).filename().string());
-	const char* file = callFromFile.c_str();
+	PCSTR file = callFromFile.c_str();
 
 	SYSTEMTIME st;
 	::GetLocalTime(&st);
@@ -186,7 +186,7 @@ void Logger::traceA_impl(const int indent, const char* fullPath, const int line,
 }
 
 #pragma warning(suppress: 4100)
-void Logger::traceW_write(const SYSTEMTIME* st, const wchar_t* buf) const
+void Logger::traceW_write(const SYSTEMTIME* st, PCWSTR buf) const
 {
 	const auto pid = ::GetCurrentProcessId();
 	const auto tid = ::GetCurrentThreadId();
@@ -277,7 +277,7 @@ void Logger::traceW_write(const SYSTEMTIME* st, const wchar_t* buf) const
 // single instance
 static Logger* gLogger;
 
-bool CreateLogger(const wchar_t* argTempDir, const wchar_t* argTrcDir, const wchar_t* argDllType)
+bool CreateLogger(PCWSTR argTempDir, PCWSTR argTrcDir, PCWSTR argDllType)
 {
 	APP_ASSERT(argTempDir);
 	APP_ASSERT(argDllType);

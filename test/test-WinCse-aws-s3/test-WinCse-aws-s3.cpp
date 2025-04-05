@@ -9,7 +9,7 @@ void test4()
     std::wstring parentDir;
     std::wstring filename;
 
-    const wchar_t* keys[] =
+    PCWSTR keys[] =
     {
         L"",
         L"dir",

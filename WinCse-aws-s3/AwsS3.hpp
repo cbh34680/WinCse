@@ -81,7 +81,7 @@ struct OpenContext : public WCSE::CSDeviceContext
 	{
 	}
 
-	NTSTATUS openFileHandle(CALLER_ARG const DWORD argDesiredAccess, const DWORD argCreationDisposition);
+	NTSTATUS openFileHandle(CALLER_ARG DWORD argDesiredAccess, DWORD argCreationDisposition);
 };
 
 class AwsS3 : public WCSE::ICSDevice
@@ -111,7 +111,7 @@ private:
 
 	UINT64 mWorkDirCTime = 0;
 	std::wstring mRegion;
-	FSP_FILE_SYSTEM* mFileSystem = nullptr;
+	//FSP_FILE_SYSTEM* mFileSystem = nullptr;
 
 	UINT32 mDefaultFileAttributes = 0;
 
@@ -159,7 +159,7 @@ private:
 	// AWS SDK API を実行
 	WCSE::DirInfoType apicallHeadObject(CALLER_ARG const WCSE::ObjectKey& argObjKey);
 	bool apicallListObjectsV2(CALLER_ARG const WCSE::ObjectKey& argObjKey,
-		const bool argDelimiter, const int argLimit, WCSE::DirInfoListType* pDirInfoList);
+		bool argDelimiter, int argLimit, WCSE::DirInfoListType* pDirInfoList);
 
 	//
 	bool unsafeHeadBucket(CALLER_ARG const std::wstring& bucketName,
@@ -178,7 +178,7 @@ private:
 
 	// Read 関連
 
-	NTSTATUS prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, const UINT64 argOffset, const ULONG argLength);
+	NTSTATUS prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, UINT64 argOffset, ULONG argLength);
 	bool doMultipartDownload(CALLER_ARG OpenContext* ctx, const std::wstring& localPath);
 
 public:
@@ -187,7 +187,7 @@ public:
 	void onTimer(CALLER_ARG0);
 	void onIdle(CALLER_ARG0);
 
-	int64_t getObjectAndWriteToFile(CALLER_ARG const WCSE::ObjectKey& argObjKey,
+	INT64 getObjectAndWriteToFile(CALLER_ARG const WCSE::ObjectKey& argObjKey,
 		const FileOutputParams& argOutputParams);
 
 public:
@@ -201,8 +201,8 @@ public:
 		*pStats = *mStats;
 	}
 
-	bool PreCreateFilesystem(FSP_SERVICE *Service, const wchar_t* argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
-	bool OnSvcStart(const wchar_t* argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
+	bool PreCreateFilesystem(FSP_SERVICE *Service, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
+	bool OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem, PCWSTR PtfsPath) override;
 	void OnSvcStop() override;
 
 	bool headBucket(CALLER_ARG const std::wstring& argBucket,
@@ -221,14 +221,14 @@ public:
 
 	bool putObject(CALLER_ARG const WCSE::ObjectKey& argObjKey,
 		const FSP_FSCTL_FILE_INFO& argFileInfo,
-		const wchar_t* sourceFile /* nullable */) override;
+		PCWSTR sourceFile /* nullable */) override;
 
 	WCSE::CSDeviceContext* create(CALLER_ARG const WCSE::ObjectKey& argObjKey,
-		const FSP_FSCTL_FILE_INFO& fileInfo, const UINT32 CreateOptions,
-		const UINT32 GrantedAccess, const UINT32 FileAttributes) override;
+		const FSP_FSCTL_FILE_INFO& fileInfo, UINT32 CreateOptions,
+		UINT32 GrantedAccess, UINT32 FileAttributes) override;
 
 	WCSE::CSDeviceContext* open(CALLER_ARG const WCSE::ObjectKey& argObjKey,
-		const UINT32 CreateOptions, const UINT32 GrantedAccess, const FSP_FSCTL_FILE_INFO& FileInfo) override;
+		UINT32 CreateOptions, UINT32 GrantedAccess, const FSP_FSCTL_FILE_INFO& FileInfo) override;
 
 	void close(CALLER_ARG WCSE::CSDeviceContext* argCSDeviceContext) override;
 
@@ -237,16 +237,16 @@ public:
 
 	NTSTATUS writeObject(CALLER_ARG WCSE::CSDeviceContext* argCSDeviceContext,
 		PVOID Buffer, UINT64 Offset, ULONG Length, BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
-		PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO *FileInfo) override;
+		PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO* FileInfo) override;
 
 	NTSTATUS getHandleFromContext(CALLER_ARG WCSE::CSDeviceContext* argCSDeviceContext,
-		const DWORD argDesiredAccess, const DWORD argCreationDisposition, PHANDLE pHandle) override;
+		DWORD argDesiredAccess, DWORD argCreationDisposition, PHANDLE pHandle) override;
 
 private:
 	// ファイル/ディレクトリに特化
-	WCSE::DirInfoType makeDirInfo_attr(const std::wstring& argFileName, const UINT64 argFileTime, const UINT32 argFileAttributes);
-	WCSE::DirInfoType makeDirInfo_byName(const std::wstring& argFileName, const UINT64 argFileTime);
-	WCSE::DirInfoType makeDirInfo_dir(const std::wstring& argFileName, const UINT64 argFileTime);
+	WCSE::DirInfoType makeDirInfo_attr(const std::wstring& argFileName, UINT64 argFileTime, UINT32 argFileAttributes);
+	WCSE::DirInfoType makeDirInfo_byName(const std::wstring& argFileName, UINT64 argFileTime);
+	WCSE::DirInfoType makeDirInfo_dir(const std::wstring& argFileName, UINT64 argFileTime);
 };
 
 template<typename T>
@@ -260,10 +260,10 @@ bool outcomeIsSuccess(const T& outcome)
 		traceA("outcome.IsSuccess()=%s: %s", suc ? "true" : "false", typeid(outcome).name());
 
 		const auto& err{ outcome.GetError() };
-		const char* mesg{ err.GetMessage().c_str() };
+		const auto mesg{ err.GetMessage().c_str() };
 		const auto code{ err.GetResponseCode() };
 		const auto type{ err.GetErrorType() };
-		const char* name{ err.GetExceptionName().c_str() };
+		const auto name{ err.GetExceptionName().c_str() };
 
 		traceA("error: type=%d, code=%d, name=%s, message=%s", type, code, name, mesg);
 	}
@@ -279,9 +279,7 @@ bool outcomeIsSuccess(const T& outcome)
 
 extern "C"
 {
-	AWSS3_API WCSE::ICSDevice* NewCSDevice(
-		const wchar_t* argTempDir, const wchar_t* argIniSection,
-		WCSE::NamedWorker argWorkers[]);
+	AWSS3_API WCSE::ICSDevice* NewCSDevice(PCWSTR argTempDir, PCWSTR argIniSection, WCSE::NamedWorker argWorkers[]);
 }
 
 #define StatsIncr(name)				::InterlockedIncrement(& (this->mStats->name))

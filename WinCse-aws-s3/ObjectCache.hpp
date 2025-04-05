@@ -18,7 +18,7 @@ struct ObjectCacheKey
 	WCSE::ObjectKey mObjKey;
 	Purpose mPurpose = Purpose::None;
 
-	ObjectCacheKey(const WCSE::ObjectKey& argObjectKey, const Purpose argPurpose)
+	ObjectCacheKey(const WCSE::ObjectKey& argObjectKey, Purpose argPurpose)
 		: mObjKey(argObjectKey), mPurpose(argPurpose)
 	{
 	}
@@ -87,9 +87,9 @@ struct PosisiveCacheVal : public BaseCacheVal
 {
 	WCSE::DirInfoListType mDirInfoList;
 
-	PosisiveCacheVal(CALLER_ARG
-		const WCSE::DirInfoListType& argDirInfoList)
-		: BaseCacheVal(CONT_CALLER0), mDirInfoList(argDirInfoList)
+	PosisiveCacheVal(CALLER_ARG const WCSE::DirInfoListType& argDirInfoList)
+		:
+		BaseCacheVal(CONT_CALLER0), mDirInfoList(argDirInfoList)
 	{
 	}
 };
@@ -135,9 +135,9 @@ public:
 	void setPositive_File(CALLER_ARG
 		const WCSE::ObjectKey& argObjKey, const WCSE::DirInfoType& pDirInfo);
 
-	bool isInNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey, const Purpose argPurpose);
+	bool isInNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey, Purpose argPurpose);
 
-	void addNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey, const Purpose argPurpose);
+	void addNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey, Purpose argPurpose);
 
 	bool isInNegative_File(CALLER_ARG const WCSE::ObjectKey& argObjKey);
 
