@@ -71,7 +71,7 @@ std::wstring MB2WC(const std::string& str)
     return std::wstring{ pWstr };
 }
 
-void listObjects(Aws::S3::S3Client* client, std::string bucket, std::string prefix)
+void test5ListObjects(Aws::S3::S3Client* client, std::string bucket, std::string prefix)
 {
     Aws::S3::Model::ListObjectsV2Request request;
     request.SetBucket(bucket);
@@ -149,8 +149,8 @@ int test5_(int argc, wchar_t** argv)
     if (test.IsSuccess())
     {
         //listObjects(client, bucket, "test/");
-        listObjects(client, bucket, WC2MB(L"test/"));
-        listObjects(client, bucket, WC2MB(L"テスト/"));
+        test5ListObjects(client, bucket, WC2MB(L"test/"));
+        test5ListObjects(client, bucket, WC2MB(L"テスト/"));
         //listObjects(client, bucket, WC2MB(L"新しいフォルダー/"));
     }
     else

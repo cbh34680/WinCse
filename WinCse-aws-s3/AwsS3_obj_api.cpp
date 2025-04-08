@@ -6,9 +6,9 @@ using namespace WCSE;
 DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
 {
     NEW_LOG_BLOCK();
-    APP_ASSERT(argObjKey.meansFile());
+    //APP_ASSERT(argObjKey.meansFile());
 
-    //traceW(L"argObjKey=%s", argObjKey.c_str());
+    traceW(L"argObjKey=%s", argObjKey.c_str());
 
     Aws::S3::Model::HeadObjectRequest request;
     request.SetBucket(argObjKey.bucketA());
@@ -23,14 +23,14 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
         return nullptr;
     }
 
-    std::wstring fileName;
-    if (!SplitPath(argObjKey.key(), nullptr, &fileName))
+    std::wstring filename;
+    if (!SplitPath(argObjKey.key(), nullptr, &filename))
     {
         traceW(L"fault: SplitPath");
         return nullptr;
     }
 
-    auto dirInfo = makeDirInfo(fileName);
+    auto dirInfo = makeDirInfo(filename);
     APP_ASSERT(dirInfo);
 
     const auto& result = outcome.GetResult();
@@ -43,17 +43,17 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
     UINT64 lastWriteTime = lastModified;
     UINT32 fileAttributes = mDefaultFileAttributes;
 
+    if (argObjKey.meansDir())
+    {
+        fileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
+    }
+
     const auto& metadata = result.GetMetadata();
 
     if (metadata.find("wincse-creation-time") != metadata.end())
     {
         creationTime = std::stoull(metadata.at("wincse-creation-time"));
     }
-
-    //if (metadata.find("wincse-last-access-time") != metadata.end())
-    //{
-    //    lastAccessTime = std::stoull(metadata.at("wincse-last-access-time"));
-    //}
 
     if (metadata.find("wincse-last-write-time") != metadata.end())
     {
@@ -79,8 +79,6 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
     dirInfo->FileInfo.LastAccessTime = lastAccessTime;
     dirInfo->FileInfo.LastWriteTime = lastWriteTime;
     dirInfo->FileInfo.ChangeTime = lastModified;
-
-    //dirInfo->FileInfo.IndexNumber = HashString(argObjKey.bucket() + L'/' + argObjKey.key());
     dirInfo->FileInfo.IndexNumber = HashString(argObjKey.str());
 
     return dirInfo;
@@ -90,13 +88,15 @@ DirInfoType AwsS3::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey)
 // ListObjectsV2 API を実行し結果を引数のポインタの指す変数に保存する
 // 引数の条件に合致するオブジェクトが見つからないときは false を返却
 //
-bool AwsS3::apicallListObjectsV2(CALLER_ARG const ObjectKey& argObjKey, bool argDelimiter, int argLimit, DirInfoListType* pDirInfoList)
+bool AwsS3::apicallListObjectsV2(CALLER_ARG const ObjectKey& argObjKey,
+    bool argDelimiter, int argLimit, DirInfoListType* pDirInfoList)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(pDirInfoList);
     APP_ASSERT(argObjKey.valid());
 
-    //traceW(L"purpose=%s, argObjKey=%s, delimiter=%s, limit=%d", PurposeString(argPurpose), argObjKey.c_str(), BOOL_CSTRW(delimiter), limit);
+    traceW(L"argObjKey=%s, argDelimiter=%s, argLimit=%d",
+        argObjKey.c_str(), BOOL_CSTRW(argDelimiter), argLimit);
 
     DirInfoListType dirInfoList;
 
@@ -321,7 +321,7 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const ObjectKey& argObjKey, bool arg
     } while (!continuationToken.empty());
 
 exit:
-    *pDirInfoList = dirInfoList;
+    *pDirInfoList = std::move(dirInfoList);
 
     return true;
 }

@@ -73,7 +73,7 @@ public:
 	UnprotectedShare(ShareStore<T>* argStore, const std::wstring& argName, Args... args)
 		: mStore(argStore), mName(argName)
 	{
-		std::lock_guard<std::mutex> _(mStore->mMapGuard);
+		std::lock_guard<std::mutex> lock_{ mStore->mMapGuard };
 
 		auto it{ mStore->mMap.find(mName) };
 		if (it == mStore->mMap.end())
@@ -91,7 +91,7 @@ public:
 
 	~UnprotectedShare()
 	{
-		std::lock_guard<std::mutex> _(mStore->mMapGuard);
+		std::lock_guard<std::mutex> lock_{ mStore->mMapGuard };
 
 		auto it{ mStore->mMap.find(mName) };
 

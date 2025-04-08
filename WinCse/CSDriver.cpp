@@ -81,7 +81,7 @@ CSDriver::ResourceSweeper::~ResourceSweeper()
 // ここから下のメソッドは THREAD_SAFE マクロによる修飾が必要
 //
 static std::mutex gGuard;
-#define THREAD_SAFE() std::lock_guard<std::mutex> lock_(gGuard)
+#define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ gGuard }
 
 void CSDriver::ResourceSweeper::add(PTFS_FILE_CONTEXT* FileContext)
 {

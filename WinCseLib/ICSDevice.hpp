@@ -11,15 +11,17 @@ typedef struct
 	long getBucket;
 	long listBuckets;
 
-	long headObject_File;
-	long headObject_Dir;
+	long headObject;
 	long listObjects;
+	long listDisplayObjects;
+
 	long create;
 	long open;
 	long readObject;
 	long writeObject;
 	long close;
 	long cleanup;
+	long readDirectory;
 }
 WINCSE_DEVICE_STATS;
 
@@ -39,8 +41,6 @@ private:
 	bool mMeansFile = false;
 
 	WINCSELIB_API void reset() noexcept;
-
-	WINCSELIB_API ObjectKey(const std::wstring& argWinPath);
 
 public:
 	ObjectKey() = default;
@@ -101,10 +101,8 @@ public:
 		return false;
 	}
 
-	static ObjectKey fromWinPath(const std::wstring& argWinPath)
-	{
-		return ObjectKey(argWinPath);
-	}
+	WINCSELIB_API static ObjectKey fromPath(const std::wstring& argPath);
+	WINCSELIB_API static ObjectKey fromWinPath(const std::wstring& argWinPath);
 };
 
 struct CSDeviceContext
@@ -116,7 +114,7 @@ struct CSDeviceContext
 	FileHandle mFile;
 	uint32_t mFlags = 0U;
 
-	WINCSELIB_API CSDeviceContext(const std::wstring& argCacheDataDir,
+	WINCSELIB_API explicit CSDeviceContext(const std::wstring& argCacheDataDir,
 		const WCSE::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo);
 
 	WINCSELIB_API std::wstring getCacheFilePath() const;
@@ -129,9 +127,10 @@ struct CSDeviceContext
 
 constexpr uint32_t CSDCTX_FLAGS_MODIFY			= 1;
 constexpr uint32_t CSDCTX_FLAGS_READ			= 2;
-constexpr uint32_t CSDCTX_FLAGS_WRITE			= CSDCTX_FLAGS_MODIFY | (0x0100 << 0);
-constexpr uint32_t CSDCTX_FLAGS_OVERWRITE		= CSDCTX_FLAGS_MODIFY | (0x0100 << 1);
-constexpr uint32_t CSDCTX_FLAGS_SET_FILE_SIZE	= CSDCTX_FLAGS_MODIFY | (0x0100 << 2);
+constexpr uint32_t CSDCTX_FLAGS_CREATE			= CSDCTX_FLAGS_MODIFY | (0x0100 << 0);
+constexpr uint32_t CSDCTX_FLAGS_WRITE			= CSDCTX_FLAGS_MODIFY | (0x0100 << 1);
+constexpr uint32_t CSDCTX_FLAGS_OVERWRITE		= CSDCTX_FLAGS_MODIFY | (0x0100 << 2);
+constexpr uint32_t CSDCTX_FLAGS_SET_FILE_SIZE	= CSDCTX_FLAGS_MODIFY | (0x0100 << 4);
 
 struct ICSDevice : public ICSService
 {
@@ -145,29 +144,21 @@ struct ICSDevice : public ICSService
 	virtual bool listBuckets(CALLER_ARG DirInfoListType* pDirInfoList) = 0;
 
 	virtual bool headObject(CALLER_ARG const ObjectKey& argObjKey,
-		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
-	{
-		if (argObjKey.valid())
-		{
-			return argObjKey.meansDir()
-				? headObject_Dir(CONT_CALLER argObjKey, pFileInfo)
-				: headObject_File(CONT_CALLER argObjKey, pFileInfo);
-		}
-
-		return false;
-	}
-
-	virtual bool headObject_File(CALLER_ARG const ObjectKey& argObjKey,
-		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) = 0;
-	virtual bool headObject_Dir(CALLER_ARG const ObjectKey& argObjKey,
 		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) = 0;
 
 	virtual bool listObjects(CALLER_ARG const ObjectKey& argObjKey,
 		DirInfoListType* pDirInfoList /* nullable */) = 0;
 
+	virtual bool listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey,
+		DirInfoListType* pDirInfoList)
+	{
+		_ASSERT(pDirInfoList);
+
+		return this->listObjects(CONT_CALLER argObjKey, pDirInfoList);
+	}
+
 	virtual CSDeviceContext* create(CALLER_ARG const ObjectKey& argObjKey,
-		const FSP_FSCTL_FILE_INFO& fileInfo, const UINT32 CreateOptions,
-		const UINT32 GrantedAccess, const UINT32 FileAttributes) = 0;
+		const UINT32 CreateOptions, const UINT32 GrantedAccess, const UINT32 FileAttributes) = 0;
 
 	virtual CSDeviceContext* open(CALLER_ARG const ObjectKey& argObjKey,
 		const UINT32 CreateOptions, const UINT32 GrantedAccess,
@@ -184,9 +175,12 @@ struct ICSDevice : public ICSService
 
 	virtual bool deleteObject(CALLER_ARG const ObjectKey& argObjKey) = 0;
 
+	virtual bool renameObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
+		const std::wstring& argFileName, const std::wstring& argNewFileName, BOOLEAN argReplaceIfExists) = 0;
+
 	virtual bool putObject(CALLER_ARG const ObjectKey& argObjKey,
 		const FSP_FSCTL_FILE_INFO& argFileInfo,
-		PCWSTR sourceFile /* nullable */) = 0;
+		const std::wstring& sourceFile) = 0;
 
 	virtual NTSTATUS getHandleFromContext(CALLER_ARG CSDeviceContext* argCSDeviceContext,
 		const DWORD argDesiredAccess, const DWORD argCreationDisposition, PHANDLE pHandle) = 0;

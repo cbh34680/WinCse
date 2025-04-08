@@ -5,7 +5,8 @@
 using namespace WCSE;
 
 
-NTSTATUS CSDriver::getFileInfoByName(CALLER_ARG PCWSTR fileName, FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pType /* nullable */)
+NTSTATUS CSDriver::getFileInfoByFileName(CALLER_ARG PCWSTR fileName,
+	FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pFileNameType)
 {
 	APP_ASSERT(pFileInfo);
 
@@ -13,10 +14,7 @@ NTSTATUS CSDriver::getFileInfoByName(CALLER_ARG PCWSTR fileName, FSP_FSCTL_FILE_
 	{
 		// "\" へのアクセスは参照用ディレクトリの情報を提供
 
-		if (pType)
-		{
-			*pType = FileNameType::RootDirectory;
-		}
+		*pFileNameType = FileNameType::RootDirectory;
 
 		return GetFileInfoInternal(this->mRefDir.handle(), pFileInfo);
 	}
@@ -30,29 +28,51 @@ NTSTATUS CSDriver::getFileInfoByName(CALLER_ARG PCWSTR fileName, FSP_FSCTL_FILE_
 
 		if (objKey.hasKey())
 		{
-			if (mCSDevice->headObject_Dir(CONT_CALLER objKey.toDir(), pFileInfo))
+			{
+				// 新規作成時はまだストレージに存在しない状態なので、メモリ操作により
+				// 問い合わせに回答する
+
+				std::lock_guard lock_(NewFile.mGuard);
+
+				const auto it = NewFile.mFileInfos.find(fileName);
+				if (it != NewFile.mFileInfos.end())
+				{
+					*pFileInfo = it->second;
+
+					if (FA_IS_DIR(it->second.FileAttributes))
+					{
+						*pFileNameType = FileNameType::DirectoryObject;
+					}
+					else
+					{
+						*pFileNameType = FileNameType::FileObject;
+					}
+
+					return STATUS_SUCCESS;
+				}
+			}
+
+			// 同じ名前のファイルとディレクトリが存在したときに、ディレクトリを優先するため
+			// 引数の名前をディレクトリに変換しストレージを調べ、存在しないときはファイルとして調べる
+
+			if (mCSDevice->headObject(CONT_CALLER objKey.toDir(), pFileInfo))
 			{
 				// "\bucket\dir" のパターン
 				// 
 				// ディレクトリを採用
 
-				if (pType)
-				{
-					*pType = FileNameType::DirectoryObject;
-				}
+				*pFileNameType = FileNameType::DirectoryObject;
 
 				return STATUS_SUCCESS;
 			}
-			else if (mCSDevice->headObject_File(CONT_CALLER objKey, pFileInfo))
+
+			if (mCSDevice->headObject(CONT_CALLER objKey, pFileInfo))
 			{
 				// "\bucket\dir\file.txt" のパターン
 				// 
 				// ファイルを採用
 
-				if (pType)
-				{
-					*pType = FileNameType::FileObject;
-				}
+				*pFileNameType = FileNameType::FileObject;
 
 				return STATUS_SUCCESS;
 			}
@@ -61,12 +81,11 @@ NTSTATUS CSDriver::getFileInfoByName(CALLER_ARG PCWSTR fileName, FSP_FSCTL_FILE_
 		{
 			// "\bucket" のパターン
 
+			APP_ASSERT(objKey.isBucket());
+
 			if (mCSDevice->headBucket(CONT_CALLER objKey.bucket(), pFileInfo))
 			{
-				if (pType)
-				{
-					*pType = FileNameType::Bucket;
-				}
+				*pFileNameType = FileNameType::Bucket;
 
 				return STATUS_SUCCESS;
 			}
@@ -79,18 +98,7 @@ NTSTATUS CSDriver::getFileInfoByName(CALLER_ARG PCWSTR fileName, FSP_FSCTL_FILE_
 	return FspNtStatusFromWin32(ERROR_FILE_NOT_FOUND);
 }
 
-NTSTATUS CSDriver::FileNameToFileInfo(CALLER_ARG PCWSTR FileName, FSP_FSCTL_FILE_INFO* pFileInfo)
-{
-	APP_ASSERT(FileName);
-	APP_ASSERT(pFileInfo);
-	APP_ASSERT(FileName[0] == L'\\');
-	APP_ASSERT(!shouldIgnoreFileName(FileName))
-
-	return getFileInfoByName(CONT_CALLER FileName, pFileInfo, nullptr);
-}
-
-NTSTATUS CSDriver::DoGetSecurityByName(
-	PCWSTR FileName, PUINT32 PFileAttributes,
+NTSTATUS CSDriver::DoGetSecurityByName(PCWSTR FileName, PUINT32 PFileAttributes,
 	PSECURITY_DESCRIPTOR SecurityDescriptor, PSIZE_T PSecurityDescriptorSize)
 {
 	StatsIncr(DoGetSecurityByName);
@@ -99,7 +107,7 @@ NTSTATUS CSDriver::DoGetSecurityByName(
 	APP_ASSERT(FileName);
 	APP_ASSERT(FileName[0] == L'\\');
 
-	if (shouldIgnoreFileName(FileName))
+	if (this->shouldIgnoreFileName(FileName))
 	{
 		// "desktop.ini" などは無視させる
 
@@ -110,10 +118,10 @@ NTSTATUS CSDriver::DoGetSecurityByName(
 	FSP_FSCTL_FILE_INFO fileInfo;
 	FileNameType fileNameType;
 
-	NTSTATUS ntstatus = getFileInfoByName(START_CALLER FileName, &fileInfo, &fileNameType);
+	auto ntstatus = this->getFileInfoByFileName(START_CALLER FileName, &fileInfo, &fileNameType);
 	if (!NT_SUCCESS(ntstatus))
 	{
-		traceW(L"fault: getFileInfoByName, FileName=%s", FileName);
+		traceW(L"fault: getFileInfoByFileName, FileName=%s", FileName);
 		return ntstatus;
 	}
 

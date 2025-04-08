@@ -1,5 +1,6 @@
 #include "WinCseLib.h"
 #include "CSDriver.hpp"
+#include <filesystem>
 
 
 using namespace WCSE;
@@ -304,7 +305,8 @@ NTSTATUS CSDriver::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, UINT32 argFile
 		// --> robocopy /COPY:T ‘Îô
 
 		HANDLE Handle = INVALID_HANDLE_VALUE;
-		NTSTATUS ntstatus = mCSDevice->getHandleFromContext(START_CALLER ctx, 0, OPEN_EXISTING, &Handle);
+
+		auto ntstatus = mCSDevice->getHandleFromContext(START_CALLER ctx, 0, OPEN_EXISTING, &Handle);
 		if (NT_SUCCESS(ntstatus))
 		{
 			UINT32 FileAttributes = argFileAttributes;
@@ -377,7 +379,18 @@ NTSTATUS CSDriver::DoRename(PTFS_FILE_CONTEXT* FileContext,
 	traceW(L"FileName=%s, NewFileName=%s, ReplaceIfExists=%s",
 		FileName, NewFileName, BOOL_CSTRW(ReplaceIfExists));
 
-	return STATUS_INVALID_DEVICE_REQUEST;
+	CSDeviceContext* ctx = (CSDeviceContext*)FileContext->UParam;
+	APP_ASSERT(ctx);
+	APP_ASSERT(ctx->mObjKey.valid());
+
+	if (!mCSDevice->renameObject(START_CALLER ctx, FileName, NewFileName, ReplaceIfExists))
+	{
+		traceW(L"fault: renameObject");
+
+		return STATUS_INVALID_DEVICE_REQUEST;
+	}
+	
+	return STATUS_SUCCESS;
 }
 
 // EOF

@@ -24,8 +24,8 @@ public:
 	DelayedWorker(const std::wstring& argTempDir, const std::wstring& argIniSection);
 	~DelayedWorker();
 
-	bool OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem, PCWSTR PtfsPath) override;
-	void OnSvcStop() override;
+	NTSTATUS OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
+	VOID OnSvcStop() override;
 
 	bool addTypedTask(CALLER_ARG WCSE::IOnDemandTask* argTask) override;
 };

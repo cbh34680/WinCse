@@ -58,7 +58,9 @@ void AbnormalEnd(PCSTR file, int line, PCSTR func, int signum)
 
 	const std::string causeStr{ ssCause.str() };
 
+#ifdef _DEBUG
 	::OutputDebugStringA(causeStr.c_str());
+#endif
 
 	if (ofs)
 	{
@@ -90,7 +92,9 @@ void AbnormalEnd(PCSTR file, int line, PCSTR func, int signum)
 
 		const std::string ss_str{ ss.str() };
 
+#ifdef _DEBUG
 		::OutputDebugStringA(ss_str.c_str());
+#endif
 
 		if (ofs)
 		{
@@ -142,13 +146,6 @@ int NamedWorkersToMap(NamedWorker workers[], std::unordered_map<std::wstring, IW
 	}
 
 	return num;
-}
-
-// malloc, calloc で確保したメモリを shared_ptr で解放するための関数
-template <typename T>
-void free_deleter(T* ptr)
-{
-	free(ptr);
 }
 
 // ファイル名から FSP_FSCTL_DIR_INFO のヒープ領域を生成し、いくつかのメンバを設定して返却
@@ -359,12 +356,69 @@ void ObjectKey::reset() noexcept
 	mMeansFile = mHasBucket ? (mHasKey && mKey.back() != L'/') : false;
 }
 
-ObjectKey::ObjectKey(const std::wstring& argWinPath)
+ObjectKey ObjectKey::fromPath(const std::wstring& argPath)
+{
+	// パス文字列をバケット名とキーに分割
+
+	std::wstring bucket;
+	std::wstring key;
+
+	std::wstringstream input{ argPath };
+	std::vector<std::wstring> tokens;
+	std::wstring token;
+
+	while (std::getline(input, token, L'/'))
+	{
+		tokens.emplace_back(std::move(token));
+	}
+
+	switch (tokens.size())
+	{
+		case 0:
+		{
+			break;
+		}
+		case 1:
+		{
+			bucket = std::move(tokens[0]);
+
+			break;
+		}
+		default:
+		{
+			bucket = std::move(tokens[0]);
+
+			std::wstringstream output;
+			for (int i = 1; i < tokens.size(); ++i)
+			{
+				if (i != 1)
+				{
+					output << L'/';
+				}
+				output << std::move(tokens[i]);
+			}
+			key = output.str();
+
+			if (argPath.back() == L'/')
+			{
+				key += L'/';
+			}
+
+			break;
+		}
+	}
+
+	return ObjectKey(bucket, key);
+}
+
+ObjectKey ObjectKey::fromWinPath(const std::wstring& argWinPath)
 {
 	// Windows パス文字列をバケット名とキーに分割
 
-	std::wstringstream input{ argWinPath };
+	std::wstring bucket;
+	std::wstring key;
 
+	std::wstringstream input{ argWinPath };
 	std::vector<std::wstring> tokens;
 	std::wstring token;
 
@@ -378,21 +432,18 @@ ObjectKey::ObjectKey(const std::wstring& argWinPath)
 		case 0:
 		case 1:
 		{
-			// mBucket is empty
-			// mKey is empty
-
 			break;
 		}
 		case 2:
 		{
-			mBucket = std::move(tokens[1]);
+			bucket = std::move(tokens[1]);
 			// mKey is empty
 
 			break;
 		}
 		default:
 		{
-			mBucket = std::move(tokens[1]);
+			bucket = std::move(tokens[1]);
 
 			std::wstringstream output;
 			for (int i = 2; i < tokens.size(); ++i)
@@ -403,24 +454,24 @@ ObjectKey::ObjectKey(const std::wstring& argWinPath)
 				}
 				output << std::move(tokens[i]);
 			}
-			mKey = output.str();
+			key = output.str();
 
 			break;
 		}
 	}
 
-	if (!mKey.empty())
+	if (!key.empty())
 	{
 		// "\\" で分割するため、引数の最後が "\\" でもなくってしまう
 		// ので、ここで補填する
 
 		if (argWinPath.back() == L'\\')
 		{
-			mKey += L'/';
+			key += L'/';
 		}
 	}
 
-	reset();
+	return ObjectKey(bucket, key);
 }
 
 //
@@ -580,6 +631,7 @@ BOOL FileHandle::setFileTime(UINT64 argCreationTime, UINT64 argLastWriteTime)
 	return ::SetFileTime(mHandle, &ftCreation, &ftNow, &ftLastWrite);
 }
 
+/*
 BOOL FileHandle::setBasicInfo(const FSP_FSCTL_FILE_INFO& fileInfo)
 {
 	return setBasicInfo(fileInfo.FileAttributes, fileInfo.CreationTime, fileInfo.LastWriteTime);
@@ -607,6 +659,7 @@ BOOL FileHandle::setBasicInfo(UINT32 argFileAttributes, UINT64 argCreationTime, 
 	return ::SetFileInformationByHandle(mHandle,
 		FileBasicInfo, &BasicInfo, sizeof BasicInfo);
 }
+*/
 
 LONGLONG FileHandle::getFileSize()
 {

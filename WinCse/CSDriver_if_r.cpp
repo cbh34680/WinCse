@@ -66,116 +66,110 @@ NTSTATUS CSDriver::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern
 
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext && Buffer && PBytesTransferred);
+	APP_ASSERT(FA_IS_DIR(FileContext->FileInfo.FileAttributes));
 
 	if (wcscmp(FileContext->FileName, L"\\") != 0)
 	{
 		traceW(L"FileName=%s", FileContext->FileName);
 	}
 
-	APP_ASSERT(FA_IS_DIR(FileContext->FileInfo.FileAttributes));
+    std::wregex re;
+    std::wregex* pRe = nullptr;
 
-	std::wregex re;
-	std::wregex* pRe = nullptr;
+    if (Pattern)
+    {
+        const auto pattern = WildcardToRegexW(Pattern);
+        re = std::wregex(pattern);
+        pRe = &re;
+    }
 
-	if (Pattern)
-	{
-		const auto pattern = WildcardToRegexW(Pattern);
-		re = std::wregex(pattern);
-		pRe = &re;
-	}
+    // ディレクトリの中の一覧取得
 
-	// ディレクトリの中の一覧取得
+    PCWSTR FileName = FileContext->FileName;
 
-	PCWSTR FileName = FileContext->FileName;
+    DirInfoListType dirInfoList;
 
-	DirInfoListType dirInfoList;
+    if (wcscmp(FileName, L"\\") == 0)
+    {
+        // "\" へのアクセスはバケット一覧を提供
 
-	if (wcscmp(FileName, L"\\") == 0)
-	{
-		// "\" へのアクセスはバケット一覧を提供
+        if (!mCSDevice->listBuckets(START_CALLER &dirInfoList))
+        {
+            traceW(L"not fouund/1");
 
-		if (!mCSDevice->listBuckets(START_CALLER &dirInfoList))
-		{
-			traceW(L"not fouund/1");
+            return STATUS_OBJECT_NAME_INVALID;
+        }
+    }
+    else
+    {
+        // "\bucket" または "\bucket\key"
 
-			return STATUS_OBJECT_NAME_INVALID;
-		}
+        const ObjectKey objKey{ ObjectKey::fromWinPath(FileName) };
+        if (objKey.invalid())
+        {
+            traceW(L"invalid FileName=%s", FileName);
 
-		// バケット一覧は空の可能性もあるのでコメント
-		//APP_ASSERT(!dirInfoList.empty());
+            return STATUS_OBJECT_NAME_INVALID;
+        }
 
-		//traceW(L"bucket count: %zu", dirInfoList.size());
-	}
-	else
-	{
-		// "\bucket" または "\bucket\key"
+        // キーが空の場合)		bucket & ""     で検索
+        // キーが空でない場合)	bucket & "key/" で検索
 
-		const ObjectKey objKey{ ObjectKey::fromWinPath(FileName) };
-		if (!objKey.valid())
-		{
-			traceW(L"invalid FileName=%s", FileName);
+        if (!mCSDevice->listDisplayObjects(START_CALLER objKey.toDir(), &dirInfoList))
+        {
+            traceW(L"not found/2");
 
-			return STATUS_OBJECT_NAME_INVALID;
-		}
+            return STATUS_OBJECT_NAME_INVALID;
+        }
 
-		// キーが空の場合)		bucket & ""     で検索
-		// キーが空でない場合)	bucket & "key/" で検索
+        // 少なくとも "." はあるので空ではないはず
+        APP_ASSERT(!dirInfoList.empty());
 
-		if (!mCSDevice->listObjects(START_CALLER objKey.toDir(), &dirInfoList))
-		{
-			traceW(L"not found/2");
+        //traceW(L"object count: %zu", dirInfoList.size());
+    }
 
-			return STATUS_OBJECT_NAME_INVALID;
-		}
+    if (!dirInfoList.empty())
+    {
+        // 取得したものを WinFsp に転送する
 
-		// 少なくとも "." はあるので空ではないはず
-		APP_ASSERT(!dirInfoList.empty());
+        NTSTATUS DirBufferResult = STATUS_SUCCESS;
 
-		//traceW(L"object count: %zu", dirInfoList.size());
-	}
+        if (FspFileSystemAcquireDirectoryBuffer(&FileContext->DirBuffer, 0 == Marker, &DirBufferResult))
+        {
+            for (const auto& dirInfo: dirInfoList)
+            {
+                if (shouldIgnoreFileName(dirInfo->FileNameBuf))
+                {
+                    continue;
+                }
 
-	if (!dirInfoList.empty())
-	{
-		// 取得したものを WinFsp に転送する
+                if (pRe)
+                {
+                    if (!std::regex_match(dirInfo->FileNameBuf, *pRe))
+                    {
+                        continue;
+                    }
+                }
 
-		NTSTATUS DirBufferResult = STATUS_SUCCESS;
+                if (!FspFileSystemFillDirectoryBuffer(&FileContext->DirBuffer, dirInfo->data(), &DirBufferResult))
+                {
+                    break;
+                }
+            }
 
-		if (FspFileSystemAcquireDirectoryBuffer(&FileContext->DirBuffer, 0 == Marker, &DirBufferResult))
-		{
-			for (const auto& dirInfo: dirInfoList)
-			{
-				if (shouldIgnoreFileName(dirInfo->FileNameBuf))
-				{
-					continue;
-				}
+            FspFileSystemReleaseDirectoryBuffer(&FileContext->DirBuffer);
+        }
 
-				if (pRe)
-				{
-					if (!std::regex_match(dirInfo->FileNameBuf, *pRe))
-					{
-						continue;
-					}
-				}
+        if (!NT_SUCCESS(DirBufferResult))
+        {
+            return DirBufferResult;
+        }
 
-				if (!FspFileSystemFillDirectoryBuffer(&FileContext->DirBuffer, dirInfo->data(), &DirBufferResult))
-				{
-					break;
-				}
-			}
+        FspFileSystemReadDirectoryBuffer(&FileContext->DirBuffer,
+            Marker, Buffer, BufferLength, PBytesTransferred);
+    }
 
-			FspFileSystemReleaseDirectoryBuffer(&FileContext->DirBuffer);
-		}
-
-		if (!NT_SUCCESS(DirBufferResult))
-		{
-			return DirBufferResult;
-		}
-
-		FspFileSystemReadDirectoryBuffer(&FileContext->DirBuffer,
-			Marker, Buffer, BufferLength, PBytesTransferred);
-	}
-
-	return STATUS_SUCCESS;
+    return STATUS_SUCCESS;
 }
 
 // EOF

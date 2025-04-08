@@ -31,7 +31,7 @@ NTSTATUS AwsS3::prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, UINT64 argO
 
             bool needDownload = false;
 
-            NTSTATUS ntstatus = syncFileAttributes(CONT_CALLER ctx->mFileInfo, localPath, &needDownload);
+            auto ntstatus = syncFileAttributes(CONT_CALLER ctx->mFileInfo, localPath, &needDownload);
             if (!NT_SUCCESS(ntstatus))
             {
                 traceW(L"fault: syncFileAttributes");
@@ -73,11 +73,7 @@ NTSTATUS AwsS3::prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, UINT64 argO
 
                 // 既存のファイルを開く
 
-                ntstatus = ctx->openFileHandle(CONT_CALLER
-                    FILE_WRITE_ATTRIBUTES,
-                    OPEN_EXISTING
-                );
-
+                ntstatus = ctx->openFileHandle(CONT_CALLER FILE_WRITE_ATTRIBUTES, OPEN_EXISTING);
                 if (!NT_SUCCESS(ntstatus))
                 {
                     traceW(L"fault: openFileHandle");
@@ -125,7 +121,7 @@ NTSTATUS AwsS3::prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, UINT64 argO
                 if (!ctx->mFile.setFileTime(ctx->mFileInfo))
                 {
                     const auto lerr = ::GetLastError();
-                    traceW(L"fault: setBasicInfo lerr=%lu", lerr);
+                    traceW(L"fault: setFileTime lerr=%lu", lerr);
 
                     return FspNtStatusFromWin32(lerr);
                 }

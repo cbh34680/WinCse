@@ -6,7 +6,6 @@
 
 #include "WinCseLib.h"
 #include "DelayedWorker.hpp"
-#include "IdleWorker.hpp"
 #include "TimerWorker.hpp"
 #include "CSDriver.hpp"
 #include <csignal>
@@ -46,15 +45,16 @@ static void writeStats(
 */
 
 // DLL 解放のための RAII
-struct DllModuleRAII
+
+struct DllModule
 {
     HMODULE mModule;
     ICSDevice* mCSDevice;
 
-    DllModuleRAII() : mModule(NULL), mCSDevice(nullptr) {}
-    DllModuleRAII(HMODULE argModule, ICSDevice* argCSDevice) : mModule(argModule), mCSDevice(argCSDevice) {}
+    DllModule() : mModule(NULL), mCSDevice(nullptr) {}
+    DllModule(HMODULE argModule, ICSDevice* argCSDevice) : mModule(argModule), mCSDevice(argCSDevice) {}
 
-    ~DllModuleRAII()
+    ~DllModule()
     {
         delete mCSDevice;
 
@@ -67,7 +67,7 @@ struct DllModuleRAII
 
 #if DIRECT_LINK_TEST
 bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir,
-    PCWSTR iniSection, NamedWorker workers[], DllModuleRAII* pDll)
+    PCWSTR iniSection, NamedWorker workers[], DllModule* pDll)
 {
     pDll->mCSDevice = NewCSDevice(tmpDir.c_str(), iniSection, workers);
 
@@ -81,7 +81,7 @@ bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir,
 // 戻り値は ICSDevice* になる。
 //
 bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir,
-    PCWSTR iniSection, NamedWorker workers[], DllModuleRAII* pDll)
+    PCWSTR iniSection, NamedWorker workers[], DllModule* pDll)
 {
     NEW_LOG_BLOCK();
 
@@ -148,6 +148,7 @@ static int app_main(int argc, wchar_t** argv,
     std::signal(SIGABRT, app_sighandler);
 
     // スレッドでの捕捉されない例外を拾えるかも
+
     std::set_terminate(app_terminate);
 
     std::wstring tmpDir;
@@ -160,6 +161,7 @@ static int app_main(int argc, wchar_t** argv,
     std::wcout << L"use Tempdir: " << tmpDir << std::endl;
 
     // ここ以降は return は使わず、ret に設定して最後まで進める
+
     int rc = EXIT_FAILURE;
 
     //
@@ -183,7 +185,8 @@ static int app_main(int argc, wchar_t** argv,
 
         {
             // メモリ解放の順番が関係するので、下の try ブロックには入れない
-            DllModuleRAII dll;
+
+            DllModule dll;
 
             try
             {
@@ -199,13 +202,11 @@ static int app_main(int argc, wchar_t** argv,
                 traceW(L"iniSection: %s", iniSection);
 
                 DelayedWorker dworker(tmpDir, iniSection);
-                IdleWorker iworker(tmpDir, iniSection);
                 TimerWorker tworker(tmpDir, iniSection);
 
                 NamedWorker workers[] =
                 {
                     { L"delayed", &dworker },
-                    { L"idle", &iworker },
                     { L"timer", &tworker },
                     { nullptr, nullptr },
                 };
@@ -214,6 +215,7 @@ static int app_main(int argc, wchar_t** argv,
                 traceW(L"load dll type=%s", dllType.c_str());
 
                 // dll のロード
+
                 if (loadCSDevice(dllType, tmpDir, iniSection, workers, &dll))
                 {
                     // WinCse メンバのデストラクタでの処理を appSTats に反映させるため
@@ -273,6 +275,7 @@ static int app_main(int argc, wchar_t** argv,
     }
 
     // 順番があるので、try ブロックには入れない
+
     DeleteLogger();
 
     return rc;
@@ -520,8 +523,7 @@ static void writeStats(
             fprintf(fp, "\t" "OnSvcStart: %ld\n", devStats->OnSvcStart);
             fprintf(fp, "\t" "OnSvcStop: %ld\n", devStats->OnSvcStop);
             fprintf(fp, "\t" "headBucket: %ld\n", devStats->headBucket);
-            fprintf(fp, "\t" "headObject_Dir: %ld\n", devStats->headObject_Dir);
-            fprintf(fp, "\t" "headObject_File: %ld\n", devStats->headObject_File);
+            fprintf(fp, "\t" "headObject: %ld\n", devStats->headObject);
             fprintf(fp, "\t" "listBuckets: %ld\n", devStats->listBuckets);
             fprintf(fp, "\t" "listObjects: %ld\n", devStats->listObjects);
             fprintf(fp, "\t" "create: %ld\n", devStats->create);

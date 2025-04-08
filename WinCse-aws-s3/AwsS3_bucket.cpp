@@ -1,10 +1,8 @@
 #include "AwsS3.hpp"
-#include "BucketCache.hpp"
-
 
 using namespace WCSE;
 
-/*
+
 struct NotifRemoveBucketTask : public IOnDemandTask
 {
     IgnoreDuplicates getIgnoreDuplicates() const noexcept override { return IgnoreDuplicates::Yes; }
@@ -25,7 +23,7 @@ struct NotifRemoveBucketTask : public IOnDemandTask
     {
         NEW_LOG_BLOCK();
 
-        traceW(L"*** exec FspFileSystemNotify mFileName=%s ***", mFileName.c_str());
+        traceW(L"exec FspFileSystemNotify**");
 
         NTSTATUS ntstatus = FspFileSystemNotifyBegin(mFileSystem, 1000UL);
         if (NT_SUCCESS(ntstatus))
@@ -57,15 +55,13 @@ struct NotifRemoveBucketTask : public IOnDemandTask
         }
     }
 };
-*/
 
-static BucketCache gBucketCache;
 
 std::wstring AwsS3::getBucketLocation(CALLER_ARG const std::wstring& bucketName)
 {
     //NEW_LOG_BLOCK();
 
-    std::wstring bucketRegion{ gBucketCache.getBucketRegion(CONT_CALLER bucketName) };
+    std::wstring bucketRegion{ mListBucketsCache.getBucketRegion(CONT_CALLER bucketName) };
 
     //traceW(L"bucketName: %s", bucketName.c_str());
 
@@ -102,7 +98,7 @@ std::wstring AwsS3::getBucketLocation(CALLER_ARG const std::wstring& bucketName)
             //traceW(L"error, fall back region is %s", bucketRegion.c_str());
         }
 
-        gBucketCache.addBucketRegion(CONT_CALLER bucketName, bucketRegion);
+        mListBucketsCache.addBucketRegion(CONT_CALLER bucketName, bucketRegion);
     }
     else
     {
@@ -131,7 +127,7 @@ bool AwsS3::unsafeHeadBucket(CALLER_ARG const std::wstring& argBucketName, FSP_F
 
     // キャッシュから探す
 
-    const auto bucket{ gBucketCache.find(CONT_CALLER argBucketName) };
+    const auto bucket{ mListBucketsCache.find(CONT_CALLER argBucketName) };
     if (!bucket)
     {
         // キャッシュに見つからない
@@ -145,12 +141,15 @@ bool AwsS3::unsafeHeadBucket(CALLER_ARG const std::wstring& argBucketName, FSP_F
     {
         traceW(L"%s: no match bucket-region", bucketRegion.c_str());
 
+        // 非表示になるバケットについて WinFsp に通知
+        //getWorker(L"delayed")->addTask(START_CALLER new NotifRemoveBucketTask{ mFileSystem, std::wstring(L"\\") + argBucketName });
+
         return false;
     }
 
     if (pFileInfo)
     {
-        NTSTATUS ntstatus = GetFileInfoInternal(mRefDir.handle(), pFileInfo);
+        const auto ntstatus = GetFileInfoInternal(mRefDir.handle(), pFileInfo);
         if (!NT_SUCCESS(ntstatus))
         {
             traceW(L"fault: GetFileInfoInternal");
@@ -169,10 +168,10 @@ bool AwsS3::unsafeListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList /* 
 
     DirInfoListType dirInfoList;
 
-    if (gBucketCache.empty(CONT_CALLER0))
+    if (mListBucketsCache.empty(CONT_CALLER0))
     {
         const auto now{ std::chrono::system_clock::now() };
-        const auto lastSetTime{ gBucketCache.getLastSetTime(CONT_CALLER0) };
+        const auto lastSetTime{ mListBucketsCache.getLastSetTime(CONT_CALLER0) };
         const auto elapsed = std::chrono::duration_cast<std::chrono::minutes>(now - lastSetTime);
 
         if (elapsed.count() < mConfig.bucketCacheExpiryMin)
@@ -243,13 +242,13 @@ bool AwsS3::unsafeListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList /* 
 
         // キャッシュにコピー
 
-        gBucketCache.set(CONT_CALLER dirInfoList);
+        mListBucketsCache.set(CONT_CALLER dirInfoList);
     }
     else
     {
         // キャッシュからコピー
 
-        dirInfoList = gBucketCache.get(CONT_CALLER0);
+        dirInfoList = mListBucketsCache.get(CONT_CALLER0);
 
         //traceW(L"use cache: size=%zu", dirInfoList.size());
     }
@@ -262,7 +261,7 @@ bool AwsS3::unsafeListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList /* 
 
             // リージョン・キャッシュから異なるリージョンであるか調べる
 
-            const std::wstring bucketRegion{ gBucketCache.getBucketRegion(CONT_CALLER bucketName) };
+            const std::wstring bucketRegion{ mListBucketsCache.getBucketRegion(CONT_CALLER bucketName) };
 
             if (!bucketRegion.empty())
             {
@@ -302,12 +301,22 @@ bool AwsS3::unsafeListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList /* 
 // 外部から呼び出されるインターフェース
 //
 
+void AwsS3::clearListBucketsCache(CALLER_ARG0)
+{
+    mListBucketsCache.clear(CONT_CALLER0);
+}
+
+void AwsS3::reportListBucketsCache(CALLER_ARG FILE* fp)
+{
+    mListBucketsCache.report(CONT_CALLER fp);
+}
+
 //
 // ここから下のメソッドは THREAD_SAFE マクロによる修飾が必要
 //
 
 static std::mutex gGuard;
-#define THREAD_SAFE() std::lock_guard<std::mutex> lock_(gGuard)
+#define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ gGuard }
 
 
 bool AwsS3::headBucket(CALLER_ARG const std::wstring& argBucketName, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
@@ -326,27 +335,11 @@ bool AwsS3::listBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList /* nullab
     return this->unsafeListBuckets(CONT_CALLER pDirInfoList, {});
 }
 
-void AwsS3::clearBucketCache(CALLER_ARG0)
+bool AwsS3::reloadListBucketsCache(CALLER_ARG std::chrono::system_clock::time_point threshold)
 {
     THREAD_SAFE();
 
-    gBucketCache.clear(CONT_CALLER0);
-}
-
-void AwsS3::reportBucketCache(CALLER_ARG FILE* fp)
-{
-    THREAD_SAFE();
-
-    // キャッシュのレポート
-
-    gBucketCache.report(CONT_CALLER fp);
-}
-
-bool AwsS3::reloadBucketCache(CALLER_ARG std::chrono::system_clock::time_point threshold)
-{
-    THREAD_SAFE();
-
-    const auto lastSetTime = gBucketCache.getLastSetTime(CONT_CALLER0);
+    const auto lastSetTime = mListBucketsCache.getLastSetTime(CONT_CALLER0);
 
     if (threshold < lastSetTime)
     {
@@ -364,7 +357,7 @@ bool AwsS3::reloadBucketCache(CALLER_ARG std::chrono::system_clock::time_point t
 
         // バケットのキャッシュを削除して、再度一覧を取得する
 
-        gBucketCache.clear(CONT_CALLER0);
+        mListBucketsCache.clear(CONT_CALLER0);
 
         // バケット一覧の取得 --> キャッシュの生成
 

@@ -20,7 +20,7 @@ NTSTATUS CSDriver::DoCreate(PCWSTR FileName,
 	traceW(L"FileName=%s, CreateOptions=%u, GrantedAccess=%u, FileAttributes=%u, SecurityDescriptor=%p, AllocationSize=%llu, PFileContext=%p, FileInfo=%p",
 		FileName, CreateOptions, GrantedAccess, FileAttributes, SecurityDescriptor, AllocationSize, PFileContext, FileInfo);
 
-	if (shouldIgnoreFileName(FileName))
+	if (this->shouldIgnoreFileName(FileName))
 	{
 		// "desktop.ini" などは無視させる
 
@@ -57,7 +57,7 @@ NTSTATUS CSDriver::DoCreate(PCWSTR FileName,
 		// 
 		// --> 同名のファイルを検索
 
-		if (mCSDevice->headObject_File(START_CALLER objKey, nullptr))
+		if (mCSDevice->headObject(START_CALLER objKey, nullptr))
 		{
 			// 同じ名前の "ファイル" が存在する
 
@@ -71,7 +71,7 @@ NTSTATUS CSDriver::DoCreate(PCWSTR FileName,
 		//
 		// --> 同名のディレクトリを検索
 
-		if (mCSDevice->headObject_Dir(START_CALLER objKey.toDir(), nullptr))
+		if (mCSDevice->headObject(START_CALLER objKey.toDir(), nullptr))
 		{
 			// 同じ名前の "ディレクトリ" が存在する
 
@@ -91,119 +91,60 @@ NTSTATUS CSDriver::DoCreate(PCWSTR FileName,
 		return STATUS_OBJECT_NAME_COLLISION;				// https://github.com/winfsp/winfsp/issues/601
 	}
 
-	//
-	// 空のオブジェクトを作成して、その情報を fileInfo に記録する
-	//
-
-	const auto now = GetCurrentWinFileTime100ns();
-
-	FSP_FSCTL_FILE_INFO fileInfo{};
-	fileInfo.FileAttributes = FileAttributes;
-	fileInfo.CreationTime = now;
-	fileInfo.LastAccessTime = now;
-	fileInfo.LastWriteTime = now;
-
-	if (!mCSDevice->putObject(START_CALLER createObjKey, fileInfo, nullptr))
+	auto fc{ std::unique_ptr<PTFS_FILE_CONTEXT, void(*)(void*)>((PTFS_FILE_CONTEXT*)calloc(1, sizeof(PTFS_FILE_CONTEXT)), free) };
+	if (!fc)
 	{
-		traceW(L"fault: putObject");
-
-		//return STATUS_DEVICE_NOT_READY;
-		return FspNtStatusFromWin32(ERROR_IO_DEVICE);
+		traceW(L"fault: calloc");
+		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
-	if (CreateOptions & FILE_DIRECTORY_FILE)
-	{
-		// ディレクトリの場合
-		//
-		// --> 誰か作ったものでも気にする必要はない
-	}
-	else
-	{
-		// ファイルの場合
-
-		FSP_FSCTL_FILE_INFO checkFileInfo;
-
-		if (!mCSDevice->headObject_File(START_CALLER createObjKey, &checkFileInfo))
-		{
-			traceW(L"fault: headObject_File");
-			return FspNtStatusFromWin32(ERROR_IO_DEVICE);
-		}
-
-		if (fileInfo.CreationTime == checkFileInfo.CreationTime &&
-			fileInfo.LastWriteTime == checkFileInfo.LastWriteTime &&
-			fileInfo.FileSize == checkFileInfo.FileSize)
-		{
-			// go next
-		}
-		else
-		{
-			// putObject() した状態と異なっているので、他でアップロードしたものと判定
-			// --> 他のプロセスによってファイルが使用中
-
-			return FspNtStatusFromWin32(ERROR_SHARING_VIOLATION);
-		}
-	}
-
-	//
-	NTSTATUS ntstatus = STATUS_UNSUCCESSFUL;
-	CSDeviceContext* ctx = nullptr;
-
-	PTFS_FILE_CONTEXT* FileContext = (PTFS_FILE_CONTEXT*)calloc(1, sizeof(*FileContext));
-	if (0 == FileContext)
-	{
-		ntstatus = STATUS_INSUFFICIENT_RESOURCES;
-		goto exit;
-	}
-
-	FileContext->FileName = _wcsdup(FileName);
-	if (!FileContext->FileName)
+	auto fn{ std::unique_ptr<wchar_t, void(*)(void*)>(_wcsdup(FileName), free) };
+	if (!fn)
 	{
 		traceW(L"fault: _wcsdup");
-
-		ntstatus = STATUS_INSUFFICIENT_RESOURCES;
-		goto exit;
+		return STATUS_INSUFFICIENT_RESOURCES;
 	}
+
+	PTFS_FILE_CONTEXT* FileContext = fc.get();
+	FileContext->FileName = fn.get();
 
 	// リソースを作成し UParam に保存
 
 	StatsIncr(_CallCreate);
 
-	ctx = mCSDevice->create(START_CALLER createObjKey, fileInfo,
+	CSDeviceContext* ctx = mCSDevice->create(START_CALLER createObjKey,
 		CreateOptions, GrantedAccess, FileAttributes);
 
 	if (!ctx)
 	{
 		traceW(L"fault: create");
 
-		//ntstatus = STATUS_DEVICE_NOT_READY;
-		ntstatus = FspNtStatusFromWin32(ERROR_IO_DEVICE);
-		goto exit;
+		//return STATUS_DEVICE_NOT_READY;
+		return FspNtStatusFromWin32(ERROR_IO_DEVICE);
 	}
 
-	FileContext->UParam = ctx;
+	FileContext->FileInfo = ctx->mFileInfo;
 
-	FileContext->FileInfo = fileInfo;
+	{
+		std::lock_guard lock_{ NewFile.mGuard };
+
+		NewFile.mFileInfos[FileName] = ctx->mFileInfo;
+	}
+
+	ctx->mFlags |= CSDCTX_FLAGS_CREATE;
+
+	FileContext->UParam = ctx;
 
 	// ゴミ回収対象に登録
 	mResourceSweeper.add(FileContext);
 
 	*PFileContext = FileContext;
-	FileContext = nullptr;
+	*FileInfo = ctx->mFileInfo;
 
-	*FileInfo = fileInfo;
+	fn.release();
+	fc.release();
 
-	ntstatus = STATUS_SUCCESS;
-
-exit:
-	if (FileContext)
-	{
-		free(FileContext->FileName);
-	}
-	free(FileContext);
-
-	traceW(L"return NTSTATUS=%ld", ntstatus);
-
-	return ntstatus;
+	return STATUS_SUCCESS;
 }
 
 NTSTATUS CSDriver::DoOpen(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
@@ -214,16 +155,17 @@ NTSTATUS CSDriver::DoOpen(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedA
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileName && PFileContext && FileInfo);
 	APP_ASSERT(FileName[0] == L'\\');
-	APP_ASSERT(!shouldIgnoreFileName(FileName));
+	APP_ASSERT(!this->shouldIgnoreFileName(FileName));
 
 	//traceW(L"FileName=%s, CreateOptions=%u, GrantedAccess=%u, PFileContext=%p, FileInfo=%p", FileName, CreateOptions, GrantedAccess, PFileContext, FileInfo);
 
-	FSP_FSCTL_FILE_INFO fileInfo{};
+	FSP_FSCTL_FILE_INFO fileInfo;
+	FileNameType fileNameType;
 
-	NTSTATUS ntstatus = FileNameToFileInfo(START_CALLER FileName, &fileInfo);
+	const auto ntstatus = this->getFileInfoByFileName(START_CALLER FileName, &fileInfo, &fileNameType);
 	if (!NT_SUCCESS(ntstatus))
 	{
-		traceW(L"fault: FileNameToFileInfo, FileName=%s", FileName);
+		traceW(L"fault: getFileInfoByFileName, FileName=%s", FileName);
 		return ntstatus;
 	}
 
@@ -232,29 +174,29 @@ NTSTATUS CSDriver::DoOpen(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedA
 
 	// WinFsp に保存されるファイル・コンテキストを生成
 
-	PTFS_FILE_CONTEXT* FileContext = (PTFS_FILE_CONTEXT*)calloc(1, sizeof(*FileContext));
-	if (!FileContext)
+	auto fc{ std::unique_ptr<PTFS_FILE_CONTEXT, void(*)(void*)>((PTFS_FILE_CONTEXT*)calloc(1, sizeof(PTFS_FILE_CONTEXT)), free) };
+	if (!fc)
 	{
 		traceW(L"fault: calloc");
-
-		ntstatus = STATUS_INSUFFICIENT_RESOURCES;
-		goto exit;
+		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
-	FileContext->FileName = _wcsdup(FileName);
-	if (!FileContext->FileName)
+	auto fn{ std::unique_ptr<wchar_t, void(*)(void*)>(_wcsdup(FileName), free) };
+	if (!fn)
 	{
 		traceW(L"fault: _wcsdup");
-
-		ntstatus = STATUS_INSUFFICIENT_RESOURCES;
-		goto exit;
+		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
+	PTFS_FILE_CONTEXT* FileContext = fc.get();
+	FileContext->FileName = fn.get();
 	FileContext->FileInfo = fileInfo;
 
 	if (wcscmp(FileName, L"\\") == 0)
 	{
 		// go next
+
+		APP_ASSERT(fileNameType == FileNameType::RootDirectory);
 	}
 	else
 	{
@@ -263,8 +205,7 @@ NTSTATUS CSDriver::DoOpen(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedA
 		{
 			traceW(L"invalid FileName=%s", FileName);
 
-			ntstatus = STATUS_OBJECT_NAME_INVALID;
-			goto exit;
+			return STATUS_OBJECT_NAME_INVALID;
 		}
 
 		// クラウド・ストレージのコンテキストを UParam に保存させる
@@ -276,9 +217,8 @@ NTSTATUS CSDriver::DoOpen(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedA
 		{
 			traceW(L"fault: open");
 
-			//ntstatus = STATUS_DEVICE_NOT_READY;
-			ntstatus = FspNtStatusFromWin32(ERROR_IO_DEVICE);
-			goto exit;
+			//return STATUS_DEVICE_NOT_READY;
+			return FspNtStatusFromWin32(ERROR_IO_DEVICE);
 		}
 
 		if (!ctx->mObjKey.isBucket())
@@ -293,25 +233,12 @@ NTSTATUS CSDriver::DoOpen(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedA
 	mResourceSweeper.add(FileContext);
 
 	*PFileContext = FileContext;
-	FileContext = nullptr;
-
 	*FileInfo = fileInfo;
 
-	ntstatus = STATUS_SUCCESS;
+	fn.release();
+	fc.release();
 
-exit:
-	if (FileContext)
-	{
-		free(FileContext->FileName);
-	}
-	free(FileContext);
-
-	if (!NT_SUCCESS(ntstatus))
-	{
-		traceW(L"return NTSTATUS=%ld", ntstatus);
-	}
-
-	return ntstatus;
+	return STATUS_SUCCESS;
 }
 
 VOID CSDriver::DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags)
@@ -369,6 +296,16 @@ VOID CSDriver::DoClose(PTFS_FILE_CONTEXT* FileContext)
 
 		StatsIncr(_CallClose);
 		mCSDevice->close(START_CALLER ctx);
+
+		{
+			std::lock_guard lock_(NewFile.mGuard);
+
+			const auto it = NewFile.mFileInfos.find(FileContext->FileName);
+			if (it != NewFile.mFileInfos.end())
+			{
+				NewFile.mFileInfos.erase(it);
+			}
+		}
 
 		delete ctx;
 	}

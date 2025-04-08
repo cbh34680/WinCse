@@ -681,11 +681,11 @@ void test17()
 
     FSP_FSCTL_FILE_INFO fi;
 
-    bool b5 = PathToFileInfoW(LR"(C:\NotFound)", &fi);
-    bool b6 = PathToFileInfoW(LR"(C:\NotFound\System32\drivers\etc\hosts)", &fi);
+    bool b5 = PathToFileInfo(LR"(C:\NotFound)", &fi);
+    bool b6 = PathToFileInfo(LR"(C:\NotFound\System32\drivers\etc\hosts)", &fi);
 
-    bool b7 = PathToFileInfoW(LR"(C:\NotFound)", &fi);
-    bool b8 = PathToFileInfoW(LR"(C:\NotFound\System32\drivers\etc\hosts)", &fi);
+    bool b7 = PathToFileInfo(LR"(C:\NotFound)", &fi);
+    bool b8 = PathToFileInfo(LR"(C:\NotFound\System32\drivers\etc\hosts)", &fi);
 
     std::cout << BOOL_CSTRA(b1) << std::endl;
     std::cout << BOOL_CSTRA(b2) << std::endl;
@@ -787,7 +787,8 @@ void test21_sub(ClassType* obj, MethodType method, Args... args)
     }
 }
 
-void test21() {
+void test21()
+{
     Klass21 k21;
 
     // Klass21::printInt を呼び出すためのメンバー関数ポインタ
@@ -795,6 +796,32 @@ void test21() {
 
     // test21_sub を使ってメンバー関数を呼び出し
     test21_sub(&k21, PrintInt, 1, 2);
+
+    std::cout << "done." << std::endl;
+}
+
+void test23()
+{
+    const auto a = ObjectKey::fromPath(L"");
+    const auto b = ObjectKey::fromPath(L"a");
+    const auto c = ObjectKey::fromPath(L"a/");
+    const auto d = ObjectKey::fromPath(L"a/b");
+    const auto e = ObjectKey::fromPath(L"a/b/");
+    const auto f = ObjectKey::fromPath(L"a/b/c");
+    const auto g = ObjectKey::fromPath(L"a/b/c/");
+
+    std::wcout << a.str() << std::endl;
+    std::wcout << b.str() << std::endl;
+    std::wcout << c.str() << std::endl;
+    std::wcout << d.str() << std::endl;
+    std::wcout << e.str() << std::endl;
+    std::wcout << f.str() << std::endl;
+    std::wcout << g.str() << std::endl;
+
+    std::wstring parentDir;
+    std::wstring filename;
+
+    const auto r = SplitPath(g.str(), &parentDir, &filename);
 
     std::cout << "done." << std::endl;
 }
@@ -834,7 +861,12 @@ int main()
     int test20();
     //test20();
 
-    test21();
+    //test21();
+
+    int test22();
+    //test22();
+
+    test23();
 
     return EXIT_SUCCESS;
 }

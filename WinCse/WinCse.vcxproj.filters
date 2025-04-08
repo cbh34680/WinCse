@@ -53,9 +53,6 @@
     <ClInclude Include="ScheduledWorker.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="IdleWorker.hpp">
-      <Filter>ヘッダー ファイル</Filter>
-    </ClInclude>
     <ClInclude Include="TimerWorker.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>

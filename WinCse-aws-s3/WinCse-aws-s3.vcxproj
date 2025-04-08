@@ -30,8 +30,7 @@
     <ClCompile Include="AwsS3_obj_rw.cpp.cpp" />
     <ClCompile Include="AwsS3_schedule.cpp" />
     <ClCompile Include="AwsS3_svc.cpp" />
-    <ClCompile Include="AwsS3_svc_init.cpp" />
-    <ClCompile Include="BucketCache.cpp" />
+    <ClCompile Include="ListBucketsCache.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="ObjectCache.cpp" />
   </ItemGroup>
@@ -39,10 +38,11 @@
     <ClInclude Include="AwsS3.hpp" />
     <ClInclude Include="AwsS3_obj_pp_util.h" />
     <ClInclude Include="aws_sdk_s3.h" />
-    <ClInclude Include="BucketCache.hpp" />
-    <ClInclude Include="ObjectCache.hpp" />
+    <ClInclude Include="ListBucketsCache.hpp" />
+    <ClInclude Include="HeadObjectCache.hpp" />
+    <ClInclude Include="ObjectCacheTemplate.hpp" />
+    <ClInclude Include="ListObjectsCache.hpp" />
     <ClInclude Include="Protect.hpp" />
-    <ClInclude Include="Purpose.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>

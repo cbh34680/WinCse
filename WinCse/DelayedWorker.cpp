@@ -40,7 +40,7 @@ DelayedWorker::~DelayedWorker()
 	traceW(L"close event done");
 }
 
-bool DelayedWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem, PCWSTR PtfsPath)
+NTSTATUS DelayedWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 {
 	NEW_LOG_BLOCK();
 	APP_ASSERT(argWorkDir);
@@ -48,7 +48,7 @@ bool DelayedWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem, P
 	if (mEvent.invalid())
 	{
 		traceW(L"mEvent is null");
-		return false;
+		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
 	for (int i=0; i<WORKER_MAX; i++)
@@ -60,16 +60,18 @@ bool DelayedWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem, P
 		ss << i;
 
 		auto h = thr.native_handle();
-		NTSTATUS ntstatus = ::SetThreadDescription(h, ss.str().c_str());
-		//::SetThreadPriority(h, THREAD_PRIORITY_BELOW_NORMAL);
-
-		APP_ASSERT(NT_SUCCESS(ntstatus));
+		const auto hresult = ::SetThreadDescription(h, ss.str().c_str());
+		APP_ASSERT(SUCCEEDED(hresult));
+		
+		//BOOL b = ::SetThreadPriority(h, THREAD_PRIORITY_HIGHEST);
+		BOOL b = ::SetThreadPriority(h, THREAD_PRIORITY_ABOVE_NORMAL);
+		APP_ASSERT(b);
 	}
 
-	return true;
+	return STATUS_SUCCESS;
 }
 
-void DelayedWorker::OnSvcStop()
+VOID DelayedWorker::OnSvcStop()
 {
 	NEW_LOG_BLOCK();
 
@@ -164,9 +166,6 @@ void DelayedWorker::listenEvent(const int threadIndex)
 				//traceW(L"(%d): run oneshot task ...", threadIndex);
 				task->run(std::wstring(task->mCaller) + L"->" + __FUNCTIONW__);
 				//traceW(L"(%d): run oneshot task done", threadIndex);
-
-				// èàóùÇ∑ÇÈÇ≤Ç∆Ç…ëºÇÃÉXÉåÉbÉhÇ…âÒÇ∑
-				//::SwitchToThread();
 			}
 			catch (const std::exception& ex)
 			{
@@ -205,7 +204,7 @@ void DelayedWorker::listenEvent(const int threadIndex)
 //
 
 static std::mutex gGuard;
-#define THREAD_SAFE() std::lock_guard<std::mutex> lock_(gGuard)
+#define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ gGuard }
 
 bool taskComparator(const std::unique_ptr<IOnDemandTask>& a, const std::unique_ptr<IOnDemandTask>& b)
 {

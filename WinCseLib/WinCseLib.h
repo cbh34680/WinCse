@@ -2,10 +2,18 @@
 
 #ifndef _RELEASE
 #ifndef _DEBUG
-#define _RELEASE	(1)
+#define _RELEASE				(1)
 #endif
 #endif
 
+//
+// オリジナルの "passthrough.c" と同じ動きをさせるためのスイッチ
+//
+#define WINFSP_PASSTHROUGH		(0)
+
+//
+// 関数のエクスポート
+//
 #ifdef WINCSELIB_EXPORTS
 #define WINCSELIB_API __declspec(dllexport)
 #else
@@ -17,11 +25,6 @@
 // 一番最初に include しなければならない
 //
 #include "internal_define_alloc.h"
-
-//
-// オリジナルの "passthrough.c" と同じ動きをさせるためのスイッチ
-//
-#define WINFSP_PASSTHROUGH				(0)
 
 //
 // "ntstatus.h" を include するためには以下の記述 (define/undef) が必要だが
@@ -39,7 +42,7 @@
 // passthrough.c に定義されていたもののうち、アプリケーションに
 // 必要となるものを外だし
 //
-#define ALLOCATION_UNIT                 (4096)
+#define ALLOCATION_UNIT         (4096)
 
 typedef struct
 {
@@ -137,8 +140,8 @@ public:
 
 	WINCSELIB_API BOOL setFileTime(const FSP_FSCTL_FILE_INFO& fileInfo);
 	WINCSELIB_API BOOL setFileTime(UINT64 argCreationTime, UINT64 argLastWriteTime);
-	WINCSELIB_API BOOL setBasicInfo(const FSP_FSCTL_FILE_INFO& fileInfo);
-	WINCSELIB_API BOOL setBasicInfo(UINT32 argFileAttributes, UINT64 argCreationTime, UINT64 argLastWriteTime);
+	//WINCSELIB_API BOOL setBasicInfo(const FSP_FSCTL_FILE_INFO& fileInfo);
+	//WINCSELIB_API BOOL setBasicInfo(UINT32 argFileAttributes, UINT64 argCreationTime, UINT64 argLastWriteTime);
 	WINCSELIB_API LONGLONG getFileSize();
 };
 
@@ -199,8 +202,7 @@ namespace WCSE {
 // グローバル関数
 //
 WINCSELIB_API std::wstring GetCacheFilePath(const std::wstring& argDir, const std::wstring& argName);
-WINCSELIB_API bool PathToFileInfoW(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo);
-WINCSELIB_API bool PathToFileInfoA(const std::string& path, FSP_FSCTL_FILE_INFO* pFileInfo);
+WINCSELIB_API NTSTATUS PathToFileInfo(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo);
 WINCSELIB_API bool MkdirIfNotExists(const std::wstring& dir);
 WINCSELIB_API bool forEachFiles(const std::wstring& argDir, const std::function<void(const WIN32_FIND_DATA& wfd, const std::wstring& fullPath)>& callback);
 
@@ -264,8 +266,8 @@ WINCSELIB_API bool GetIniStringA(const std::string& confPath, PCSTR argSection, 
 WINCSELIB_API size_t HashString(const std::wstring& str);
 
 WINCSELIB_API bool DecryptAES(const std::vector<BYTE>& key, const std::vector<BYTE>& iv, const std::vector<BYTE>& encrypted, std::vector<BYTE>* pDecrypted);
-WINCSELIB_API bool GetCryptKeyFromRegistryA(std::string* pOutput);
-WINCSELIB_API bool GetCryptKeyFromRegistryW(std::wstring* pOutput);
+WINCSELIB_API LSTATUS GetCryptKeyFromRegistryA(std::string* pOutput);
+WINCSELIB_API LSTATUS GetCryptKeyFromRegistryW(std::wstring* pOutput);
 WINCSELIB_API NTSTATUS ComputeSHA256A(const std::string& input, std::string* pOutput);
 WINCSELIB_API NTSTATUS ComputeSHA256W(const std::wstring& input, std::wstring* pOutput);
 

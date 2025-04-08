@@ -4,8 +4,11 @@
 #include "aws_sdk_s3.h"
 
 #include <regex>
-#include "Purpose.h"
 #include "Protect.hpp"
+
+#include "ListBucketsCache.hpp"
+#include "HeadObjectCache.hpp"
+#include "ListObjectsCache.hpp"
 
 struct FileOutputParams
 {
@@ -99,6 +102,12 @@ private:
 	}
 	mConfig = {};
 
+	FSP_FILE_SYSTEM* mFileSystem = nullptr;
+
+	ListBucketsCache mListBucketsCache;
+	HeadObjectCache mHeadObjectCache;
+	ListObjectsCache mListObjectsCache;
+
 	FSP_SERVICE* mWinFspService = nullptr;
 	WINCSE_DEVICE_STATS* mStats = nullptr;
 	WINCSE_DEVICE_STATS mStats_{};
@@ -138,6 +147,7 @@ private:
 	}
 
 	void addTasks(CALLER_ARG0);
+	bool setupNotifListener(CALLER_ARG0);
 	void notifListener();
 
 	// バケット名フィルタ
@@ -145,41 +155,39 @@ private:
 	bool isInBucketFilters(const std::wstring& arg);
 
 	// バケット操作関連
-	void clearBucketCache(CALLER_ARG0);
-	bool reloadBucketCache(CALLER_ARG std::chrono::system_clock::time_point threshold);
-	void reportBucketCache(CALLER_ARG FILE* fp);
+	void clearListBucketsCache(CALLER_ARG0);
+	bool reloadListBucketsCache(CALLER_ARG std::chrono::system_clock::time_point threshold);
+	void reportListBucketsCache(CALLER_ARG FILE* fp);
 	std::wstring getBucketLocation(CALLER_ARG const std::wstring& bucketName);
-
-	// オブジェクト操作関連
-	void reportObjectCache(CALLER_ARG FILE* fp);
-	int deleteOldObjectCache(CALLER_ARG std::chrono::system_clock::time_point threshold);
-	int clearObjectCache(CALLER_ARG0);
-	int deleteObjectCache(CALLER_ARG const WCSE::ObjectKey& argObjKey);
 
 	// AWS SDK API を実行
 	WCSE::DirInfoType apicallHeadObject(CALLER_ARG const WCSE::ObjectKey& argObjKey);
 	bool apicallListObjectsV2(CALLER_ARG const WCSE::ObjectKey& argObjKey,
 		bool argDelimiter, int argLimit, WCSE::DirInfoListType* pDirInfoList);
 
-	//
+	// Read 関連
+
+	NTSTATUS prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, UINT64 argOffset, ULONG argLength);
+	bool doMultipartDownload(CALLER_ARG OpenContext* ctx, const std::wstring& localPath);
+
 	bool unsafeHeadBucket(CALLER_ARG const std::wstring& bucketName,
 		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */);
 	bool unsafeListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList /* nullable */,
 		const std::vector<std::wstring>& options);
 
-	//
-	bool unsafeHeadObjectWithCache(CALLER_ARG const WCSE::ObjectKey& argObjKey,
-		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */);
+	// list 関連
+	WCSE::DirInfoType unsafeHeadObjectWithCache(CALLER_ARG const WCSE::ObjectKey& argObjKey);
+	WCSE::DirInfoType unsafeHeadObjectWithCache_CheckDir(CALLER_ARG const WCSE::ObjectKey& argObjKey);
 	bool unsafeListObjectsWithCache(CALLER_ARG const WCSE::ObjectKey& argObjKey,
-		const Purpose purpose, WCSE::DirInfoListType* pDirInfoList /* nullable */);
-	bool unsafeGetPositiveCache_File(CALLER_ARG const WCSE::ObjectKey& argObjKey,
-		WCSE::DirInfoType* pDirInfo);
-	bool unsafeIsInNegativeCache_File(CALLER_ARG const WCSE::ObjectKey& argObjKey);
+		WCSE::DirInfoListType* pDirInfoList /* nullable */);
 
-	// Read 関連
+	WCSE::DirInfoType getCachedHeadObject(CALLER_ARG const WCSE::ObjectKey& argObjKey);
+	bool isNegativeHeadObject(CALLER_ARG const WCSE::ObjectKey& argObjKey);
 
-	NTSTATUS prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, UINT64 argOffset, ULONG argLength);
-	bool doMultipartDownload(CALLER_ARG OpenContext* ctx, const std::wstring& localPath);
+	void reportObjectCache(CALLER_ARG FILE* fp);
+	int deleteOldObjectCache(CALLER_ARG std::chrono::system_clock::time_point threshold);
+	int clearObjectCache(CALLER_ARG0);
+	int deleteObjectCache(CALLER_ARG const WCSE::ObjectKey& argObjKey);
 
 public:
 	// 外部から呼び出されるため override ではないが public のメソッド
@@ -201,31 +209,34 @@ public:
 		*pStats = *mStats;
 	}
 
-	bool PreCreateFilesystem(FSP_SERVICE *Service, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
-	bool OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem, PCWSTR PtfsPath) override;
-	void OnSvcStop() override;
+	NTSTATUS PreCreateFilesystem(FSP_SERVICE *Service, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
+	NTSTATUS OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
+	VOID OnSvcStop() override;
 
 	bool headBucket(CALLER_ARG const std::wstring& argBucket,
 		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) override;
 	bool listBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList /* nullable */) override;
 
-	bool headObject_File(CALLER_ARG const WCSE::ObjectKey& argObjKey,
-		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) override;
-	bool headObject_Dir(CALLER_ARG const WCSE::ObjectKey& argObjKey,
+	bool headObject(CALLER_ARG const WCSE::ObjectKey& argObjKey,
 		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) override;
 
 	bool listObjects(CALLER_ARG const WCSE::ObjectKey& argObjKey,
 		WCSE::DirInfoListType* pDirInfoList /* nullable */) override;
 
+	bool listDisplayObjects(CALLER_ARG const WCSE::ObjectKey& argObjKey,
+		WCSE::DirInfoListType* pDirInfoList) override;
+
 	bool deleteObject(CALLER_ARG const WCSE::ObjectKey& argObjKey) override;
 
 	bool putObject(CALLER_ARG const WCSE::ObjectKey& argObjKey,
 		const FSP_FSCTL_FILE_INFO& argFileInfo,
-		PCWSTR sourceFile /* nullable */) override;
+		const std::wstring& argFilePath) override;
+
+	bool renameObject(CALLER_ARG WCSE::CSDeviceContext* argCSDeviceContext,
+		const std::wstring& argFileName, const std::wstring& argNewFileName, BOOLEAN argReplaceIfExists) override;
 
 	WCSE::CSDeviceContext* create(CALLER_ARG const WCSE::ObjectKey& argObjKey,
-		const FSP_FSCTL_FILE_INFO& fileInfo, UINT32 CreateOptions,
-		UINT32 GrantedAccess, UINT32 FileAttributes) override;
+		UINT32 CreateOptions, UINT32 GrantedAccess, UINT32 FileAttributes) override;
 
 	WCSE::CSDeviceContext* open(CALLER_ARG const WCSE::ObjectKey& argObjKey,
 		UINT32 CreateOptions, UINT32 GrantedAccess, const FSP_FSCTL_FILE_INFO& FileInfo) override;

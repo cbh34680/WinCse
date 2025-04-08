@@ -95,7 +95,7 @@ void AwsS3::onIdle(CALLER_ARG0)
 
     // バケット・キャッシュの再作成
 
-    this->reloadBucketCache(CONT_CALLER now - std::chrono::minutes(mConfig.bucketCacheExpiryMin));
+    this->reloadListBucketsCache(CONT_CALLER now - std::chrono::minutes(mConfig.bucketCacheExpiryMin));
 
     // ファイル・キャッシュ
     //
@@ -154,7 +154,7 @@ void AwsS3::addTasks(CALLER_ARG0)
 
     // アイドル時のタスクを登録
 
-    getWorker(L"idle")->addTask(CONT_CALLER new IdleTask{ this });
+    getWorker(L"timer")->addTask(CONT_CALLER new IdleTask{ this });
 }
 
 // EOF

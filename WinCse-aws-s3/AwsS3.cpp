@@ -17,7 +17,7 @@ WCSE::ICSDevice* NewCSDevice(
         return nullptr;
     }
 
-    for (const auto* key: { L"delayed", L"idle", L"timer", })
+    for (const auto* key: { L"delayed", L"timer", })
     {
         if (workers.find(key) == workers.end())
         {
@@ -48,7 +48,7 @@ AwsS3::~AwsS3()
 
     // 必要ないが、デバッグ時のメモリ・リーク調査の邪魔になるので
 
-    clearBucketCache(START_CALLER0);
+    clearListBucketsCache(START_CALLER0);
     clearObjectCache(START_CALLER0);
 
     mRefFile.close();
@@ -159,6 +159,7 @@ NTSTATUS OpenContext::openFileHandle(CALLER_ARG DWORD argDesiredAccess, DWORD ar
     NEW_LOG_BLOCK();
     APP_ASSERT(isFile());
     APP_ASSERT(mObjKey.meansFile());
+    APP_ASSERT(mFile.invalid());
 
     const std::wstring localPath{ getCacheFilePath() };
 

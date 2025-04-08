@@ -12,7 +12,7 @@ static PCWSTR CONFIGFILE_FNAME = L"WinCse.conf";
 // プログラム引数 "-u" から算出されたディレクトリから ini ファイルを読み
 // S3 クライアントを生成する
 //
-bool CSDriver::PreCreateFilesystem(FSP_SERVICE *Service, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams)
+NTSTATUS CSDriver::PreCreateFilesystem(FSP_SERVICE *Service, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams)
 {
 	StatsIncr(PreCreateFilesystem);
 
@@ -20,170 +20,89 @@ bool CSDriver::PreCreateFilesystem(FSP_SERVICE *Service, PCWSTR argWorkDir, FSP_
 	APP_ASSERT(argWorkDir);
 	APP_ASSERT(VolumeParams);
 
+	traceW(L"argWorkDir=%s", argWorkDir);
+
 	namespace fs = std::filesystem;
 
 	APP_ASSERT(fs::exists(argWorkDir));
 	APP_ASSERT(fs::is_directory(argWorkDir));
 
-	bool ret = false;
+	// VolumeParams の設定
 
-	try
+	VolumeParams->CaseSensitiveSearch = 1;
+
+	const UINT32 Timeout = 3000U;
+
+	VolumeParams->FileInfoTimeout = Timeout;
+
+	//VolumeParams->VolumeInfoTimeout = Timeout;
+	VolumeParams->DirInfoTimeout = Timeout;
+	//VolumeParams->SecurityTimeout = Timeout;
+	//VolumeParams->StreamInfoTimeout = Timeout;
+	//VolumeParams->EaTimeout = Timeout;
+
+	//VolumeParams->VolumeInfoTimeoutValid = 1;
+	VolumeParams->DirInfoTimeoutValid = 1;
+	//VolumeParams->SecurityTimeoutValid = 1;
+	//VolumeParams->StreamInfoTimeoutValid = 1;
+	//VolumeParams->EaTimeoutValid = 1;
+
+	//
+	// ini ファイルから値を取得
+	//
+	const auto workDir{ fs::path(argWorkDir).wstring() };
+	const auto confPath{ workDir + L'\\' + CONFIGFILE_FNAME };
+
+	traceW(L"confPath=%s", confPath.c_str());
+
+	// 読み取り専用
+
+	const bool readonly = ::GetPrivateProfileIntW(mIniSection.c_str(), L"readonly", 0, confPath.c_str()) != 0;
+	if (readonly)
 	{
-		// VolumeParams の設定
+		// ボリュームの設定
 
-		VolumeParams->CaseSensitiveSearch = 1;
-
-		const UINT32 Timeout = 2000U;
-
-		VolumeParams->FileInfoTimeout = Timeout;
-
-		//VolumeParams->VolumeInfoTimeout = Timeout;
-		VolumeParams->DirInfoTimeout = Timeout;
-		//VolumeParams->SecurityTimeout = Timeout;
-		//VolumeParams->StreamInfoTimeout = Timeout;
-		//VolumeParams->EaTimeout = Timeout;
-
-		//VolumeParams->VolumeInfoTimeoutValid = 1;
-		VolumeParams->DirInfoTimeoutValid = 1;
-		//VolumeParams->SecurityTimeoutValid = 1;
-		//VolumeParams->StreamInfoTimeoutValid = 1;
-		//VolumeParams->EaTimeoutValid = 1;
-
-		const std::wstring workDir{ fs::weakly_canonical(fs::path(argWorkDir)).wstring() };
-
-		//
-		// ini ファイルから値を取得
-		//
-		const std::wstring confPath{ workDir + L'\\' + CONFIGFILE_FNAME };
-
-		traceW(L"Detect credentials file path is %s", confPath.c_str());
-
-		const auto iniSection = mIniSection.c_str();
-
-		// 読み取り専用
-
-		const bool readonly = ::GetPrivateProfileIntW(iniSection, L"readonly", 0, confPath.c_str()) != 0;
-		if (readonly)
-		{
-			// ボリュームの設定
-
-			VolumeParams->ReadOnlyVolume = 1;
-		}
-
-		// 無視するファイル名のパターン
-
-		std::wstring re_ignore_patterns;
-		GetIniStringW(confPath.c_str(), iniSection, L"re_ignore_patterns", &re_ignore_patterns);
-
-		if (!re_ignore_patterns.empty())
-		{
-			try
-			{
-				// conf で指定された正規表現パターンの整合性テスト
-				// 不正なパターンの場合は例外で catch されるので反映されない
-
-				std::wregex reTest{ re_ignore_patterns, std::regex_constants::icase };
-
-				// OK
-				mIgnoreFileNamePatterns = std::move(reTest);
-			}
-			catch (const std::regex_error& ex)
-			{
-				traceA("regex_error: %s", ex.what());
-				traceW(L"%s: ignored, set default patterns", re_ignore_patterns.c_str());
-			}
-		}
-
-		//
-		// 属性参照用ファイル/ディレクトリの準備
-		//
-		mRefFile = ::CreateFileW
-		(
-			confPath.c_str(),
-			FILE_READ_ATTRIBUTES | READ_CONTROL,
-			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,		// 共有モード
-			NULL,														// セキュリティ属性
-			OPEN_EXISTING,
-			FILE_ATTRIBUTE_NORMAL,
-			NULL														// テンプレートなし
-		);
-
-		if (mRefFile.invalid())
-		{
-			traceW(L"file open error: %s", confPath.c_str());
-			return false;
-		}
-
-		mRefDir = ::CreateFileW
-		(
-			argWorkDir,
-			FILE_READ_ATTRIBUTES | READ_CONTROL,
-			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-			NULL,
-			OPEN_EXISTING,
-			FILE_FLAG_BACKUP_SEMANTICS,
-			NULL
-		);
-
-		if (mRefDir.invalid())
-		{
-			traceW(L"file open error: %s", argWorkDir);
-			return false;
-		}
-
-		// メンバに保存
-
-		mWorkDir = workDir;
-
-		traceW(L"INFO: TempDir=%s, WorkDir=%s", mTempDir.c_str(), mWorkDir.c_str());
-
-		// PreCreateFilesystem() の伝播
-
-		for (const auto& it: mWorkers)
-		{
-			const auto worker = it.second;
-			const auto klassName = getDerivedClassNamesW(worker);
-
-			traceW(L"%s::PreCreateFilesystem()", klassName.c_str());
-
-			if (!worker->PreCreateFilesystem(Service, argWorkDir, VolumeParams))
-			{
-				traceW(L"fault: PreCreateFilesystem");
-				return false;
-			}
-		}
-
-		ICSService* services[] = { mCSDevice };
-
-		for (int i=0; i<_countof(services); i++)
-		{
-			const auto service = services[i];
-			const auto klassName = getDerivedClassNamesW(service);
-
-			traceW(L"%s::PreCreateFilesystem()", klassName.c_str());
-
-			if (!services[i]->PreCreateFilesystem(Service, argWorkDir, VolumeParams))
-			{
-				traceW(L"fault: PreCreateFilesystem");
-				return false;
-			}
-		}
-
-		ret = true;
-	}
-	catch (const std::exception& ex)
-	{
-		std::cerr << "what: " << ex.what() << std::endl;
-	}
-	catch (...)
-	{
-		std::cerr << "unknown error" << std::endl;
+		VolumeParams->ReadOnlyVolume = 1;
 	}
 
-	return ret;		// 例外発生時に false
+	// PreCreateFilesystem() の伝播
+
+	for (const auto& it: mWorkers)
+	{
+		const auto worker = it.second;
+		const auto klassName = getDerivedClassNamesW(worker);
+
+		traceW(L"%s::PreCreateFilesystem()", klassName.c_str());
+
+		const auto ntstatus = worker->PreCreateFilesystem(Service, argWorkDir, VolumeParams);
+		if (!NT_SUCCESS(ntstatus))
+		{
+			traceW(L"fault: PreCreateFilesystem");
+			return ntstatus;
+		}
+	}
+
+	ICSService* services[] = { mCSDevice };
+
+	for (int i=0; i<_countof(services); i++)
+	{
+		const auto service = services[i];
+		const auto klassName = getDerivedClassNamesW(service);
+
+		traceW(L"%s::PreCreateFilesystem()", klassName.c_str());
+
+		const auto ntstatus = services[i]->PreCreateFilesystem(Service, argWorkDir, VolumeParams);
+		if (!NT_SUCCESS(ntstatus))
+		{
+			traceW(L"fault: PreCreateFilesystem[%d]", i);
+			return ntstatus;
+		}
+	}
+
+	return STATUS_SUCCESS;
 }
 
-bool CSDriver::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem, PCWSTR PtfsPath)
+NTSTATUS CSDriver::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 {
 	StatsIncr(OnSvcStart);
 
@@ -191,57 +110,121 @@ bool CSDriver::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem, PCWSTR
 	APP_ASSERT(argWorkDir);
 	APP_ASSERT(FileSystem);
 
-	bool ret = false;
+	namespace fs = std::filesystem;
 
-	try
+	traceW(L"argWorkDir=%s", argWorkDir);
+
+	const auto workDir{ fs::path(argWorkDir).wstring() };
+	const auto confPath{ workDir + L'\\' + CONFIGFILE_FNAME };
+
+	traceW(L"confPath=%s", confPath.c_str());
+
+
+	// 無視するファイル名のパターン
+
+	std::wstring re_ignore_patterns;
+	GetIniStringW(confPath.c_str(), mIniSection.c_str(), L"re_ignore_patterns", &re_ignore_patterns);
+
+	if (!re_ignore_patterns.empty())
 	{
-		// OnSvcStart() の伝播
-
-		for (const auto& it: mWorkers)
+		try
 		{
-			const auto worker = it.second;
-			const auto klassName = getDerivedClassNamesW(worker);
+			// conf で指定された正規表現パターンの整合性テスト
+			// 不正なパターンの場合は例外で catch されるので反映されない
 
-			traceW(L"%s::OnSvcStart()", klassName.c_str());
+			std::wregex reTest{ re_ignore_patterns, std::regex_constants::icase };
 
-			if (!worker->OnSvcStart(argWorkDir, FileSystem, PtfsPath))
-			{
-				traceW(L"fault: PreCreateFilesystem");
-				return false;
-			}
+			// OK
+			mIgnoreFileNamePatterns = std::move(reTest);
 		}
-
-		ICSService* services[] = { mCSDevice };
-
-		for (int i=0; i<_countof(services); i++)
+		catch (const std::regex_error& ex)
 		{
-			const auto service = services[i];
-			const auto klassName = getDerivedClassNamesW(service);
-
-			traceW(L"%s::OnSvcStart()", klassName.c_str());
-
-			if (!services[i]->OnSvcStart(argWorkDir, FileSystem, PtfsPath))
-			{
-				traceW(L"fault: OnSvcStart");
-				return false;
-			}
+			traceA("regex_error: %s", ex.what());
+			traceW(L"%s: ignored, set default patterns", re_ignore_patterns.c_str());
 		}
-
-		ret = true;
-	}
-	catch (const std::exception& ex)
-	{
-		std::cerr << "what: " << ex.what() << std::endl;
-	}
-	catch (...)
-	{
-		std::cerr << "unknown error" << std::endl;
 	}
 
-	return ret;
+	//
+	// 属性参照用ファイル/ディレクトリの準備
+	//
+	mRefFile = ::CreateFileW
+	(
+		confPath.c_str(),
+		FILE_READ_ATTRIBUTES | READ_CONTROL,
+		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,		// 共有モード
+		NULL,														// セキュリティ属性
+		OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL,
+		NULL														// テンプレートなし
+	);
+
+	if (mRefFile.invalid())
+	{
+		traceW(L"fault: CreateFileW, confPath=%s", confPath.c_str());
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	mRefDir = ::CreateFileW
+	(
+		argWorkDir,
+		FILE_READ_ATTRIBUTES | READ_CONTROL,
+		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+		NULL,
+		OPEN_EXISTING,
+		FILE_FLAG_BACKUP_SEMANTICS,
+		NULL
+	);
+
+	if (mRefDir.invalid())
+	{
+		traceW(L"fault: CreateFileW, argWorkDir=%s", argWorkDir);
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	// メンバに保存
+
+	mWorkDir = workDir;
+
+	traceW(L"INFO: TempDir=%s, WorkDir=%s", mTempDir.c_str(), mWorkDir.c_str());
+
+	// OnSvcStart() の伝播
+
+	for (const auto& it: mWorkers)
+	{
+		const auto worker = it.second;
+		const auto klassName = getDerivedClassNamesW(worker);
+
+		traceW(L"%s::OnSvcStart()", klassName.c_str());
+
+		const auto ntstatus = worker->OnSvcStart(argWorkDir, FileSystem);
+		if (!NT_SUCCESS(ntstatus))
+		{
+			traceW(L"fault: OnSvcStart");
+			return ntstatus;
+		}
+	}
+
+	ICSService* services[] = { mCSDevice };
+
+	for (int i=0; i<_countof(services); i++)
+	{
+		const auto service = services[i];
+		const auto klassName = getDerivedClassNamesW(service);
+
+		traceW(L"%s::OnSvcStart()", klassName.c_str());
+
+		const auto ntstatus = services[i]->OnSvcStart(argWorkDir, FileSystem);
+		if (!NT_SUCCESS(ntstatus))
+		{
+			traceW(L"fault: OnSvcStart[%d]", i);
+			return ntstatus;
+		}
+	}
+
+	return STATUS_SUCCESS;
 }
 
-void CSDriver::OnSvcStop()
+VOID CSDriver::OnSvcStop()
 {
 	StatsIncr(OnSvcStop);
 

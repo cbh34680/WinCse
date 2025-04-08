@@ -89,8 +89,8 @@ void Logger::traceW_impl(int indent, PCWSTR fullPath, int line, PCWSTR func, PCW
 	APP_ASSERT(indent >= 0);
 
 	const auto err = ::GetLastError();
-	const auto callFromFile(std::filesystem::path(fullPath).filename().wstring());
-	PCWSTR file = callFromFile.c_str();
+	const auto callFromFile{ std::filesystem::path(fullPath).filename().wstring() };
+	const auto file = callFromFile.c_str();
 
 	SYSTEMTIME st;
 	::GetLocalTime(&st);
@@ -143,8 +143,8 @@ void Logger::traceA_impl(int indent, PCSTR fullPath, int line, PCSTR func, PCSTR
 	APP_ASSERT(indent >= 0);
 
 	const auto err = ::GetLastError();
-	const auto callFromFile(std::filesystem::path(fullPath).filename().string());
-	PCSTR file = callFromFile.c_str();
+	const auto callFromFile{ std::filesystem::path(fullPath).filename().string() };
+	const auto file = callFromFile.c_str();
 
 	SYSTEMTIME st;
 	::GetLocalTime(&st);
@@ -198,7 +198,9 @@ void Logger::traceW_write(const SYSTEMTIME* st, PCWSTR buf) const
 		ss << std::setw(3) << (tid % 1000);
 		ss << L' ' << buf;
 
+#ifdef _DEBUG
 		::OutputDebugStringW(ss.str().c_str());
+#endif
 	}
 
 	if (!mTraceLogEnabled)

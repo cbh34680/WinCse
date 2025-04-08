@@ -15,6 +15,13 @@ private:
 	const std::wstring mTempDir;
 	const std::wstring mIniSection;
 
+	struct
+	{
+		std::mutex mGuard;
+		std::unordered_map<std::wstring, FSP_FSCTL_FILE_INFO> mFileInfos;
+	}
+	NewFile;
+
 	// Worker éÊìæ
 	std::unordered_map<std::wstring, WCSE::IWorker*> mWorkers;
 
@@ -54,9 +61,8 @@ private:
 		FileObject,
 		Bucket,
 	};
-	NTSTATUS getFileInfoByName(CALLER_ARG PCWSTR fileName, FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pType /* nullable */);
 
-	NTSTATUS FileNameToFileInfo(CALLER_ARG PCWSTR FileName, FSP_FSCTL_FILE_INFO* pFileInfo);
+	NTSTATUS getFileInfoByFileName(CALLER_ARG PCWSTR fileName, FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pFileNameType);
 
 protected:
 	bool shouldIgnoreFileName(const std::wstring& FileName);
@@ -69,9 +75,9 @@ public:
 	~CSDriver();
 
 	// WinFsp Ç©ÇÁåƒÇ—èoÇ≥ÇÍÇÈä÷êî
-	bool PreCreateFilesystem(FSP_SERVICE *Service, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
-	bool OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem, PCWSTR PtfsPath) override;
-	void OnSvcStop() override;
+	NTSTATUS PreCreateFilesystem(FSP_SERVICE *Service, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
+	NTSTATUS OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
+	VOID OnSvcStop() override;
 
 	NTSTATUS DoGetSecurityByName(PCWSTR FileName, PUINT32 PFileAttributes,
 		PSECURITY_DESCRIPTOR SecurityDescriptor, PSIZE_T PSecurityDescriptorSize) override;

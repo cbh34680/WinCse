@@ -25,12 +25,9 @@ bool DecryptAES(const std::vector<BYTE>& key, const std::vector<BYTE>& iv,
     std::vector<BYTE> keyObject;
     std::vector<BYTE> decrypted(encrypted.size());
 
-    NTSTATUS ntstatus = STATUS_UNSUCCESSFUL;
-
     // AES アルゴリズムを開く
 
-    ntstatus = ::BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_AES_ALGORITHM, nullptr, 0);
-
+    auto ntstatus = ::BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_AES_ALGORITHM, nullptr, 0);
     if (!NT_SUCCESS(ntstatus))
     {
         goto exit;
@@ -91,65 +88,65 @@ exit:
     return ret;
 }
 
-bool GetCryptKeyFromRegistryA(std::string* pOutput)
+LSTATUS GetCryptKeyFromRegistryA(std::string* pOutput)
 {
     std::wstring output;
 
-    if (GetCryptKeyFromRegistryW(&output))
+    const auto lstatus = GetCryptKeyFromRegistryW(&output);
+    if (lstatus == ERROR_SUCCESS)
     {
         *pOutput = WC2MB(output);
-
-        return true;
     }
 
-    return false;
+    return lstatus;
 }
 
-bool GetCryptKeyFromRegistryW(std::wstring* pOutput)
+LSTATUS GetCryptKeyFromRegistryW(std::wstring* pOutput)
 {
-    bool ret = false;
-
     HKEY hKey = NULL;
-    LONG result = STATUS_UNSUCCESSFUL;
+    LSTATUS lstatus = ERROR_SUCCESS;
     DWORD dataType = 0;
     DWORD dataSize = 0;
     BYTE data[BUFSIZ];     // データのバッファ
 
     // レジストリキーを開く
 
-    result = ::RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Cryptography", 0, KEY_READ, &hKey);
-    if (!NT_SUCCESS(result))
+    lstatus = ::RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Cryptography", 0, KEY_READ, &hKey);
+    if (lstatus != ERROR_SUCCESS)
     {
         goto exit;
     }
 
     // 値のデータサイズを取得
 
-    result = ::RegQueryValueExW(hKey, L"MachineGuid", NULL, &dataType, NULL, &dataSize);
-    if (!NT_SUCCESS(result))
+    lstatus = ::RegQueryValueExW(hKey, L"MachineGuid", NULL, &dataType, NULL, &dataSize);
+    if (lstatus != ERROR_SUCCESS)
     {
         goto exit;
     }
 
     if (dataSize > sizeof(data))
     {
+        lstatus = ERROR_MORE_DATA;
         goto exit;
     }
 
     if (dataType != REG_SZ)
     {
+        lstatus = ERROR_INVALID_DATATYPE;
         goto exit;
     }
 
     // 値のデータを取得
-    result = ::RegQueryValueExW(hKey, L"MachineGuid", NULL, &dataType, data, &dataSize);
-    if (!NT_SUCCESS(result))
+    lstatus = ::RegQueryValueExW(hKey, L"MachineGuid", NULL, &dataType, data, &dataSize);
+    if (lstatus != ERROR_SUCCESS)
     {
         goto exit;
     }
 
     if (dataSize > sizeof(data))
     {
+        lstatus = ERROR_MORE_DATA;
         goto exit;
     }
 
@@ -163,15 +160,13 @@ bool GetCryptKeyFromRegistryW(std::wstring* pOutput)
         *pOutput = output;
     }
 
-    ret = true;
-
 exit:
     if (hKey)
     {
         ::RegCloseKey(hKey);
     }
 
-    return ret;
+    return lstatus;
 }
 
 #if 0
@@ -206,7 +201,7 @@ NTSTATUS ComputeSHA256W(const std::wstring& input, std::wstring* pOutput)
 {
     std::string output;
 
-    NTSTATUS ntstatus = ComputeSHA256A(WC2MB(input), &output);
+    const auto ntstatus = ComputeSHA256A(WC2MB(input), &output);
     if (NT_SUCCESS(ntstatus))
     {
         *pOutput = MB2WC(output);
@@ -230,8 +225,7 @@ NTSTATUS ComputeSHA256A(const std::string& input, std::string* pOutput)
 
     NTSTATUS ntstatus = STATUS_UNSUCCESSFUL;
 
-    ntstatus = ::BCryptOpenAlgorithmProvider(&hAlg,
-        BCRYPT_SHA256_ALGORITHM, nullptr, 0);
+    ntstatus = ::BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA256_ALGORITHM, nullptr, 0);
     if (!NT_SUCCESS(ntstatus))
     {
         goto exit;
@@ -274,13 +268,11 @@ exit:
     if (hHash)
     {
         ::BCryptDestroyHash(hHash);
-        hHash = nullptr;
     }
 
     if (hAlg)
     {
         ::BCryptCloseAlgorithmProvider(hAlg, 0);
-        hAlg = nullptr;
     }
 
     return ntstatus;

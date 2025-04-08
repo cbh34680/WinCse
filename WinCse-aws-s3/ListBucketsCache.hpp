@@ -1,6 +1,6 @@
 #pragma once
 
-class BucketCache
+class ListBucketsCache
 {
 private:
 	WCSE::DirInfoListType mList;

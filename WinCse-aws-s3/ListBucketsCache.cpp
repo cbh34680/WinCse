@@ -1,5 +1,5 @@
 #include "WinCseLib.h"
-#include "BucketCache.hpp"
+#include "ListBucketsCache.hpp"
 #include <algorithm>
 #include <iterator>
 
@@ -13,8 +13,15 @@ using namespace WCSE;
 #define INDENT4         L"\t\t\t\t"
 #define INDENT5         L"\t\t\t\t\t"
 
-void BucketCache::report(CALLER_ARG FILE* fp)
+
+static std::mutex gGuard;
+#define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ gGuard }
+
+
+void ListBucketsCache::report(CALLER_ARG FILE* fp)
 {
+    THREAD_SAFE();
+
     fwprintf(fp, L"LastGetCallChain=%s" LN, mLastGetCallChain.c_str());
     fwprintf(fp, L"LastSetCallChain=%s" LN, mLastSetCallChain.c_str());
     fwprintf(fp, L"LastClearCallChain=%s" LN, mLastClearCallChain.c_str());
@@ -44,13 +51,16 @@ void BucketCache::report(CALLER_ARG FILE* fp)
     }
 }
 
-std::chrono::system_clock::time_point BucketCache::getLastSetTime(CALLER_ARG0) const
+std::chrono::system_clock::time_point ListBucketsCache::getLastSetTime(CALLER_ARG0) const
 {
+    THREAD_SAFE();
+
     return mLastSetTime;
 }
 
-void BucketCache::set(CALLER_ARG const DirInfoListType& argDirInfoList)
+void ListBucketsCache::set(CALLER_ARG const DirInfoListType& argDirInfoList)
 {
+    THREAD_SAFE();
     NEW_LOG_BLOCK();
 
     traceW(L"* argDirInfoList.size()=%zu", argDirInfoList.size());
@@ -62,8 +72,10 @@ void BucketCache::set(CALLER_ARG const DirInfoListType& argDirInfoList)
     mList = argDirInfoList;
 }
 
-DirInfoListType BucketCache::get(CALLER_ARG0)
+DirInfoListType ListBucketsCache::get(CALLER_ARG0)
 {
+    THREAD_SAFE();
+
     mLastGetTime = std::chrono::system_clock::now();
     mLastGetCallChain = CALL_CHAIN();
     mCountGet++;
@@ -71,8 +83,9 @@ DirInfoListType BucketCache::get(CALLER_ARG0)
     return mList;
 }
 
-void BucketCache::clear(CALLER_ARG0)
+void ListBucketsCache::clear(CALLER_ARG0)
 {
+    THREAD_SAFE();
     NEW_LOG_BLOCK();
 
     traceW(L"* mList.size()=%zu", mList.size());
@@ -91,8 +104,9 @@ void BucketCache::clear(CALLER_ARG0)
     mCountClear++;
 }
 
-DirInfoType BucketCache::find(CALLER_ARG const std::wstring& argBucketName)
+DirInfoType ListBucketsCache::find(CALLER_ARG const std::wstring& argBucketName)
 {
+    THREAD_SAFE();
     APP_ASSERT(!argBucketName.empty());
 
     const auto it = std::find_if(mList.begin(), mList.end(), [&argBucketName](const auto& dirInfo)
@@ -112,8 +126,9 @@ DirInfoType BucketCache::find(CALLER_ARG const std::wstring& argBucketName)
     return *it;
 }
 
-std::wstring BucketCache::getBucketRegion(CALLER_ARG const std::wstring& argBucketName)
+std::wstring ListBucketsCache::getBucketRegion(CALLER_ARG const std::wstring& argBucketName)
 {
+    THREAD_SAFE();
     APP_ASSERT(!argBucketName.empty());
 
     const auto it{ mBucketRegions.find(argBucketName) };
@@ -125,8 +140,9 @@ std::wstring BucketCache::getBucketRegion(CALLER_ARG const std::wstring& argBuck
     return it->second.c_str();
 }
 
-void BucketCache::addBucketRegion(CALLER_ARG const std::wstring& argBucketName, const std::wstring& argRegion)
+void ListBucketsCache::addBucketRegion(CALLER_ARG const std::wstring& argBucketName, const std::wstring& argRegion)
 {
+    THREAD_SAFE();
     NEW_LOG_BLOCK();
     APP_ASSERT(!argBucketName.empty());
     APP_ASSERT(!argRegion.empty());

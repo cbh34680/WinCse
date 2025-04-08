@@ -11,7 +11,7 @@ std::wstring GetCacheFilePath(const std::wstring& argDir, const std::wstring& ar
 {
 	std::wstring nameSha256;
 
-	NTSTATUS ntstatus = ComputeSHA256W(argName, &nameSha256);
+	const auto ntstatus = ComputeSHA256W(argName, &nameSha256);
 	if (!NT_SUCCESS(ntstatus))
 	{
 		throw FatalError(__FUNCTION__, ntstatus);
@@ -35,7 +35,7 @@ std::wstring GetCacheFilePath(const std::wstring& argDir, const std::wstring& ar
 	return filePath.wstring();
 }
 
-bool PathToFileInfoW(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo)
+NTSTATUS PathToFileInfo(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo)
 {
 	FileHandle hFile = ::CreateFileW
 	(
@@ -50,19 +50,15 @@ bool PathToFileInfoW(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo)
 
 	if(hFile.invalid())
 	{
-		return false;
+		const auto lerr = ::GetLastError();
+		return FspNtStatusFromWin32(lerr);
 	}
 
-	NTSTATUS ntstatus = GetFileInfoInternal(hFile.handle(), pFileInfo);
-	return NT_SUCCESS(ntstatus);
-}
-
-bool PathToFileInfoA(const std::string& path, FSP_FSCTL_FILE_INFO* pFileInfo)
-{
-	return PathToFileInfoW(MB2WC(path), pFileInfo);
+	return GetFileInfoInternal(hFile.handle(), pFileInfo);
 }
 
 // ƒpƒX‚©‚ç FILETIME ‚Ì’l‚ðŽæ“¾
+
 bool PathToWinFileTimes(const std::wstring& path, FILETIME* pFtCreate, FILETIME* pFtAccess, FILETIME* pFtWrite)
 {
 	FileHandle hFile = ::CreateFileW

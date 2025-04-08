@@ -22,8 +22,7 @@ NTSTATUS AwsS3::readObject(CALLER_ARG WCSE::CSDeviceContext* argCSDeviceContext,
     traceW(L"mObjKey=%s, ctx=%p HANDLE=%p, Offset=%llu, Length=%lu",
         ctx->mObjKey.c_str(), ctx, ctx->mFile.handle(), Offset, Length);
 
-    NTSTATUS ntstatus = this->prepareLocalFile_simple(CONT_CALLER ctx, Offset, Length);
-
+    const auto ntstatus = this->prepareLocalFile_simple(CONT_CALLER ctx, Offset, Length);
     if (!NT_SUCCESS(ntstatus))
     {
         traceW(L"fault: prepareLocalFile");
@@ -66,8 +65,7 @@ NTSTATUS AwsS3::writeObject(CALLER_ARG WCSE::CSDeviceContext* argCSDeviceContext
         ctx->mObjKey.c_str(), ctx, ctx->mFile.handle(), Offset, Length,
         BOOL_CSTRW(WriteToEndOfFile), BOOL_CSTRW(ConstrainedIo));
 
-    NTSTATUS ntstatus = this->prepareLocalFile_simple(CONT_CALLER ctx, Offset, Length);
-
+    auto ntstatus = this->prepareLocalFile_simple(CONT_CALLER ctx, Offset, Length);
     if (!NT_SUCCESS(ntstatus))
     {
         traceW(L"fault: prepareLocalFile");
@@ -144,7 +142,7 @@ bool AwsS3::deleteObject(CALLER_ARG const ObjectKey& argObjKey)
 
             DirInfoListType dirInfoList;
 
-            if (!listObjects(CONT_CALLER argObjKey, &dirInfoList))
+            if (!this->listObjects(CONT_CALLER argObjKey, &dirInfoList))
             {
                 traceW(L"fault: listObjects");
                 return false;
@@ -173,7 +171,8 @@ bool AwsS3::deleteObject(CALLER_ARG const ObjectKey& argObjKey)
                 obj.SetKey(fileObjKey.keyA());
                 delete_objects.AddObjects(obj);
 
-                //
+                // ローカルのキャッシュ・ファイルを削除
+
                 const std::wstring localPath{ GetCacheFilePath(mCacheDataDir, fileObjKey.str()) };
 
                 if (!::DeleteFileW(localPath.c_str()))
@@ -186,7 +185,8 @@ bool AwsS3::deleteObject(CALLER_ARG const ObjectKey& argObjKey)
                     }
                 }
 
-                //
+                // キャッシュ・メモリから削除 (ファイル)
+
                 const auto num = deleteObjectCache(CONT_CALLER fileObjKey);
                 //traceW(L"cache delete num=%d", num);
             }
@@ -221,7 +221,21 @@ bool AwsS3::deleteObject(CALLER_ARG const ObjectKey& argObjKey)
         return false;
     }
 
-    // キャッシュ・メモリから削除
+    // 新規作成時に作られたローカル・ディレクトリが存在したら削除
+
+    const std::wstring localPath{ GetCacheFilePath(mCacheDataDir, argObjKey.str()) };
+
+    if (!::RemoveDirectoryW(localPath.c_str()))
+    {
+        const auto lerr = ::GetLastError();
+        if (lerr != ERROR_FILE_NOT_FOUND)
+        {
+            traceW(L"fault: DeleteFile");
+            //return false;
+        }
+    }
+
+    // キャッシュ・メモリから削除 (ディレクトリ)
 
     const auto num = deleteObjectCache(CONT_CALLER argObjKey);
     //traceW(L"cache delete num=%d", num);
@@ -230,30 +244,28 @@ bool AwsS3::deleteObject(CALLER_ARG const ObjectKey& argObjKey)
 }
 
 bool AwsS3::putObject(CALLER_ARG const ObjectKey& argObjKey,
-    const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR sourceFile /* nullable */)
+    const FSP_FSCTL_FILE_INFO& argFileInfo, const std::wstring& argFilePath)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.valid());
     APP_ASSERT(!argObjKey.isBucket());
 
-    traceW(L"argObjKey=%s, sourceFile=%s", argObjKey.c_str(), sourceFile);
+    traceW(L"argObjKey=%s, sourceFile=%s", argObjKey.c_str(), argFilePath.c_str());
 
     Aws::S3::Model::PutObjectRequest request;
     request.SetBucket(argObjKey.bucketA());
     request.SetKey(argObjKey.keyA());
 
-    if (sourceFile)
+    if (argFileInfo.FileSize > 0)
     {
         // ローカル・キャッシュの内容をアップロードする
 
-        APP_ASSERT(argObjKey.meansFile());
-
-        const Aws::String fileName{ WC2MB(sourceFile) };
+        const Aws::String filePath{ WC2MB(argFilePath) };
 
         std::shared_ptr<Aws::IOStream> inputData = Aws::MakeShared<Aws::FStream>
         (
             __FUNCTION__,
-            fileName.c_str(),
+            filePath.c_str(),
             std::ios_base::in | std::ios_base::binary
         );
 
@@ -266,20 +278,13 @@ bool AwsS3::putObject(CALLER_ARG const ObjectKey& argObjKey,
         request.SetBody(inputData);
     }
 
-    if (argObjKey.meansFile())
-    {
-        // ファイルの時のみ
-
-        request.AddMetadata("wincse-creation-time", std::to_string(argFileInfo.CreationTime).c_str());
-        //request.AddMetadata("wincse-last-access-time", std::to_string(argFileInfo.LastAccessTime).c_str());
-        request.AddMetadata("wincse-last-write-time", std::to_string(argFileInfo.LastWriteTime).c_str());
+    request.AddMetadata("wincse-creation-time", std::to_string(argFileInfo.CreationTime).c_str());
+    request.AddMetadata("wincse-last-write-time", std::to_string(argFileInfo.LastWriteTime).c_str());
 
 #if _DEBUG
-        request.AddMetadata("wincse-debug-creation-time", WinFileTime100nsToLocalTimeStringA(argFileInfo.CreationTime).c_str());
-        //request.AddMetadata("wincse-debug-last-access-time", WinFileTime100nsToLocalTimeStringA(argFileInfo.LastAccessTime).c_str());
-        request.AddMetadata("wincse-debug-last-write-time", WinFileTime100nsToLocalTimeStringA(argFileInfo.LastWriteTime).c_str());
+    request.AddMetadata("wincse-debug-creation-time", WinFileTime100nsToLocalTimeStringA(argFileInfo.CreationTime).c_str());
+    request.AddMetadata("wincse-debug-last-write-time", WinFileTime100nsToLocalTimeStringA(argFileInfo.LastWriteTime).c_str());
 #endif
-    }
 
     const auto outcome = mClient->PutObject(request);
 
@@ -289,14 +294,66 @@ bool AwsS3::putObject(CALLER_ARG const ObjectKey& argObjKey,
         return false;
     }
 
-    // キャッシュ・メモリから削除
-    //
-    // 後続の処理で DoGetSecurityByName() が呼ばれるが、上記で作成したディレクトリが
-    // キャッシュに反映されていない状態で利用されてしまうことを回避するために
-    // 事前に削除しておき、改めてキャッシュを作成させる
+    return true;
+}
 
-    const auto num = deleteObjectCache(CONT_CALLER argObjKey);
-    //traceW(L"cache delete num=%d", num);
+bool AwsS3::renameObject(CALLER_ARG WCSE::CSDeviceContext* ctx,
+    const std::wstring& argFileName, const std::wstring& argNewFileName, BOOLEAN argReplaceIfExists)
+{
+    NEW_LOG_BLOCK();
+
+    const auto localPath{ ctx->getCacheFilePath() };
+
+    FSP_FSCTL_FILE_INFO localInfo;
+    const auto ntstatus = PathToFileInfo(localPath, &localInfo);
+    if (!NT_SUCCESS(ntstatus))
+    {
+        traceW(L"fault: PathToFileInfo, localPath=%s", localPath.c_str());
+        return false;
+    }
+
+    FSP_FSCTL_FILE_INFO remoteInfo{};
+
+    if (ctx->isFile())
+    {
+        // ファイルの場合は headObject の情報が正しいので、ctx のものをそのまま利用
+
+        remoteInfo = ctx->mFileInfo;
+    }
+    else
+    {
+        // ディレクトリの場合、ListObjects() から取得した情報になるので、HeadObject により
+        // リモートの情報を取得する必要がある
+
+        const auto dirInfo{ this->apicallHeadObject(CONT_CALLER ctx->mObjKey) };
+        if (!dirInfo)
+        {
+            traceW(L"fault: apicallHeadObject");
+            return false;
+        }
+
+        remoteInfo = dirInfo->FileInfo;
+    }
+
+    APP_ASSERT(remoteInfo.CreationTime);
+
+    if (localInfo.CreationTime == remoteInfo.CreationTime &&
+        localInfo.LastWriteTime == remoteInfo.LastWriteTime &&
+        localInfo.FileSize == remoteInfo.FileSize)
+    {
+
+        // go next
+    }
+    else
+    {
+        traceW(L"no match local:remote");
+        traceW(L"localInfo:  CreationTime=%llu, LastWriteTime=%llu, FileSize=%llu", localInfo.CreationTime, localInfo.LastWriteTime, localInfo.FileSize);
+        traceW(L"remoteInfo: CreationTime=%llu, LastWriteTime=%llu, FileSize=%llu", remoteInfo.CreationTime, remoteInfo.LastWriteTime, remoteInfo.FileSize);
+
+        return false;
+    }
+
+    // ローカルにファイルが存在し、リモートと完全に一致する状況
 
     return true;
 }

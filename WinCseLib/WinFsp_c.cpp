@@ -125,6 +125,10 @@ static NTSTATUS SetVolumeLabel_(FSP_FILE_SYSTEM* FileSystem,
 
 #if !WINFSP_PASSTHROUGH
 
+NTSTATUS (WCSE::ICSDriver::*PreCreateFilesystem)(FSP_SERVICE *Service, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams);
+NTSTATUS (WCSE::ICSDriver::*OnSvcStart)(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem);
+VOID (WCSE::ICSDriver::*OnSvcStop)();
+
 NTSTATUS (WCSE::ICSDriver::*DoGetSecurityByName)(PCWSTR FileName, PUINT32 PFileAttributes, PSECURITY_DESCRIPTOR SecurityDescriptor, PSIZE_T PSecurityDescriptorSize);
 NTSTATUS (WCSE::ICSDriver::*DoCreate)(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedAccess, UINT32 FileAttributes, PSECURITY_DESCRIPTOR SecurityDescriptor, UINT64 AllocationSize, PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo);
 NTSTATUS (WCSE::ICSDriver::*DoOpen)(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedAccess, PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo);
@@ -153,6 +157,10 @@ void setupWinCseGlobal(WINCSE_IF* argWinCseIf)
     //gWinCseIf = argWinCseIf;
     gFspStats = &argWinCseIf->FspStats;
     gCSDriver = argWinCseIf->pCSDriver;
+
+    SET_METHOD_ADDR(PreCreateFilesystem);
+    SET_METHOD_ADDR(OnSvcStart);
+    SET_METHOD_ADDR(OnSvcStop);
 
     SET_METHOD_ADDR(DoGetSecurityByName);
     SET_METHOD_ADDR(DoCreate);
@@ -199,7 +207,7 @@ VOID relayNonReturnable(MethodType method, Args... args)
     {
         (gCSDriver->*method)(args...);
     }
-    catch (const WCSE::FatalError& e)
+    catch (const WCSE::FatalError&)
     {
     }
 #ifdef _RELEASE
@@ -209,13 +217,14 @@ VOID relayNonReturnable(MethodType method, Args... args)
 #endif
 }
 
-
+/*
 WCSE::ICSDriver* getCSDriver()
 {
     ::SetLastError(ERROR_SUCCESS);
 
     return gCSDriver;
 }
+*/
 
 #endif
 
@@ -343,6 +352,11 @@ static NTSTATUS Create(FSP_FILE_SYSTEM* FileSystem, PWSTR FileName, UINT32 Creat
         free(FileContext);
 
         DWORD lerr = GetLastError();
+        if (lerr == ERROR_FILE_EXISTS)
+        {
+            // https://github.com/winfsp/winfsp/issues/601
+            return STATUS_OBJECT_NAME_COLLISION;
+        }
         return FspNtStatusFromWin32(lerr);
     }
 
@@ -443,8 +457,7 @@ static NTSTATUS Overwrite(FSP_FILE_SYSTEM* FileSystem,
 #endif
 }
 
-static VOID Cleanup(FSP_FILE_SYSTEM* FileSystem,
-    PVOID FileContext, PWSTR FileName, ULONG Flags)
+static VOID Cleanup(FSP_FILE_SYSTEM* FileSystem, PVOID FileContext, PWSTR FileName, ULONG Flags)
 {
     StatsIncr(Cleanup);
 
@@ -1199,15 +1212,15 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
     }
 
 #if !WINFSP_PASSTHROUGH
-    if (!getCSDriver()->PreCreateFilesystem(Service, PassThrough, &VolumeParams))
+    Result = relayReturnable(PreCreateFilesystem, Service, PassThrough, &VolumeParams);
+    //Result = getCSDriver()->PreCreateFilesystem(Service, PassThrough, &VolumeParams);
+    if (!NT_SUCCESS(Result))
     {
         fail(L"fault: PreCreateFilesystem");
-
-        Result = STATUS_APP_INIT_FAILURE;
         goto exit;
     }
-#endif
 
+#endif
     Result = PtfsCreate(PassThrough, VolumePrefix, MountPoint, DebugFlags,
 #if !WINFSP_PASSTHROUGH
         &VolumeParams,
@@ -1220,15 +1233,15 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
     }
 
 #if !WINFSP_PASSTHROUGH
-    if (!getCSDriver()->OnSvcStart(PassThrough, Ptfs->FileSystem, Ptfs->Path))
+    Result = relayReturnable(OnSvcStart, Ptfs->Path, Ptfs->FileSystem);
+    //Result = getCSDriver()->OnSvcStart(Ptfs->Path, Ptfs->FileSystem);
+    if (!NT_SUCCESS(Result))
     {
         fail(L"fault: OnSvcStart");
-
-        Result = STATUS_APP_INIT_FAILURE;
         goto exit;
     }
-#endif
 
+#endif
     Result = FspFileSystemStartDispatcher(Ptfs->FileSystem, 0);
     if (!NT_SUCCESS(Result))
     {
@@ -1281,7 +1294,8 @@ static NTSTATUS SvcStop(FSP_SERVICE *Service)
     FspFileSystemStopDispatcher(Ptfs->FileSystem);
 
 #if !WINFSP_PASSTHROUGH
-    getCSDriver()->OnSvcStop();
+    relayNonReturnable(OnSvcStop);
+    //getCSDriver()->OnSvcStop();
 #endif
 
     PtfsDelete(Ptfs);
@@ -1327,7 +1341,11 @@ int WinFspMain(int argc, wchar_t** argv, WCHAR* progname, WINCSE_IF* argWinCseIf
 {
     PROGNAME = progname;
 
+#if WINFSP_PASSTHROUGH
+    gFspStats = &argWinCseIf->FspStats;
+#else
     setupWinCseGlobal(argWinCseIf);
+#endif
 
     if (!NT_SUCCESS(FspLoad(0)))
         return ERROR_DELAY_LOAD_FAILED;

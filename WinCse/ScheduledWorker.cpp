@@ -35,7 +35,7 @@ ScheduledWorker::~ScheduledWorker()
 	mEvent.close();
 }
 
-bool ScheduledWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem, PCWSTR PtfsPath)
+NTSTATUS ScheduledWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 {
 	NEW_LOG_BLOCK();
 	APP_ASSERT(argWorkDir);
@@ -43,7 +43,7 @@ bool ScheduledWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem,
 	if (mEvent.invalid())
 	{
 		traceW(L"mEvent is null");
-		return false;
+		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
 	const auto klassName{ getDerivedClassNamesW(this) };
@@ -71,8 +71,8 @@ bool ScheduledWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem,
 		const auto ssStr{ ss.str() };
 
 		auto h = thr.native_handle();
-		NTSTATUS ntstatus = ::SetThreadDescription(h, ssStr.c_str());
-		APP_ASSERT(NT_SUCCESS(ntstatus));
+		const auto hresult = ::SetThreadDescription(h, ssStr.c_str());
+		APP_ASSERT(SUCCEEDED(hresult));
 
 		BOOL b = ::SetThreadPriority(h, priority);
 		APP_ASSERT(b);
@@ -80,10 +80,10 @@ bool ScheduledWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem,
 		traceW(L"worker [%s] started", ssStr.c_str());
 	}
 
-	return true;
+	return STATUS_SUCCESS;
 }
 
-void ScheduledWorker::OnSvcStop()
+VOID ScheduledWorker::OnSvcStop()
 {
 	NEW_LOG_BLOCK();
 
@@ -179,6 +179,9 @@ void ScheduledWorker::listenEvent(const int threadIndex)
 					//traceW(L"%s(%d): run idle task ...", klassNameCstr, threadIndex);
 					task->run(std::wstring(task->mCaller) + L"->" + __FUNCTIONW__);
 					//traceW(L"%s(%d): run idle task done", klassNameCstr, threadIndex);
+
+					// 処理するごとに他のスレッドに回す
+					::SwitchToThread();
 				}
 				catch (const std::exception& ex)
 				{
@@ -199,7 +202,7 @@ void ScheduledWorker::listenEvent(const int threadIndex)
 // ここから下のメソッドは THREAD_SAFE マクロによる修飾が必要
 //
 static std::mutex gGuard;
-#define THREAD_SAFE() std::lock_guard<std::mutex> lock_(gGuard)
+#define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ gGuard }
 
 bool ScheduledWorker::addTypedTask(CALLER_ARG WCSE::IScheduledTask* argTask)
 {

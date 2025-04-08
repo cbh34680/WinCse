@@ -612,8 +612,8 @@ region=${region}
 
 ; The duration for retaining cache files.
 ; valid range: 1 to 10080 (1 week)
-; default: 360 (6 hours)
-#cache_file_retention_min=360
+; default: 60 (1 hours)
+#cache_file_retention_min=60
 
 ; Handle file timestamps strictly
 ; valid value: 0 or non-zero
