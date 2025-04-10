@@ -7,8 +7,7 @@
 #include "Protect.hpp"
 
 #include "ListBucketsCache.hpp"
-#include "HeadObjectCache.hpp"
-#include "ListObjectsCache.hpp"
+#include "ObjectCache.hpp"
 
 struct FileOutputParams
 {
@@ -175,6 +174,9 @@ private:
 	bool unsafeListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList /* nullable */,
 		const std::vector<std::wstring>& options);
 
+	// Upload
+	bool uploadWhenClosing(CALLER_ARG WCSE::CSDeviceContext* argCSDeviceContext, const std::wstring& localPath);
+
 	// list ŠÖ˜A
 	WCSE::DirInfoType unsafeHeadObjectWithCache(CALLER_ARG const WCSE::ObjectKey& argObjKey);
 	WCSE::DirInfoType unsafeHeadObjectWithCache_CheckDir(CALLER_ARG const WCSE::ObjectKey& argObjKey);
@@ -233,7 +235,7 @@ public:
 		const std::wstring& argFilePath) override;
 
 	bool renameObject(CALLER_ARG WCSE::CSDeviceContext* argCSDeviceContext,
-		const std::wstring& argFileName, const std::wstring& argNewFileName, BOOLEAN argReplaceIfExists) override;
+		const WCSE::ObjectKey& argNewObjKey) override;
 
 	WCSE::CSDeviceContext* create(CALLER_ARG const WCSE::ObjectKey& argObjKey,
 		UINT32 CreateOptions, UINT32 GrantedAccess, UINT32 FileAttributes) override;

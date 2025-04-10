@@ -20,8 +20,7 @@ bool AwsS3::headObject(CALLER_ARG const ObjectKey& argObjKey, FSP_FSCTL_FILE_INF
 {
     //THREAD_SAFE();
     //NEW_LOG_BLOCK();
-    APP_ASSERT(argObjKey.valid());
-    APP_ASSERT(!argObjKey.isBucket());
+    APP_ASSERT(argObjKey.isObject());
 
     //traceW(L"argObjKey=%s", argObjKey.c_str());
 
@@ -100,7 +99,7 @@ bool AwsS3::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoLis
 
     // "C:\WORK" のようにドライブ直下のディレクトリでは ".." が表示されない動作に合わせる
 
-    if (argObjKey.hasKey())
+    if (argObjKey.isObject())
     {
         const auto itParent = std::find_if(dirInfoList.begin(), dirInfoList.end(), [](const auto& dirInfo)
         {
@@ -148,7 +147,7 @@ bool AwsS3::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoLis
 
         ObjectKey searchObjKey;
 
-        if (FA_IS_DIR(dirInfo->FileInfo.FileAttributes))
+        if (FA_IS_DIRECTORY(dirInfo->FileInfo.FileAttributes))
         {
             searchObjKey = argObjKey.append(dirInfo->FileNameBuf).toDir();
         }
@@ -157,8 +156,7 @@ bool AwsS3::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoLis
             searchObjKey = argObjKey.append(dirInfo->FileNameBuf);
         }
 
-        APP_ASSERT(searchObjKey.valid());
-        APP_ASSERT(!searchObjKey.isBucket());
+        APP_ASSERT(searchObjKey.isObject());
 
         UnprotectedShare<ObjectListShare> unsafeShare(&gObjectListShare, searchObjKey.str());   // 名前への参照を登録
         {

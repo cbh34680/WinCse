@@ -342,36 +342,6 @@ std::vector<std::wstring> SplitString(const std::wstring& input, wchar_t sep, bo
 	return strs;
 }
 
-std::wstring JoinStrings(const std::vector<std::wstring>& tokens, wchar_t sep, bool ignoreEmpty)
-{
-	std::wostringstream ss;
-
-	bool first = true;
-	for (const auto& token: tokens)
-	{
-		if (ignoreEmpty)
-		{
-			if (token.empty())
-			{
-				continue;
-			}
-		}
-
-		if (first)
-		{
-			first = false;
-		}
-		else
-		{
-			ss << sep;
-		}
-
-		ss << token;
-	}
-
-	return ss.str();
-}
-
 std::wstring ToUpper(const std::wstring& input)
 {
 	std::wstring result{ input };

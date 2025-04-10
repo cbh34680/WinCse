@@ -142,7 +142,7 @@ public:
 	WINCSELIB_API BOOL setFileTime(UINT64 argCreationTime, UINT64 argLastWriteTime);
 	//WINCSELIB_API BOOL setBasicInfo(const FSP_FSCTL_FILE_INFO& fileInfo);
 	//WINCSELIB_API BOOL setBasicInfo(UINT32 argFileAttributes, UINT64 argCreationTime, UINT64 argLastWriteTime);
-	WINCSELIB_API LONGLONG getFileSize();
+	//WINCSELIB_API LONGLONG getFileSize();
 };
 
 class EventHandle : public HandleRAII<(HANDLE)NULL>
@@ -201,10 +201,14 @@ namespace WCSE {
 //
 // グローバル関数
 //
+
+WINCSELIB_API BOOL DeleteFilePassively(PCWSTR argPath);
 WINCSELIB_API std::wstring GetCacheFilePath(const std::wstring& argDir, const std::wstring& argName);
 WINCSELIB_API NTSTATUS PathToFileInfo(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo);
 WINCSELIB_API bool MkdirIfNotExists(const std::wstring& dir);
 WINCSELIB_API bool forEachFiles(const std::wstring& argDir, const std::function<void(const WIN32_FIND_DATA& wfd, const std::wstring& fullPath)>& callback);
+WINCSELIB_API bool forEachDirs(const std::wstring& argDir, const std::function<void(const WIN32_FIND_DATA& wfd, const std::wstring& fullPath)>& callback);
+
 
 WINCSELIB_API bool Base64EncodeA(const std::string& src, std::string* pDst);
 WINCSELIB_API bool Base64DecodeA(const std::string& src, std::string* pDst);
@@ -240,6 +244,7 @@ WINCSELIB_API std::wstring TimePointToLocalTimeStringW(const std::chrono::system
 WINCSELIB_API std::wstring UtcMilliToLocalTimeStringW(UINT64 milliseconds);
 WINCSELIB_API std::wstring WinFileTime100nsToLocalTimeStringW(UINT64 fileTime100ns);
 WINCSELIB_API std::string WinFileTime100nsToLocalTimeStringA(UINT64 ft100ns);
+WINCSELIB_API std::wstring WinFileTimeToLocalTimeStringW(const FILETIME &ft);
 
 WINCSELIB_API UINT64 STCTimeToUTCMilliSecW(const std::wstring& path);
 WINCSELIB_API UINT64 STCTimeToWinFileTimeW(const std::wstring& path);
@@ -256,7 +261,7 @@ WINCSELIB_API std::wstring WildcardToRegexW(const std::wstring& wildcard);
 WINCSELIB_API std::string WildcardToRegexA(const std::string& wildcard);
 
 WINCSELIB_API std::vector<std::wstring> SplitString(const std::wstring& input, wchar_t sep, bool ignoreEmpty);
-WINCSELIB_API std::wstring JoinStrings(const std::vector<std::wstring>& tokens, wchar_t sep, bool ignoreEmpty);
+//WINCSELIB_API std::wstring JoinStrings(const std::vector<std::wstring>& tokens, wchar_t sep, bool ignoreEmpty);
 WINCSELIB_API std::wstring ToUpper(const std::wstring& input);
 
 WINCSELIB_API int GetIniIntW(const std::wstring& confPath, PCWSTR argSection, PCWSTR keyName, int defaultValue, int minValue, int maxValue);
@@ -349,6 +354,39 @@ std::wstring getDerivedClassNamesW(T* baseClass)
 {
 	const std::type_info& typeInfo = typeid(*baseClass);
 	return MB2WC(typeInfo.name());
+}
+
+template <typename ContainerT, typename SeparatorT>
+std::wstring JoinStrings(const ContainerT& tokens, SeparatorT sep, bool ignoreEmpty)
+{
+	std::wstringstream ss;
+
+	bool first = true;
+	for (const auto& token: tokens)
+	{
+		if (ignoreEmpty)
+		{
+			if (token.empty())
+			{
+				continue;
+			}
+		}
+
+		if (first)
+		{
+			first = false;
+		}
+		else
+		{
+			// ss << sep だとビットシフトの可能性を考慮されコンパイルが失敗する
+
+			ss << sep;
+		}
+
+		ss << token;
+	}
+
+	return ss.str();
 }
 
 // ファイルサイズ
@@ -455,7 +493,9 @@ extern "C"
         WCSE::AbnormalEnd(__FILE__, __LINE__, __FUNCTION__, -1); \
     }
 
-#define FA_IS_DIR(fa)			((fa) & FILE_ATTRIBUTE_DIRECTORY)
+#define FA_IS_DIRECTORY(fa)		((fa) & FILE_ATTRIBUTE_DIRECTORY)
+
+#define FA_MEANS_TEMPORARY(fa)	((fa) & FILE_ATTRIBUTE_HIDDEN || (fa) & FILE_ATTRIBUTE_TEMPORARY || (fa) & FILE_ATTRIBUTE_NOT_CONTENT_INDEXED)
 
 #define BOOL_CSTRW(b)			((b) ? L"true" : L"false")
 #define BOOL_CSTRA(b)			((b) ? "true" : "false")

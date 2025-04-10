@@ -40,7 +40,7 @@ DelayedWorker::~DelayedWorker()
 	traceW(L"close event done");
 }
 
-NTSTATUS DelayedWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
+NTSTATUS DelayedWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
 {
 	NEW_LOG_BLOCK();
 	APP_ASSERT(argWorkDir);

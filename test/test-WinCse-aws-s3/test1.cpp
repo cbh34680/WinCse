@@ -45,7 +45,7 @@ static void test1_1(ICSDevice* cs)
 
             for (const auto& obj: objs)
             {
-                if (FA_IS_DIR(obj->FileInfo.FileAttributes))
+                if (FA_IS_DIRECTORY(obj->FileInfo.FileAttributes))
                 {
                     continue;
                 }

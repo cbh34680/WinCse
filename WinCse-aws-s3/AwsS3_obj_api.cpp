@@ -114,7 +114,7 @@ bool AwsS3::apicallListObjectsV2(CALLER_ARG const ObjectKey& argObjKey,
     }
 
     const auto argKeyLen = argObjKey.key().length();
-    if (argObjKey.hasKey())
+    if (argObjKey.isObject())
     {
         request.SetPrefix(argObjKey.keyA());
     }

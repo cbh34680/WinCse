@@ -1,5 +1,21 @@
 #pragma once
 
+// HeadObject, ListObjectsV2 から取得したデータをキャッシュする
+// どちらも型が異なるだけ (DirInfoType, DirInfoListType) なのでテンプレートにして
+// このファイルの最後でそれぞれの型のクラスを実体化させている
+//
+// HeadObject の場合
+//  [unordered_map]
+//      キー      値
+//      ----------------------------
+//      ObjectKey DirInfoType
+//
+// ListObjectsV2 の場合
+//  [unordered_map]
+//      キー      値
+//      ----------------------------
+//      ObjectKey DirInfoListType
+
 #include <set>
 #include <chrono>
 #include <functional>
@@ -10,6 +26,8 @@
 #if defined(THREAD_SAFE)
 #error "THREAD_SAFFE(): already defined"
 #endif
+
+// マクロにする必要性はないが、わかりやすいので
 
 #define THREAD_SAFE()       std::lock_guard<std::mutex> lock_{ mGuard }
 
@@ -252,5 +270,17 @@ public:
 #undef THREAD_SAFE
 
 #pragma warning(pop)
+
+class HeadObjectCache : public ObjectCacheTemplate<WCSE::DirInfoType>
+{
+public:
+    void report(CALLER_ARG FILE* fp);
+};
+
+class ListObjectsCache : public ObjectCacheTemplate<WCSE::DirInfoListType>
+{
+public:
+    void report(CALLER_ARG FILE* fp);
+};
 
 // EOF

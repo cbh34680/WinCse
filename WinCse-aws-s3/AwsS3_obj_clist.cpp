@@ -79,18 +79,19 @@ DirInfoType AwsS3::unsafeHeadObjectWithCache_CheckDir(CALLER_ARG const ObjectKey
     }
     else
     {
+        NEW_LOG_BLOCK();
+#if 0
         // HeadObject API の実行
         // --> ディレクトリなので、新規作成のときにしか登録されていない
 
         dirInfo = this->apicallHeadObject(CONT_CALLER argObjKey);
+#endif
         if (!dirInfo)
         {
-            NEW_LOG_BLOCK();
-
-            traceW(L"fault: apicallHeadObject");
+            //traceW(L"fault: apicallHeadObject");
 
             //
-            // 親ディレクトリの CommonPrefix でディレクトリ情報を取得
+            // 親ディレクトリの CommonPrefix からディレクトリ情報を取得
             //
 
             std::wstring parentDir;
@@ -116,7 +117,7 @@ DirInfoType AwsS3::unsafeHeadObjectWithCache_CheckDir(CALLER_ARG const ObjectKey
             {
                 std::wstring fileName{ it->FileNameBuf };
 
-                if (FA_IS_DIR(it->FileInfo.FileAttributes))
+                if (FA_IS_DIRECTORY(it->FileInfo.FileAttributes))
                 {
                     fileName += L'/';
                 }
@@ -142,7 +143,6 @@ DirInfoType AwsS3::unsafeHeadObjectWithCache_CheckDir(CALLER_ARG const ObjectKey
 
         // キャッシュにコピー
 
-        NEW_LOG_BLOCK();
         traceW(L"add argObjKey=%s", argObjKey.c_str());
 
         mHeadObjectCache.set(CONT_CALLER argObjKey, dirInfo);

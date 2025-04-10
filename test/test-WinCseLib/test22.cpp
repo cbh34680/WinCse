@@ -63,7 +63,7 @@ struct HeadObjectCache
 
 using namespace WCSE;
 
-void HeadObjectCache::report(CALLER_ARG FILE* fp)
+void HeadObjectCache::report(CALLER_ARG FILE*)
 {
 }
 

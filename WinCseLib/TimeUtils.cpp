@@ -169,6 +169,12 @@ UINT64 WinFileTimeToUtcMillis(const FILETIME &ft)
 	return (WinFileTimeToWinFileTime100ns(ft) - EPOCH_DIFFERENCE_100NS) / HUNDRED_NANOSECONDS_PER_MILLISECOND;
 }
 
+// Windows のファイル時刻をローカル時間文字列に変換
+std::wstring WinFileTimeToLocalTimeStringW(const FILETIME &ft)
+{
+	return UtcMilliToLocalTimeStringW(WinFileTimeToUtcMillis(ft));
+}
+
 } // WCSE
 
 // EOF

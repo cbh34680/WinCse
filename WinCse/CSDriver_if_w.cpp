@@ -16,7 +16,7 @@ NTSTATUS CSDriver::DoSetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize,
 	StatsIncr(DoSetFileSize);
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext && FileInfo);
-	APP_ASSERT(!FA_IS_DIR(FileContext->FileInfo.FileAttributes));		// ファイルのみ
+	APP_ASSERT(!FA_IS_DIRECTORY(FileContext->FileInfo.FileAttributes));		// ファイルのみ
 
 	traceW(L"FileName=%s, NewSize=%llu, SetAllocationSize=%s", FileContext->FileName, NewSize, BOOL_CSTRW(SetAllocationSize));
 
@@ -73,7 +73,7 @@ NTSTATUS CSDriver::DoFlush(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO* 
 	StatsIncr(DoFlush);
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext && FileInfo);
-	APP_ASSERT(!FA_IS_DIR(FileContext->FileInfo.FileAttributes));		// ファイルのみ
+	APP_ASSERT(!FA_IS_DIRECTORY(FileContext->FileInfo.FileAttributes));		// ファイルのみ
 
 	traceW(L"FileName=%s", FileContext->FileName);
 
@@ -110,7 +110,7 @@ NTSTATUS CSDriver::DoOverwrite(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttrib
 	StatsIncr(DoOverwrite);
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext && FileInfo);
-	APP_ASSERT(!FA_IS_DIR(FileContext->FileInfo.FileAttributes));		// ファイルのみ
+	APP_ASSERT(!FA_IS_DIRECTORY(FileContext->FileInfo.FileAttributes));		// ファイルのみ
 
 	traceW(L"FileName=%s, FileAttributes=%u, ReplaceFileAttributes=%s, AllocationSize=%llu",
 		FileContext->FileName, FileAttributes, BOOL_CSTRW(ReplaceFileAttributes), AllocationSize);
@@ -188,7 +188,7 @@ NTSTATUS CSDriver::DoWrite(PTFS_FILE_CONTEXT* FileContext, PVOID Buffer, UINT64 
 	StatsIncr(DoWrite);
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext && Buffer && PBytesTransferred && FileInfo);
-	APP_ASSERT(!FA_IS_DIR(FileContext->FileInfo.FileAttributes));		// ファイルのみ
+	APP_ASSERT(!FA_IS_DIRECTORY(FileContext->FileInfo.FileAttributes));		// ファイルのみ
 
 	traceW(L"FileName=%s, FileAttributes=%u, FileSize=%llu, Offset=%llu, Length=%lu, WriteToEndOfFile=%s, ConstrainedIo=%s",
 		FileContext->FileName, FileContext->FileInfo.FileAttributes, FileContext->FileInfo.FileSize,
@@ -210,12 +210,11 @@ NTSTATUS CSDriver::DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, B
 	APP_ASSERT(FileContext);
 	APP_ASSERT(!mReadonlyVolume);			// おそらくシェルで削除操作が止められている
 
-	traceW(L"FileName=%s, DeleteFile=%s", FileName, BOOL_CSTRW(argDeleteFile));
+	traceW(L"FileName=%s, argDeleteFile=%s", FileName, BOOL_CSTRW(argDeleteFile));
 
 	CSDeviceContext* ctx = (CSDeviceContext*)FileContext->UParam;
 	APP_ASSERT(ctx);
-	APP_ASSERT(ctx->mObjKey.valid());
-	APP_ASSERT(!ctx->mObjKey.isBucket());
+	APP_ASSERT(ctx->mObjKey.isObject());
 
 	if (ctx->isDir())
 	{
@@ -231,7 +230,7 @@ NTSTATUS CSDriver::DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, B
 		{
 			return wcscmp(dirInfo->FileNameBuf, L".") != 0
 				&& wcscmp(dirInfo->FileNameBuf, L"..") != 0
-				&& FA_IS_DIR(dirInfo->FileInfo.FileAttributes);
+				&& FA_IS_DIRECTORY(dirInfo->FileInfo.FileAttributes);
 		});
 
 		if (it != dirInfoList.end())
@@ -335,6 +334,8 @@ NTSTATUS CSDriver::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, UINT32 argFile
 				return ntstatus;
 			}
 
+			ctx->mFlags |= CSDCTX_FLAGS_SET_BASIC_INFO;
+
 			return STATUS_SUCCESS;
 		}
 		else
@@ -350,7 +351,7 @@ NTSTATUS CSDriver::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, UINT32 argFile
 	// 本当は STATUS_INVALID_DEVICE_REQUEST としたいが、robocopy が失敗するので
 	// 全て無視する
 
-	const bool isDir = FA_IS_DIR(FileContext->FileInfo.FileAttributes);
+	const bool isDir = FA_IS_DIRECTORY(FileContext->FileInfo.FileAttributes);
 	const HANDLE Handle = isDir ? mRefDir.handle() : mRefFile.handle();
 
 	return GetFileInfoInternal(Handle, FileInfo);
@@ -383,7 +384,39 @@ NTSTATUS CSDriver::DoRename(PTFS_FILE_CONTEXT* FileContext,
 	APP_ASSERT(ctx);
 	APP_ASSERT(ctx->mObjKey.valid());
 
-	if (!mCSDevice->renameObject(START_CALLER ctx, FileName, NewFileName, ReplaceIfExists))
+	// 変更先の名前が存在するか確認
+
+	auto newFileKey{ ObjectKey::fromWinPath(NewFileName) };
+	APP_ASSERT(newFileKey.isObject());
+
+	const auto newObjKey{ ctx->isDir() ? newFileKey.toDir() : std::move(newFileKey) };
+	APP_ASSERT(newObjKey.isObject());
+
+	traceW(L"newObjKey=%s", newObjKey.c_str());
+
+	if (mCSDevice->headObject(START_CALLER newObjKey, nullptr))
+	{
+		traceW(L"already exists: newObjKey=%s", newObjKey.c_str());
+
+		return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
+	}
+
+	// ファイル名、ディレクトリ名を反転させ名前が存在するか確認
+
+	const auto chkObjKey{ ctx->isDir() ? newObjKey.toFile() : newObjKey.toDir() };
+
+	traceW(L"chkObjKey=%s", chkObjKey.c_str());
+
+	if (mCSDevice->headObject(START_CALLER chkObjKey, nullptr))
+	{
+		traceW(L"already exists: chkObjKey=%s", chkObjKey.c_str());
+
+		return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
+	}
+
+	// リネーム処理の実行
+
+	if (!mCSDevice->renameObject(START_CALLER ctx, newObjKey))
 	{
 		traceW(L"fault: renameObject");
 

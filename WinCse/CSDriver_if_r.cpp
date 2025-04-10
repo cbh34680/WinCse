@@ -34,7 +34,7 @@ NTSTATUS CSDriver::DoGetSecurity(PTFS_FILE_CONTEXT* FileContext,
 		traceW(L"FileName=%s", FileContext->FileName);
 	}
 
-	const bool isDir = FA_IS_DIR(FileContext->FileInfo.FileAttributes);
+	const bool isDir = FA_IS_DIRECTORY(FileContext->FileInfo.FileAttributes);
 	const HANDLE Handle = isDir ? mRefDir.handle() : mRefFile.handle();
 
 	return HandleToSecurityInfo(Handle, SecurityDescriptor, PSecurityDescriptorSize);
@@ -46,7 +46,7 @@ NTSTATUS CSDriver::DoRead(PTFS_FILE_CONTEXT* FileContext,
 	StatsIncr(DoRead);
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext && Buffer && PBytesTransferred);
-	APP_ASSERT(!FA_IS_DIR(FileContext->FileInfo.FileAttributes));		// ファイルのみ
+	APP_ASSERT(!FA_IS_DIRECTORY(FileContext->FileInfo.FileAttributes));		// ファイルのみ
 
 	traceW(L"FileName=%s, FileAttributes=%u, FileSize=%llu, Offset=%llu, Length=%lu",
 		FileContext->FileName, FileContext->FileInfo.FileAttributes, FileContext->FileInfo.FileSize, Offset, Length);
@@ -63,15 +63,8 @@ NTSTATUS CSDriver::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern
 	PWSTR Marker, PVOID Buffer, ULONG BufferLength, PULONG PBytesTransferred)
 {
 	StatsIncr(DoReadDirectory);
-
-	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext && Buffer && PBytesTransferred);
-	APP_ASSERT(FA_IS_DIR(FileContext->FileInfo.FileAttributes));
-
-	if (wcscmp(FileContext->FileName, L"\\") != 0)
-	{
-		traceW(L"FileName=%s", FileContext->FileName);
-	}
+	APP_ASSERT(FA_IS_DIRECTORY(FileContext->FileInfo.FileAttributes));
 
     std::wregex re;
     std::wregex* pRe = nullptr;
@@ -95,6 +88,7 @@ NTSTATUS CSDriver::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern
 
         if (!mCSDevice->listBuckets(START_CALLER &dirInfoList))
         {
+            NEW_LOG_BLOCK();
             traceW(L"not fouund/1");
 
             return STATUS_OBJECT_NAME_INVALID;
@@ -102,9 +96,11 @@ NTSTATUS CSDriver::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern
     }
     else
     {
+        NEW_LOG_BLOCK();
+
         // "\bucket" または "\bucket\key"
 
-        const ObjectKey objKey{ ObjectKey::fromWinPath(FileName) };
+        const auto objKey{ ObjectKey::fromWinPath(FileName) };
         if (objKey.invalid())
         {
             traceW(L"invalid FileName=%s", FileName);
@@ -112,10 +108,17 @@ NTSTATUS CSDriver::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern
             return STATUS_OBJECT_NAME_INVALID;
         }
 
+        const auto listObjKey{ objKey.toDir() };
+
+        if (listObjKey.isObject())
+        {
+            traceW(L"listObjKey=%s", listObjKey.c_str());
+        }
+
         // キーが空の場合)		bucket & ""     で検索
         // キーが空でない場合)	bucket & "key/" で検索
 
-        if (!mCSDevice->listDisplayObjects(START_CALLER objKey.toDir(), &dirInfoList))
+        if (!mCSDevice->listDisplayObjects(START_CALLER listObjKey, &dirInfoList))
         {
             traceW(L"not found/2");
 

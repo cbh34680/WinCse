@@ -20,7 +20,7 @@ private:
 		std::mutex mGuard;
 		std::unordered_map<std::wstring, FSP_FSCTL_FILE_INFO> mFileInfos;
 	}
-	NewFile;
+	CreateNew;
 
 	// Worker Žæ“¾
 	std::unordered_map<std::wstring, WCSE::IWorker*> mWorkers;

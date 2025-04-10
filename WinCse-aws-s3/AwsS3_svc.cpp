@@ -134,7 +134,7 @@ NTSTATUS AwsS3::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 #ifdef _DEBUG
     forEachFiles(cacheDataDir, [this, &LOG_BLOCK()](const auto& wfd, const auto& fullPath)
     {
-        APP_ASSERT(!FA_IS_DIR(wfd.dwFileAttributes));
+        APP_ASSERT(!FA_IS_DIRECTORY(wfd.dwFileAttributes));
 
         traceW(L"cache file: [%s]", fullPath.c_str());
     });
@@ -524,8 +524,8 @@ void AwsS3::notifListener()
             {
                 clearListBucketsCache(START_CALLER0);
                 clearObjectCache(START_CALLER0);
-                onIdle(START_CALLER0);
                 onTimer(START_CALLER0);
+                onIdle(START_CALLER0);
 
                 //reloadListBucketsCache(START_CALLER std::chrono::system_clock::now());
 

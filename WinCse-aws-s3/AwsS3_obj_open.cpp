@@ -121,7 +121,7 @@ CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
     //     反映されない状態になってしまう
 
     const auto num = deleteObjectCache(CONT_CALLER argObjKey);
-    //traceW(L"cache delete num=%d", num);
+    traceW(L"cache delete num=%d, argObjKey=%s", num, argObjKey.c_str());
 
     return ctx;
 }
@@ -142,6 +142,77 @@ CSDeviceContext* AwsS3::open(CALLER_ARG const ObjectKey& argObjKey,
     return ctx;
 }
 
+bool AwsS3::uploadWhenClosing(CALLER_ARG WCSE::CSDeviceContext* ctx, const std::wstring& localPath)
+{
+    NEW_LOG_BLOCK();
+
+    FSP_FSCTL_FILE_INFO fileInfo{};
+
+    if (ctx->isDir())
+    {
+        // ディレクトリの場合は create のときの情報をそのまま転記
+
+        traceW(L"directory");
+
+        fileInfo = ctx->mFileInfo;
+    }
+    else if (ctx->isFile())
+    {
+        APP_ASSERT(ctx->mFile.valid());
+        APP_ASSERT(ctx->mObjKey.meansFile());
+
+        traceW(L"valid file");
+
+        // 属性情報を取得するため、ファイルを閉じる前に flush する
+
+        if (!::FlushFileBuffers(ctx->mFile.handle()))
+        {
+            const auto lerr = ::GetLastError();
+
+            traceW(L"fault: FlushFileBuffers, lerr=%lu", lerr);
+            return false;
+        }
+
+        const auto ntstatus = GetFileInfoInternal(ctx->mFile.handle(), &fileInfo);
+        if (!NT_SUCCESS(ntstatus))
+        {
+            traceW(L"fault: GetFileInfoInternal");
+            return false;
+        }
+
+        // 閉じておかないと putObject() にある Aws::FStream が失敗する
+
+        ctx->mFile.close();
+    }
+
+    // アップロード
+
+    traceW(L"putObject mObjKey=%s, localPath=%s", ctx->mObjKey.c_str(), localPath.c_str());
+
+    if (!this->putObject(CONT_CALLER ctx->mObjKey, fileInfo, localPath))
+    {
+        traceW(L"fault: putObject");
+        return false;
+    }
+
+    return true;
+}
+
+static std::wstring CsdCtxFlagsStr(uint32_t flags)
+{
+    std::list<std::wstring> strs;
+
+    if (flags & CSDCTX_FLAGS_MODIFY)            strs.emplace_back(L"modify");
+    if (flags & CSDCTX_FLAGS_READ)              strs.emplace_back(L"read");
+    if (flags & CSDCTX_FLAGS_M_CREATE)          strs.emplace_back(L"create");
+    if (flags & CSDCTX_FLAGS_M_WRITE)           strs.emplace_back(L"write");
+    if (flags & CSDCTX_FLAGS_M_OVERWRITE)       strs.emplace_back(L"overwrite");
+    if (flags & CSDCTX_FLAGS_M_SET_BASIC_INFO)  strs.emplace_back(L"set_basic_info");
+    if (flags & CSDCTX_FLAGS_M_SET_FILE_SIZE)   strs.emplace_back(L"set_file_size");
+
+    return JoinStrings(strs, L", ", false);
+}
+
 void AwsS3::close(CALLER_ARG WCSE::CSDeviceContext* ctx)
 {
     StatsIncr(close);
@@ -150,90 +221,31 @@ void AwsS3::close(CALLER_ARG WCSE::CSDeviceContext* ctx)
 
     //traceW(L"close mObjKey=%s", ctx->mObjKey.c_str());
 
-    if (ctx->mFlags & CSDCTX_FLAGS_MODIFY)
+    if (!(ctx->mFlags & CSDCTX_FLAGS_MODIFY))
     {
-        // キャッシュ・ファイル名
+        return;
+    }
 
-        const std::wstring localPath{ ctx->getCacheFilePath() };
+    traceW(L"mFlage=%s", CsdCtxFlagsStr(ctx->mFlags).c_str());
 
-        FSP_FSCTL_FILE_INFO fileInfo{};
+    // キャッシュ・ファイル名
 
-        if (ctx->isDir())
-        {
-            traceW(L"directory");
+    const std::wstring localPath{ ctx->getCacheFilePath() };
 
-            // ディレクトリの場合は create のときの情報をそのまま転記
+    traceW(L"uploadWhenClosing mObjKey=%s, localPath=%s", ctx->mObjKey.c_str(), localPath.c_str());
 
-            fileInfo = ctx->mFileInfo;
-        }
-        else if (ctx->isFile())
-        {
-            APP_ASSERT(ctx->mObjKey.meansFile());
+    // ファイル・アップロード
 
-            if (ctx->mFile.invalid())
-            {
-                // 一時ファイルなのか、excel を開いた時の "~$Filename.xlsx" のような
-                // ファイル名のときに invalid となっているので、そのときは無視
+    if (!this->uploadWhenClosing(CONT_CALLER ctx, localPath))
+    {
+        traceW(L"fault: uploadWhenClosing");
+        return;
+    }
 
-                return;
-            }
+    // (config の設定により)アップロードしたファイルを削除する
 
-            traceW(L"valid file");
-
-            // 属性情報を取得するため、ファイルを閉じる前に flush する
-
-            if (!::FlushFileBuffers(ctx->mFile.handle()))
-            {
-                APP_ASSERT(0);
-
-                const auto lerr = ::GetLastError();
-
-                traceW(L"fault: FlushFileBuffers, lerr=%lu", lerr);
-                return;
-            }
-
-            const auto ntstatus = GetFileInfoInternal(ctx->mFile.handle(), &fileInfo);
-            if (!NT_SUCCESS(ntstatus))
-            {
-                traceW(L"fault: GetFileInfoInternal");
-                return;
-            }
-
-            // 閉じておかないと putObject() にある Aws::FStream が失敗する
-
-            ctx->mFile.close();
-        }
-
-        if (fileInfo.FileSize < FILESIZE_1GiB * 5)
-        {
-            if (!this->putObject(CONT_CALLER ctx->mObjKey, fileInfo, localPath))
-            {
-                traceW(L"fault: putObject");
-            }
-        }
-        else
-        {
-            // TODO: マルチパート・アップロードの実装が必要
-
-            traceW(L"fault: too big");
-        }
-
-        // キャッシュ・メモリから削除
-        //
-        // 上記で作成したディレクトリがキャッシュに反映されていない状態で
-        // 利用されてしまうことを回避するために事前に削除しておき、改めてキャッシュを作成させる
-
-        const auto num = deleteObjectCache(CONT_CALLER ctx->mObjKey);
-        //traceW(L"cache delete num=%d", num);
-
-        // メモリ・キャッシュが削除されているので、改めて取得
-        // --> 必須ではないが、作成直後に属性が参照されることに対応
-
-        if (!headObject(CONT_CALLER ctx->mObjKey, nullptr))
-        {
-            traceW(L"fault: headObject");
-        }
-
+    if (mConfig.deleteAfterUpload)
+    {
         if (ctx->isDir())
         {
             // ここを通過するのは新規作成時のみであり、空のディレクトリは
@@ -241,20 +253,17 @@ void AwsS3::close(CALLER_ARG WCSE::CSDeviceContext* ctx)
         }
         else if (ctx->isFile())
         {
-            // アップロードしたファイルを削除
+            // ファイルを削除
 
-            if (mConfig.deleteAfterUpload)
+            traceW(L"delete local cache: %s", localPath.c_str());
+
+            if (!::DeleteFileW(localPath.c_str()))
             {
-                traceW(L"delete local cache: %s", localPath.c_str());
-
-                if (!::DeleteFile(localPath.c_str()))
-                {
-                    const auto lerr = ::GetLastError();
-                    traceW(L"fault: DeleteFile lerr=%lu", lerr);
-                }
-
-                //traceW(L"success");
+                const auto lerr = ::GetLastError();
+                traceW(L"fault: DeleteFileW, lerr=%lu", lerr);
             }
+
+            //traceW(L"success");
         }
     }
 }

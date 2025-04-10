@@ -10,6 +10,7 @@
 #include <sstream>
 #include <deque>
 #include <bcrypt.h>
+#include <filesystem>
 
 using namespace WCSE;
 using namespace std;
@@ -303,8 +304,8 @@ void test8()
         std::wcout << BOOL_CSTRW(objKey.valid());
         std::wcout << std::endl;
 
-        std::wcout << L"hasKey: ";
-        std::wcout << BOOL_CSTRW(objKey.hasKey());
+        std::wcout << L"isObject: ";
+        std::wcout << BOOL_CSTRW(objKey.isObject());
         std::wcout << std::endl;
 
         std::wcout << L"bucket: ";
@@ -372,8 +373,8 @@ void test9()
         std::wcout << BOOL_CSTRW(objKey.valid());
         std::wcout << std::endl;
 
-        std::wcout << L"hasKey: ";
-        std::wcout << BOOL_CSTRW(objKey.hasKey());
+        std::wcout << L"isObject: ";
+        std::wcout << BOOL_CSTRW(objKey.isObject());
         std::wcout << std::endl;
 
         std::wcout << L"bucket: ";
@@ -822,8 +823,136 @@ void test23()
     std::wstring filename;
 
     const auto r = SplitPath(g.str(), &parentDir, &filename);
+    std::wcout << r << std::endl;
 
     std::cout << "done." << std::endl;
+}
+
+void test24()
+{
+    wchar_t path[MAX_PATH];
+    GetCurrentDirectoryW(_countof(path), path);
+    wcout << path << endl;
+
+    HANDLE h = ::CreateFileW(L"aa.txt", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+    _ASSERT(h != INVALID_HANDLE_VALUE);
+
+    BOOL b = ::DeleteFileW(L"aa.txt");
+    std::cout << (b ? "true" : "false") << std::endl;
+    std::cout << ::GetLastError() << std::endl;
+
+    b = ::WriteFile(h, "aaa", 3, NULL, NULL);
+    std::cout << (b ? "true" : "false") << std::endl;
+    std::cout << ::GetLastError() << std::endl;
+
+    ::CloseHandle(h);
+}
+
+void test25()
+{
+    wchar_t path[MAX_PATH];
+    GetCurrentDirectoryW(_countof(path), path);
+    wcout << path << endl;
+
+    HANDLE h = ::CreateFileW(L"aa.txt", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+    _ASSERT(h != INVALID_HANDLE_VALUE);
+
+    BOOL b = DeleteFilePassively(L"aa.txt");
+    std::cout << (b ? "true" : "false") << std::endl;
+    std::cout << ::GetLastError() << std::endl;
+
+    /*
+    std::error_code ec;
+    std::filesystem::remove("aa.txt", ec);
+    std::cout << ec << std::endl;
+    std::cout << ::GetLastError() << std::endl;
+    */
+
+    b = ::WriteFile(h, "aaa", 3, NULL, NULL);
+    std::cout << (b ? "true" : "false") << std::endl;
+    std::cout << ::GetLastError() << std::endl;
+
+    ::CloseHandle(h);
+
+    b = DeleteFilePassively(L"aa.txt");
+    std::cout << (b ? "true" : "false") << std::endl;
+    std::cout << ::GetLastError() << std::endl;
+}
+
+void test26()
+{
+    forEachFiles(L"..\\..", [](const auto&, const auto& fullPath)
+    {
+        std::wcout << fullPath << std::endl;
+    });
+
+    forEachDirs(L"..\\..", [](const auto&, const auto& fullPath)
+    {
+        std::wcout << fullPath << std::endl;
+    });
+}
+
+void test27()
+{
+    std::error_code ec;
+
+    std::filesystem::create_directory("emptydir", ec);
+    std::cout << ::GetLastError() << std::endl;
+    std::cout << ec << std::endl;
+    std::cout << ec.message() << std::endl;
+    std::cout << !ec << std::endl;
+
+    std::filesystem::remove("emptydir", ec);
+    std::cout << ::GetLastError() << std::endl;
+    std::cout << ec << std::endl;
+    std::cout << ec.message() << std::endl;
+    std::cout << !ec << std::endl;
+
+    std::filesystem::remove("not-emptydir", ec);
+    std::cout << ::GetLastError() << std::endl;
+    std::cout << ec << std::endl;
+    std::cout << ec.message() << std::endl;
+    std::cout << !ec << std::endl;
+
+    if (ec)
+    {
+        std::cout << "err" << std::endl;
+    }
+}
+
+template <typename Container>
+std::wstring t28JoinStrings(const Container& tokens, wchar_t sep, bool ignoreEmpty)
+{
+    std::wostringstream ss;
+    bool first = true;
+
+    for (const auto& token : tokens)
+    {
+        if (ignoreEmpty && token.empty()) {
+            continue;
+        }
+
+        if (!first) {
+            ss << sep;
+        }
+        first = false;
+
+        ss << token;
+    }
+
+    return ss.str();
+}
+
+void test28()
+{
+    std::vector<std::wstring> vec = {L"りんご", L"", L"バナナ"};
+
+    std::wcout << t28JoinStrings(vec, L',', false) << std::endl;
+    std::wcout << t28JoinStrings(vec, L',', true) << std::endl;
 }
 
 int main()
@@ -866,7 +995,14 @@ int main()
     int test22();
     //test22();
 
-    test23();
+    //test23();
+    //test24();
+    //test25();
+
+    //test26();
+    //test27();
+
+    test28();
 
     return EXIT_SUCCESS;
 }

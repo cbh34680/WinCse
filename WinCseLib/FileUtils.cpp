@@ -7,6 +7,21 @@
 
 namespace WCSE {
 
+BOOL DeleteFilePassively(PCWSTR argPath)
+{
+	// 開いているファイル・ハンドルがない状態の時に削除する
+
+	HANDLE handle = ::CreateFile(argPath, 0, 0, NULL, OPEN_EXISTING, FILE_FLAG_DELETE_ON_CLOSE, NULL);
+	if (handle == INVALID_HANDLE_VALUE)
+	{
+		return FALSE;
+	}
+
+	::CloseHandle(handle);
+
+	return TRUE;
+}
+
 std::wstring GetCacheFilePath(const std::wstring& argDir, const std::wstring& argName)
 {
 	std::wstring nameSha256;
@@ -121,10 +136,10 @@ bool MkdirIfNotExists(const std::wstring& arg)
 
 bool forEachFiles(const std::wstring& argDir, const std::function<void(const WIN32_FIND_DATA& wfd, const std::wstring& fullPath)>& callback)
 {
-	WIN32_FIND_DATA wfd = {};
-	HANDLE Handle = ::FindFirstFileW((argDir + L"\\*").c_str(), &wfd);
+	const auto dir{ std::filesystem::absolute(argDir) };
 
-	const std::filesystem::path dir{ argDir };
+	WIN32_FIND_DATA wfd;
+	HANDLE Handle = ::FindFirstFileW((dir.wstring() + L"\\*").c_str(), &wfd);
 
 	if (Handle == INVALID_HANDLE_VALUE)
 	{
@@ -138,9 +153,9 @@ bool forEachFiles(const std::wstring& argDir, const std::function<void(const WIN
 			continue;
 		}
 
-		const std::filesystem::path curPath{ dir / wfd.cFileName };
+		const auto curPath{ dir / wfd.cFileName };
 
-		if (FA_IS_DIR(wfd.dwFileAttributes))
+		if (FA_IS_DIRECTORY(wfd.dwFileAttributes))
 		{
 			if (!forEachFiles(curPath, callback))
 			{
@@ -149,6 +164,44 @@ bool forEachFiles(const std::wstring& argDir, const std::function<void(const WIN
 		}
 		else
 		{
+			callback(wfd, curPath.wstring());
+		}
+	}
+	while (::FindNextFile(Handle, &wfd) != 0);
+
+	::FindClose(Handle);
+
+	return true;
+}
+
+bool forEachDirs(const std::wstring& argDir, const std::function<void(const WIN32_FIND_DATA& wfd, const std::wstring& fullPath)>& callback)
+{
+	const auto dir{ std::filesystem::absolute(argDir) };
+
+	WIN32_FIND_DATA wfd;
+	HANDLE Handle = ::FindFirstFileW((dir.wstring() + L"\\*").c_str(), &wfd);
+
+	if (Handle == INVALID_HANDLE_VALUE)
+	{
+		return false;
+	}
+
+	do
+	{
+		if (wcscmp(wfd.cFileName, L".") == 0 || wcscmp(wfd.cFileName, L"..") == 0)
+		{
+			continue;
+		}
+
+		const auto curPath{ dir / wfd.cFileName };
+
+		if (FA_IS_DIRECTORY(wfd.dwFileAttributes))
+		{
+			if (!forEachDirs(curPath, callback))
+			{
+				return false;
+			}
+
 			callback(wfd, curPath.wstring());
 		}
 	}

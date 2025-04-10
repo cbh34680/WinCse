@@ -34,7 +34,7 @@ struct TimerTask : public IScheduledTask
 
     TimerTask(AwsS3* argAwsS3) : mAwsS3(argAwsS3) { }
 
-    bool shouldRun(int i) const noexcept override
+    bool shouldRun(int) const noexcept override
     {
         // 1 分間隔で run() を実行
 
@@ -107,23 +107,19 @@ void AwsS3::onIdle(CALLER_ARG0)
     const UINT64 nowMillis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
     const int cacheFileRetentionMin = mConfig.cacheFileRetentionMin;
 
-    //forEachFiles(mCacheDataDir, [this, &LOG_BLOCK(), nowMillis, cacheFileRetentionMin](const auto& wfd, const auto& fullPath)
     forEachFiles(mCacheDataDir, [this, nowMillis, cacheFileRetentionMin](const auto& wfd, const auto& fullPath)
     {
-        APP_ASSERT(!FA_IS_DIR(wfd.dwFileAttributes));
-
-        const auto lastAccessTime = WinFileTimeToUtcMillis(wfd.ftLastAccessTime);
-        const auto diffMillis = nowMillis - lastAccessTime;
-
-        //traceW(L"cache file=%s nowMillis=%llu lastAccessTime=%llu diffMillis=%llu cacheFileRetentionMin=%d", wfd.cFileName, nowMillis, lastAccessTime, diffMillis, cacheFileRetentionMin);
+        const auto lastWriteTime = WinFileTimeToUtcMillis(wfd.ftLastWriteTime);
+        const auto diffMillis = nowMillis - lastWriteTime;
 
         if (diffMillis > (TIMEMILLIS_1MINull * cacheFileRetentionMin))
         {
             NEW_LOG_BLOCK();
 
-            traceW(L"cache file=%s nowMillis=%llu lastAccessTime=%llu diffMillis=%llu cacheFileRetentionMin=%d", wfd.cFileName, nowMillis, lastAccessTime, diffMillis, cacheFileRetentionMin);
+            traceW(L"cache file=%s nowMillis=%llu lastWriteTime=%llu diffMillis=%llu cacheFileRetentionMin=%d",
+                wfd.cFileName, nowMillis, lastWriteTime, diffMillis, cacheFileRetentionMin);
 
-            if (::DeleteFile(fullPath.c_str()))
+            if (::DeleteFilePassively(fullPath.c_str()))
             {
                 traceW(L"--> Removed");
             }
@@ -133,11 +129,39 @@ void AwsS3::onIdle(CALLER_ARG0)
                 traceW(L"--> Remove error, lerr=%lu", lerr);
             }
         }
-        else
+    });
+
+    // ファイル・キャッシュのディレクトリ
+    // 上記でファイルが削除され、空になったディレクトリは削除
+
+    forEachDirs(mCacheDataDir, [this, nowMillis, cacheFileRetentionMin](const auto& wfd, const auto& fullPath)
+    {
+        const auto lastWriteTime = WinFileTimeToUtcMillis(wfd.ftLastWriteTime);
+        const auto diffMillis = nowMillis - lastWriteTime;
+
+        if (diffMillis > (TIMEMILLIS_1MINull * cacheFileRetentionMin))
         {
-            //traceW(L"--> Not necessary");
+            NEW_LOG_BLOCK();
+
+            traceW(L"cache dir=%s nowMillis=%llu lastWriteTime=%llu diffMillis=%llu cacheFileRetentionMin=%d",
+                wfd.cFileName, nowMillis, lastWriteTime, diffMillis, cacheFileRetentionMin);
+
+            std::error_code ec;
+            std::filesystem::remove(fullPath, ec);
+
+            if (ec)
+            {
+                const auto lerr = ::GetLastError();
+
+                traceW(L"--> Remove error, lerr=%lu", lerr);
+            }
+            else
+            {
+               traceW(L"--> Removed");
+            }
         }
     });
+
 
     //traceW(L"done.");
 }

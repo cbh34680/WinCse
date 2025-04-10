@@ -38,7 +38,7 @@ NTSTATUS AwsS3::prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, UINT64 argO
                 return ntstatus;
             }
 
-            //traceW(L"needDownload: %s", BOOL_CSTRW(needDownload));
+            traceW(L"needDownload: %s", BOOL_CSTRW(needDownload));
 
             if (!needDownload)
             {

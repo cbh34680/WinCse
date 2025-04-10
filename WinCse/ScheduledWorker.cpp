@@ -35,7 +35,7 @@ ScheduledWorker::~ScheduledWorker()
 	mEvent.close();
 }
 
-NTSTATUS ScheduledWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
+NTSTATUS ScheduledWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
 {
 	NEW_LOG_BLOCK();
 	APP_ASSERT(argWorkDir);

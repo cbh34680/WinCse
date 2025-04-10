@@ -79,10 +79,13 @@ public:
 
 	bool valid() const noexcept { return mHasBucket; }
 	bool invalid() const noexcept { return !mHasBucket; }
-	bool hasKey() const noexcept { return mHasKey; }
+
 	bool isBucket() const noexcept { return mHasBucket && !mHasKey; }
+	bool isObject() const noexcept { return mHasBucket && mHasKey; }
+
 	const std::wstring& str() const noexcept { return mBucketKey; }
 	PCWSTR c_str() const noexcept { return mBucketKey.c_str(); }
+
 	bool meansDir() const noexcept { return mMeansDir; }
 	bool meansFile() const noexcept { return mMeansFile; }
 
@@ -125,12 +128,20 @@ struct CSDeviceContext
 	virtual ~CSDeviceContext() = default;
 };
 
-constexpr uint32_t CSDCTX_FLAGS_MODIFY			= 1;
-constexpr uint32_t CSDCTX_FLAGS_READ			= 2;
-constexpr uint32_t CSDCTX_FLAGS_CREATE			= CSDCTX_FLAGS_MODIFY | (0x0100 << 0);
-constexpr uint32_t CSDCTX_FLAGS_WRITE			= CSDCTX_FLAGS_MODIFY | (0x0100 << 1);
-constexpr uint32_t CSDCTX_FLAGS_OVERWRITE		= CSDCTX_FLAGS_MODIFY | (0x0100 << 2);
-constexpr uint32_t CSDCTX_FLAGS_SET_FILE_SIZE	= CSDCTX_FLAGS_MODIFY | (0x0100 << 4);
+constexpr uint32_t CSDCTX_FLAGS_MODIFY				= 1;
+constexpr uint32_t CSDCTX_FLAGS_READ				= 2;
+
+constexpr uint32_t CSDCTX_FLAGS_M_CREATE			= 0x0100;
+constexpr uint32_t CSDCTX_FLAGS_M_WRITE				= CSDCTX_FLAGS_M_CREATE << 1;
+constexpr uint32_t CSDCTX_FLAGS_M_OVERWRITE			= CSDCTX_FLAGS_M_CREATE << 2;
+constexpr uint32_t CSDCTX_FLAGS_M_SET_BASIC_INFO	= CSDCTX_FLAGS_M_CREATE << 4;
+constexpr uint32_t CSDCTX_FLAGS_M_SET_FILE_SIZE		= CSDCTX_FLAGS_M_CREATE << 8;
+
+constexpr uint32_t CSDCTX_FLAGS_CREATE				= CSDCTX_FLAGS_MODIFY | CSDCTX_FLAGS_M_CREATE;
+constexpr uint32_t CSDCTX_FLAGS_WRITE				= CSDCTX_FLAGS_MODIFY | CSDCTX_FLAGS_M_WRITE;
+constexpr uint32_t CSDCTX_FLAGS_OVERWRITE			= CSDCTX_FLAGS_MODIFY | CSDCTX_FLAGS_M_OVERWRITE;
+constexpr uint32_t CSDCTX_FLAGS_SET_BASIC_INFO		= CSDCTX_FLAGS_MODIFY | CSDCTX_FLAGS_M_SET_BASIC_INFO;
+constexpr uint32_t CSDCTX_FLAGS_SET_FILE_SIZE		= CSDCTX_FLAGS_MODIFY | CSDCTX_FLAGS_M_SET_FILE_SIZE;
 
 struct ICSDevice : public ICSService
 {
@@ -170,13 +181,13 @@ struct ICSDevice : public ICSService
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred) = 0;
 
 	virtual NTSTATUS writeObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
-		PVOID Buffer, UINT64 Offset, ULONG Length, BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
-		PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO* FileInfo) = 0;
+		PVOID Buffer, UINT64 Offset, ULONG Length, BOOLEAN WriteToEndOfFile,
+		BOOLEAN ConstrainedIo, PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO* FileInfo) = 0;
 
 	virtual bool deleteObject(CALLER_ARG const ObjectKey& argObjKey) = 0;
 
 	virtual bool renameObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
-		const std::wstring& argFileName, const std::wstring& argNewFileName, BOOLEAN argReplaceIfExists) = 0;
+		const ObjectKey& argNewObjKey) = 0;
 
 	virtual bool putObject(CALLER_ARG const ObjectKey& argObjKey,
 		const FSP_FSCTL_FILE_INFO& argFileInfo,

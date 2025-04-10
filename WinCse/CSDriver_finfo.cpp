@@ -26,25 +26,31 @@ NTSTATUS CSDriver::getFileInfoByFileName(CALLER_ARG PCWSTR fileName,
 			return STATUS_OBJECT_NAME_INVALID;
 		}
 
-		if (objKey.hasKey())
+		if (objKey.isObject())
 		{
 			{
 				// 新規作成時はまだストレージに存在しない状態なので、メモリ操作により
 				// 問い合わせに回答する
 
-				std::lock_guard lock_(NewFile.mGuard);
+				std::lock_guard lock_(CreateNew.mGuard);
 
-				const auto it = NewFile.mFileInfos.find(fileName);
-				if (it != NewFile.mFileInfos.end())
+				const auto it = CreateNew.mFileInfos.find(fileName);
+				if (it != CreateNew.mFileInfos.end())
 				{
+					NEW_LOG_BLOCK();
+
 					*pFileInfo = it->second;
 
-					if (FA_IS_DIR(it->second.FileAttributes))
+					if (FA_IS_DIRECTORY(it->second.FileAttributes))
 					{
+						traceW(L"found: CreateNew=%s [DIRECTORY]", fileName);
+
 						*pFileNameType = FileNameType::DirectoryObject;
 					}
 					else
 					{
+						traceW(L"found: CreateNew=%s [FILE]", fileName);
+
 						*pFileNameType = FileNameType::FileObject;
 					}
 

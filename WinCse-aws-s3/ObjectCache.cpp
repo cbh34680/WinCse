@@ -1,6 +1,5 @@
 #include "WinCseLib.h"
-#include "HeadObjectCache.hpp"
-#include "ListObjectsCache.hpp"
+#include "ObjectCache.hpp"
 
 using namespace WCSE;
 

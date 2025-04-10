@@ -39,6 +39,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test-aws-sdk-cpp", "test\te
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test-RandomIO", "test\test-RandomIO\test-RandomIO.vcxproj", "{2723CEDF-8858-4D13-BCB7-5A1CF1799CD2}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "util-GetBasicInfo", "util\util-GetBasicInfo\util-GetBasicInfo.vcxproj", "{8719A75B-DA46-4388-A8A5-0F95550BA003}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -181,6 +183,18 @@ Global
 		{2723CEDF-8858-4D13-BCB7-5A1CF1799CD2}.Release|x64.Build.0 = Release|x64
 		{2723CEDF-8858-4D13-BCB7-5A1CF1799CD2}.Release|x86.ActiveCfg = Release|Win32
 		{2723CEDF-8858-4D13-BCB7-5A1CF1799CD2}.Release|x86.Build.0 = Release|Win32
+		{8719A75B-DA46-4388-A8A5-0F95550BA003}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{8719A75B-DA46-4388-A8A5-0F95550BA003}.Debug|Any CPU.Build.0 = Debug|x64
+		{8719A75B-DA46-4388-A8A5-0F95550BA003}.Debug|x64.ActiveCfg = Debug|x64
+		{8719A75B-DA46-4388-A8A5-0F95550BA003}.Debug|x64.Build.0 = Debug|x64
+		{8719A75B-DA46-4388-A8A5-0F95550BA003}.Debug|x86.ActiveCfg = Debug|Win32
+		{8719A75B-DA46-4388-A8A5-0F95550BA003}.Debug|x86.Build.0 = Debug|Win32
+		{8719A75B-DA46-4388-A8A5-0F95550BA003}.Release|Any CPU.ActiveCfg = Release|x64
+		{8719A75B-DA46-4388-A8A5-0F95550BA003}.Release|Any CPU.Build.0 = Release|x64
+		{8719A75B-DA46-4388-A8A5-0F95550BA003}.Release|x64.ActiveCfg = Release|x64
+		{8719A75B-DA46-4388-A8A5-0F95550BA003}.Release|x64.Build.0 = Release|x64
+		{8719A75B-DA46-4388-A8A5-0F95550BA003}.Release|x86.ActiveCfg = Release|Win32
+		{8719A75B-DA46-4388-A8A5-0F95550BA003}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

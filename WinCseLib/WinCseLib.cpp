@@ -593,13 +593,13 @@ CSDeviceContext::CSDeviceContext(const std::wstring& argCacheDataDir,
 	:
 	mCacheDataDir(argCacheDataDir),
 	mFileInfo(argFileInfo),
-	mObjKey(FA_IS_DIR(argFileInfo.FileAttributes) ? argObjKey.toDir() : argObjKey)
+	mObjKey(FA_IS_DIRECTORY(argFileInfo.FileAttributes) ? argObjKey.toDir() : argObjKey)
 {
 }
 
 bool CSDeviceContext::isDir() const noexcept
 {
-	return FA_IS_DIR(mFileInfo.FileAttributes);
+	return FA_IS_DIRECTORY(mFileInfo.FileAttributes);
 }
 
 std::wstring CSDeviceContext::getCacheFilePath() const
@@ -659,7 +659,6 @@ BOOL FileHandle::setBasicInfo(UINT32 argFileAttributes, UINT64 argCreationTime, 
 	return ::SetFileInformationByHandle(mHandle,
 		FileBasicInfo, &BasicInfo, sizeof BasicInfo);
 }
-*/
 
 LONGLONG FileHandle::getFileSize()
 {
@@ -674,6 +673,7 @@ LONGLONG FileHandle::getFileSize()
 
 	return fileSize.QuadPart;
 }
+*/
 
 //
 // LogBlock

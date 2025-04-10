@@ -20,6 +20,12 @@ NTSTATUS CSDriver::DoCreate(PCWSTR FileName,
 	traceW(L"FileName=%s, CreateOptions=%u, GrantedAccess=%u, FileAttributes=%u, SecurityDescriptor=%p, AllocationSize=%llu, PFileContext=%p, FileInfo=%p",
 		FileName, CreateOptions, GrantedAccess, FileAttributes, SecurityDescriptor, AllocationSize, PFileContext, FileInfo);
 
+	if (FA_MEANS_TEMPORARY(FileAttributes))
+	{
+		traceW(L"Deny opening temporary files");
+		return FspNtStatusFromWin32(ERROR_WRITE_PROTECT);
+	}
+
 	if (this->shouldIgnoreFileName(FileName))
 	{
 		// "desktop.ini" などは無視させる
@@ -49,7 +55,7 @@ NTSTATUS CSDriver::DoCreate(PCWSTR FileName,
 		return STATUS_OBJECT_NAME_COLLISION;				// https://github.com/winfsp/winfsp/issues/601
 	}
 
-	APP_ASSERT(objKey.hasKey());
+	APP_ASSERT(objKey.isObject());
 
 	if (CreateOptions & FILE_DIRECTORY_FILE)
 	{
@@ -126,9 +132,11 @@ NTSTATUS CSDriver::DoCreate(PCWSTR FileName,
 	FileContext->FileInfo = ctx->mFileInfo;
 
 	{
-		std::lock_guard lock_{ NewFile.mGuard };
+		std::lock_guard lock_{ CreateNew.mGuard };
 
-		NewFile.mFileInfos[FileName] = ctx->mFileInfo;
+		traceW(L"add CreateNew=%s", FileName);
+
+		CreateNew.mFileInfos[FileName] = ctx->mFileInfo;
 	}
 
 	ctx->mFlags |= CSDCTX_FLAGS_CREATE;
@@ -221,7 +229,7 @@ NTSTATUS CSDriver::DoOpen(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedA
 			return FspNtStatusFromWin32(ERROR_IO_DEVICE);
 		}
 
-		if (!ctx->mObjKey.isBucket())
+		if (ctx->mObjKey.isObject())
 		{
 			traceW(L"FileName=%s, CreateOptions=%u, GrantedAccess=%u, PFileContext=%p, FileInfo=%p", FileName, CreateOptions, GrantedAccess, PFileContext, FileInfo);
 		}
@@ -244,17 +252,17 @@ NTSTATUS CSDriver::DoOpen(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedA
 VOID CSDriver::DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags)
 {
 	StatsIncr(DoCleanup);
-
-	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext);
 
 	CSDeviceContext* ctx = (CSDeviceContext*)FileContext->UParam;
 	if (ctx)
 	{
-		traceW(L"FileName=%s, Flags=%lu", FileName, Flags);
-
 		if (Flags & FspCleanupDelete)
 		{
+			NEW_LOG_BLOCK();
+
+			traceW(L"FileName=%s, Flags=%lu", FileName, Flags);
+
 			// setDelete() により削除フラグを設定されたファイルと、
 			// CreateFile() 時に FILE_FLAG_DELETE_ON_CLOSE の属性が与えられたファイル
 			// がクローズされるときにここを通過する
@@ -270,6 +278,10 @@ VOID CSDriver::DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG F
 			// --> ここで close() しておくことで、アップロードが必要かを簡単に判断できる
 
 			ctx->mFile.close();
+
+			// 閉じてしまうのだから、フラグもリセット
+
+			ctx->mFlags = 0;
 		}
 	}
 }
@@ -286,7 +298,6 @@ VOID CSDriver::DoClose(PTFS_FILE_CONTEXT* FileContext)
 	{
 		APP_ASSERT(wcscmp(FileContext->FileName, L"\\") != 0);
 
-		//if (!ctx->mObjKey.isBucket())
 		if (ctx->isFile())
 		{
 			traceW(L"FileName=%s, UParam=%p", FileContext->FileName, FileContext->UParam);
@@ -298,12 +309,13 @@ VOID CSDriver::DoClose(PTFS_FILE_CONTEXT* FileContext)
 		mCSDevice->close(START_CALLER ctx);
 
 		{
-			std::lock_guard lock_(NewFile.mGuard);
+			std::lock_guard lock_(CreateNew.mGuard);
 
-			const auto it = NewFile.mFileInfos.find(FileContext->FileName);
-			if (it != NewFile.mFileInfos.end())
+			const auto it = CreateNew.mFileInfos.find(FileContext->FileName);
+			if (it != CreateNew.mFileInfos.end())
 			{
-				NewFile.mFileInfos.erase(it);
+				traceW(L"erase CreateNew=%s", FileContext->FileName);
+				CreateNew.mFileInfos.erase(it);
 			}
 		}
 
