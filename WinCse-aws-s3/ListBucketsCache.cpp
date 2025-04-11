@@ -18,7 +18,7 @@ static std::mutex gGuard;
 #define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ gGuard }
 
 
-void ListBucketsCache::report(CALLER_ARG FILE* fp)
+void ListBucketsCache::report(CALLER_ARG FILE* fp) const noexcept
 {
     THREAD_SAFE();
 
@@ -51,14 +51,14 @@ void ListBucketsCache::report(CALLER_ARG FILE* fp)
     }
 }
 
-std::chrono::system_clock::time_point ListBucketsCache::getLastSetTime(CALLER_ARG0) const
+std::chrono::system_clock::time_point ListBucketsCache::getLastSetTime(CALLER_ARG0) const noexcept
 {
     THREAD_SAFE();
 
     return mLastSetTime;
 }
 
-void ListBucketsCache::set(CALLER_ARG const DirInfoListType& argDirInfoList)
+void ListBucketsCache::set(CALLER_ARG const DirInfoListType& argDirInfoList) noexcept
 {
     THREAD_SAFE();
     NEW_LOG_BLOCK();
@@ -72,7 +72,7 @@ void ListBucketsCache::set(CALLER_ARG const DirInfoListType& argDirInfoList)
     mList = argDirInfoList;
 }
 
-DirInfoListType ListBucketsCache::get(CALLER_ARG0)
+DirInfoListType ListBucketsCache::get(CALLER_ARG0) noexcept
 {
     THREAD_SAFE();
 
@@ -83,7 +83,7 @@ DirInfoListType ListBucketsCache::get(CALLER_ARG0)
     return mList;
 }
 
-void ListBucketsCache::clear(CALLER_ARG0)
+void ListBucketsCache::clear(CALLER_ARG0) noexcept
 {
     THREAD_SAFE();
     NEW_LOG_BLOCK();
@@ -104,17 +104,17 @@ void ListBucketsCache::clear(CALLER_ARG0)
     mCountClear++;
 }
 
-DirInfoType ListBucketsCache::find(CALLER_ARG const std::wstring& argBucketName)
+DirInfoType ListBucketsCache::find(CALLER_ARG const std::wstring& argBucketName) noexcept
 {
     THREAD_SAFE();
     APP_ASSERT(!argBucketName.empty());
 
-    const auto it = std::find_if(mList.begin(), mList.end(), [&argBucketName](const auto& dirInfo)
+    const auto it = std::find_if(mList.cbegin(), mList.cend(), [&argBucketName](const auto& dirInfo)
     {
         return argBucketName == dirInfo->FileNameBuf;
     });
 
-    if (it == mList.end())
+    if (it == mList.cend())
     {
         return nullptr;
     }
@@ -126,7 +126,8 @@ DirInfoType ListBucketsCache::find(CALLER_ARG const std::wstring& argBucketName)
     return *it;
 }
 
-std::wstring ListBucketsCache::getBucketRegion(CALLER_ARG const std::wstring& argBucketName)
+bool ListBucketsCache::getBucketRegion(CALLER_ARG
+    const std::wstring& argBucketName, std::wstring* pBucketRegion) const noexcept
 {
     THREAD_SAFE();
     APP_ASSERT(!argBucketName.empty());
@@ -134,22 +135,25 @@ std::wstring ListBucketsCache::getBucketRegion(CALLER_ARG const std::wstring& ar
     const auto it{ mBucketRegions.find(argBucketName) };
     if (it == mBucketRegions.end())
     {
-        return L"";
+        return false;
     }
 
-    return it->second.c_str();
+    *pBucketRegion = it->second;
+
+    return true;
 }
 
-void ListBucketsCache::addBucketRegion(CALLER_ARG const std::wstring& argBucketName, const std::wstring& argRegion)
+void ListBucketsCache::addBucketRegion(CALLER_ARG
+    const std::wstring& argBucketName, const std::wstring& argBucketRegion) noexcept
 {
     THREAD_SAFE();
     NEW_LOG_BLOCK();
     APP_ASSERT(!argBucketName.empty());
-    APP_ASSERT(!argRegion.empty());
+    APP_ASSERT(!argBucketRegion.empty());
 
-    traceW(L"* argBucketName=%s, argRegion=%s", argBucketName.c_str(), argRegion.c_str());
+    traceW(L"* argBucketName=%s, argBucketRegion=%s", argBucketName.c_str(), argBucketRegion.c_str());
 
-    mBucketRegions[argBucketName] = argRegion;
+    mBucketRegions[argBucketName] = argBucketRegion;
 }
 
 // EOF

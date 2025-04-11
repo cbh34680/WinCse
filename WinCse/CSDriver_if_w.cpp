@@ -226,14 +226,14 @@ NTSTATUS CSDriver::DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, B
 			return STATUS_OBJECT_NAME_INVALID;
 		}
 
-		const auto it = std::find_if(dirInfoList.begin(), dirInfoList.end(), [](const auto& dirInfo)
+		const auto it = std::find_if(dirInfoList.cbegin(), dirInfoList.cend(), [](const auto& dirInfo)
 		{
 			return wcscmp(dirInfo->FileNameBuf, L".") != 0
 				&& wcscmp(dirInfo->FileNameBuf, L"..") != 0
 				&& FA_IS_DIRECTORY(dirInfo->FileInfo.FileAttributes);
 		});
 
-		if (it != dirInfoList.end())
+		if (it != dirInfoList.cend())
 		{
 			// サブディレクトリがある場合は削除不可
 

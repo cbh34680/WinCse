@@ -5,8 +5,8 @@
 //
 // ñºëOÇ≈ÇÃîrëºêßå‰
 //
-template<typename T> class UnprotectedShare;
-template<typename T> class ProtectedShare;
+template <typename T> class UnprotectedShare;
+template <typename T> class ProtectedShare;
 
 class SharedBase
 {
@@ -17,14 +17,14 @@ class SharedBase
 	template<typename T> friend class ProtectedShare;
 };
 
-template<typename T>
+template <typename T>
 struct ShareStore
 {
 	std::mutex mMapGuard;
 	std::unordered_map<std::wstring, std::unique_ptr<T>> mMap;
 };
 
-template<typename T>
+template <typename T>
 class ProtectedShare
 {
 	T* mV;
@@ -61,24 +61,26 @@ public:
 	}
 };
 
-template<typename T>
+template <typename T>
 class UnprotectedShare
 {
-	ShareStore<T>* mStore;
+	ShareStore<T>* mShareStore;
 	const std::wstring mName;
 	T* mV = nullptr;
 
 public:
-	template<typename... Args>
-	UnprotectedShare(ShareStore<T>* argStore, const std::wstring& argName, Args... args)
-		: mStore(argStore), mName(argName)
+	template <typename... ArgsT>
+	UnprotectedShare(ShareStore<T>* argShareStore, const std::wstring& argName, ArgsT... args)
+		:
+		mShareStore(argShareStore),
+		mName(argName)
 	{
-		std::lock_guard<std::mutex> lock_{ mStore->mMapGuard };
+		std::lock_guard<std::mutex> lock_{ mShareStore->mMapGuard };
 
-		auto it{ mStore->mMap.find(mName) };
-		if (it == mStore->mMap.end())
+		auto it{ mShareStore->mMap.find(mName) };
+		if (it == mShareStore->mMap.end())
 		{
-			it = mStore->mMap.emplace(mName, std::make_unique<T>(args...)).first;
+			it = mShareStore->mMap.emplace(mName, std::make_unique<T>(args...)).first;
 		}
 
 		it->second->mRefCount++;
@@ -91,15 +93,15 @@ public:
 
 	~UnprotectedShare()
 	{
-		std::lock_guard<std::mutex> lock_{ mStore->mMapGuard };
+		std::lock_guard<std::mutex> lock_{ mShareStore->mMapGuard };
 
-		auto it{ mStore->mMap.find(mName) };
+		auto it{ mShareStore->mMap.find(mName) };
 
 		it->second->mRefCount--;
 
 		if (it->second->mRefCount == 0)
 		{
-			mStore->mMap.erase(it);
+			mShareStore->mMap.erase(it);
 		}
 	}
 

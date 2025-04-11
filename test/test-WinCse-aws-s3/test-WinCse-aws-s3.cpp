@@ -77,7 +77,7 @@ void test13()
 int wmain(int argc, wchar_t** argv)
 {
     int test1(int argc, wchar_t** argv);
-	test1(argc, argv);
+	//test1(argc, argv);
 
 	//test2();
     //test3();

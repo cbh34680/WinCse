@@ -44,8 +44,11 @@ private:
 
 public:
 	ObjectKey() = default;
-	ObjectKey(const std::wstring& argBucket, const std::wstring& argKey)
-		: mBucket(argBucket), mKey(argKey)
+
+	explicit ObjectKey(const std::wstring& argBucket, const std::wstring& argKey)
+		:
+		mBucket(argBucket),
+		mKey(argKey)
 	{
 		reset();
 	}
@@ -188,10 +191,6 @@ struct ICSDevice : public ICSService
 
 	virtual bool renameObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
 		const ObjectKey& argNewObjKey) = 0;
-
-	virtual bool putObject(CALLER_ARG const ObjectKey& argObjKey,
-		const FSP_FSCTL_FILE_INFO& argFileInfo,
-		const std::wstring& sourceFile) = 0;
 
 	virtual NTSTATUS getHandleFromContext(CALLER_ARG CSDeviceContext* argCSDeviceContext,
 		const DWORD argDesiredAccess, const DWORD argCreationDisposition, PHANDLE pHandle) = 0;

@@ -20,22 +20,26 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="AwsS3.cpp" />
+    <ClCompile Include="AwsS3A_svc.cpp" />
+    <ClCompile Include="AwsS3B.cpp" />
+    <ClCompile Include="AwsS3C.cpp" />
     <ClCompile Include="AwsS3_bucket.cpp" />
-    <ClCompile Include="AwsS3_obj_api.cpp" />
-    <ClCompile Include="AwsS3_obj_clist.cpp" />
+    <ClCompile Include="AwsS3A.cpp" />
     <ClCompile Include="AwsS3_obj_list.cpp" />
     <ClCompile Include="AwsS3_obj_open.cpp" />
     <ClCompile Include="AwsS3_obj_pp_util.cpp" />
     <ClCompile Include="AwsS3_obj_prepare.cpp" />
     <ClCompile Include="AwsS3_obj_rw.cpp.cpp" />
-    <ClCompile Include="AwsS3_schedule.cpp" />
-    <ClCompile Include="AwsS3_svc.cpp" />
+    <ClCompile Include="AwsS3C_event.cpp" />
     <ClCompile Include="ListBucketsCache.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="ObjectCache.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AwsS3.hpp" />
+    <ClInclude Include="AwsS3A.hpp" />
+    <ClInclude Include="AwsS3B.hpp" />
+    <ClInclude Include="AwsS3C.hpp" />
     <ClInclude Include="AwsS3_obj_pp_util.h" />
     <ClInclude Include="aws_sdk_s3.h" />
     <ClInclude Include="ListBucketsCache.hpp" />

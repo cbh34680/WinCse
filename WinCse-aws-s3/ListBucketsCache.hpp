@@ -23,23 +23,23 @@ private:
 
 protected:
 public:
-	std::chrono::system_clock::time_point getLastSetTime(CALLER_ARG0) const;
+	std::chrono::system_clock::time_point getLastSetTime(CALLER_ARG0) const noexcept;
 
-	std::wstring getBucketRegion(CALLER_ARG const std::wstring& argBucketName);
-	void addBucketRegion(CALLER_ARG const std::wstring& argBucketName, const std::wstring& argRegion);
+	bool getBucketRegion(CALLER_ARG const std::wstring& argBucketName, std::wstring* pBucketRegion) const noexcept;
+	void addBucketRegion(CALLER_ARG const std::wstring& argBucketName, const std::wstring& argBucketRegion) noexcept;
 
-	void clear(CALLER_ARG0);
+	void clear(CALLER_ARG0) noexcept;
 
-	bool empty(CALLER_ARG0)
+	bool empty(CALLER_ARG0) const noexcept
 	{
 		return mList.empty();
 	}
 
-	void set(CALLER_ARG const WCSE::DirInfoListType& argDirInfoList);
-	WCSE::DirInfoListType get(CALLER_ARG0);
-	WCSE::DirInfoType find(CALLER_ARG const std::wstring& argBucketName);
+	void set(CALLER_ARG const WCSE::DirInfoListType& argDirInfoList) noexcept;
+	WCSE::DirInfoListType get(CALLER_ARG0) noexcept;
+	WCSE::DirInfoType find(CALLER_ARG const std::wstring& argBucketName) noexcept;
 
-	void report(CALLER_ARG FILE* fp);
+	void report(CALLER_ARG FILE* fp) const noexcept;
 };
 
 // EOF

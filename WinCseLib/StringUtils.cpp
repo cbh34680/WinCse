@@ -106,7 +106,7 @@ bool Base64EncodeA(const std::string& src, std::string* pDst)
 		return false;
 	}
 
-	*pDst = std::string(dst.begin(), dst.end() - 1);
+	*pDst = std::string(dst.cbegin(), dst.cend() - 1);
 
 	return true;
 }
@@ -135,121 +135,10 @@ bool Base64DecodeA(const std::string& src, std::string* pDst)
 		return false;
 	}
 
-	*pDst = std::string(dst.begin(), dst.end());
+	*pDst = std::string(dst.cbegin(), dst.cend());
 
 	return true;
 }
-
-#if 0
-std::string URLEncodeA(const std::string& str)
-{
-	std::ostringstream encoded;
-
-	for (char ch : str)
-	{
-		if (isalnum(static_cast<unsigned char>(ch)) || ch == '-' || ch == '_' || ch == '.' || ch == '~')
-		{
-			encoded << ch;
-		}
-		else
-		{
-			encoded << '%' << std::uppercase << std::hex << std::setw(2) << std::setfill('0') << (int)(unsigned char)ch;
-		}
-	}
-
-	return encoded.str();
-}
-
-std::string URLDecodeA(const std::string& str)
-{
-	std::ostringstream decoded;
-
-	for (size_t i = 0; i < str.size(); ++i)
-	{
-		if (str[i] == '%' && i + 2 < str.size())
-		{
-			int value;
-
-			std::istringstream iss(str.substr(i + 1, 2));
-			if (iss >> std::hex >> value)
-			{
-				decoded << static_cast<char>(value);
-				i += 2;
-			}
-			else
-			{
-				decoded << str[i];
-			}
-		}
-		else if (str[i] == '+')
-		{
-			decoded << ' ';
-		}
-		else
-		{
-			decoded << str[i];
-		}
-	}
-
-	return decoded.str();
-}
-
-bool EncodeFileNameToLocalNameA(const std::string& src, std::string* pDst)
-{
-	std::string dst;
-
-	if (!Base64EncodeA(src, &dst))
-	{
-		return false;
-	}
-
-	*pDst = URLEncodeA(dst);
-
-	return true;
-}
-
-bool DecodeLocalNameToFileNameA(const std::string& src, std::string* pDst)
-{
-	std::string dst;
-
-	if (!Base64DecodeA(URLDecodeA(src), &dst))
-	{
-		return false;
-	}
-
-	*pDst = std::move(dst);
-
-	return true;
-}
-
-bool EncodeFileNameToLocalNameW(const std::wstring& src, std::wstring* pDst)
-{
-	std::string dst;
-
-	if (!Base64EncodeA(WC2MB(src), &dst))
-	{
-		return false;
-	}
-
-	*pDst = MB2WC(URLEncodeA(dst));
-
-	return true;
-}
-
-bool DecodeLocalNameToFileNameW(const std::wstring& src, std::wstring* pDst)
-{
-	std::string dst;
-
-	if (!Base64DecodeA(URLDecodeA(WC2MB(src)), &dst))
-	{
-		return false;
-	}
-
-	*pDst = MB2WC(dst);
-
-	return true;
-}
-#endif
 
 // 前後の空白をトリムする関数
 std::wstring TrimW(const std::wstring& str)
@@ -257,17 +146,17 @@ std::wstring TrimW(const std::wstring& str)
 	std::wstring trimmedStr = str;
 
 	// 先頭の空白をトリム
-	trimmedStr.erase(trimmedStr.begin(), std::find_if(trimmedStr.begin(), trimmedStr.end(), [](wchar_t ch)
+	trimmedStr.erase(trimmedStr.cbegin(), std::find_if(trimmedStr.cbegin(), trimmedStr.cend(), [](wchar_t ch)
 	{
 		return !std::isspace(ch);
 	}));
 
 	// 末尾の空白をトリム
-	trimmedStr.erase(std::find_if(trimmedStr.rbegin(), trimmedStr.rend(), [](wchar_t ch)
+	trimmedStr.erase(std::find_if(trimmedStr.crbegin(), trimmedStr.crend(), [](wchar_t ch)
 	{
 		return !std::isspace(ch);
 
-	}).base(), trimmedStr.end());
+	}).base(), trimmedStr.cend());
 
 	return trimmedStr;
 }
@@ -279,7 +168,7 @@ std::string TrimA(const std::string& str)
 
 std::wstring WildcardToRegexW(const std::wstring& wildcard)
 {
-	std::wstringstream ss;
+	std::wostringstream ss;
 
 	ss << L'^';
 
@@ -346,7 +235,7 @@ std::wstring ToUpper(const std::wstring& input)
 {
 	std::wstring result{ input };
 
-	std::transform(result.begin(), result.end(), result.begin(), 
+	std::transform(result.cbegin(), result.cend(), result.begin(), 
 		[](wchar_t c) { return std::towupper(c); });
 
 	return result;

@@ -42,9 +42,16 @@ void test1()
     auto hosts = STCTimeToUTCMilliSecW(L"C:\\Windows\\System32\\Drivers\\etc\\hosts");
     cout << hosts << endl;
 
-    // 1670547095000
-    // 1670547095000
-    stringstream ss;
+    /*
+    1670547095000
+    1670547095000
+    133150206954262405
+    1670547095426
+    1670547095426
+    133150206954260000
+    133150206954260000
+    */
+    ostringstream ss;
     ss << hosts;
     auto s{ ss.str() };
 
@@ -53,13 +60,9 @@ void test1()
     FILETIME ftCreate, ftAccess, ftWrite;
     PathToWinFileTimes(L"C:\\Windows\\System32\\Drivers\\etc\\hosts", &ftCreate, &ftAccess, &ftWrite);
 
-    // 133150206954262405
-    // 133150206954262405
     auto crtW100ns = WinFileTimeToWinFileTime100ns(ftCreate);
     cout << crtW100ns << endl;
 
-    // 1670547095426
-    // 1670547095426
     auto crtUtcMSec = WinFileTimeToUtcMillis(ftCreate);
     cout << crtUtcMSec << endl;
 
@@ -71,6 +74,7 @@ void test1()
 
     FILETIME ftTemp;
     UtcMillisToWinFileTime(utcMSec, &ftTemp);
+
     auto tempW100ns = WinFileTimeToWinFileTime100ns(ftTemp);
     cout << tempW100ns << endl;
 
@@ -966,7 +970,7 @@ int main()
     //cout.imbue(locale(""));
     cerr.imbue(locale(""));
 
-    //test1();
+    test1();
     //test2();
     //test3();
     //test4();

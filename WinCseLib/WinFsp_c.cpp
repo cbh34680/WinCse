@@ -125,7 +125,7 @@ static NTSTATUS SetVolumeLabel_(FSP_FILE_SYSTEM* FileSystem,
 
 #if !WINFSP_PASSTHROUGH
 
-NTSTATUS (WCSE::ICSDriver::*PreCreateFilesystem)(FSP_SERVICE *Service, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams);
+NTSTATUS (WCSE::ICSDriver::*PreCreateFilesystem)(FSP_SERVICE* Service, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams);
 NTSTATUS (WCSE::ICSDriver::*OnSvcStart)(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem);
 VOID (WCSE::ICSDriver::*OnSvcStop)();
 

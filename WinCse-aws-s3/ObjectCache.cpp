@@ -36,17 +36,17 @@ void HeadObjectCache::report(CALLER_ARG FILE* fp)
         fwprintf(fp, INDENT2 L"LastAccessCallChain=%s" LN, it.second.mLastAccessCallChain.c_str());
         fwprintf(fp, INDENT2 L"CreateTime=%s" LN, TimePointToLocalTimeStringW(it.second.mCreateTime).c_str());
         fwprintf(fp, INDENT2 L"LastAccessTime=%s" LN, TimePointToLocalTimeStringW(it.second.mLastAccessTime).c_str());
-        fwprintf(fp, INDENT2 L"[dirInfoList]" LN);
+        fwprintf(fp, INDENT2 L"[dirInfo]" LN);
 
         const auto dirInfo{ it.second.mV };
 
-        fwprintf(fp, INDENT4 L"FileNameBuf=[%s]" LN, dirInfo->FileNameBuf);
+        fwprintf(fp, INDENT3 L"FileNameBuf=[%s]" LN, dirInfo->FileNameBuf);
 
-        fwprintf(fp, INDENT5 L"FileSize=%llu" LN, dirInfo->FileInfo.FileSize);
-        fwprintf(fp, INDENT5 L"FileAttributes=%u" LN, dirInfo->FileInfo.FileAttributes);
-        fwprintf(fp, INDENT5 L"CreationTime=%s" LN, WinFileTime100nsToLocalTimeStringW(dirInfo->FileInfo.CreationTime).c_str());
-        fwprintf(fp, INDENT5 L"LastAccessTime=%s" LN, WinFileTime100nsToLocalTimeStringW(dirInfo->FileInfo.LastAccessTime).c_str());
-        fwprintf(fp, INDENT5 L"LastWriteTime=%s" LN, WinFileTime100nsToLocalTimeStringW(dirInfo->FileInfo.LastWriteTime).c_str());
+        fwprintf(fp, INDENT3 L"FileSize=%llu" LN, dirInfo->FileInfo.FileSize);
+        fwprintf(fp, INDENT3 L"FileAttributes=%u" LN, dirInfo->FileInfo.FileAttributes);
+        fwprintf(fp, INDENT3 L"CreationTime=%s" LN, WinFileTime100nsToLocalTimeStringW(dirInfo->FileInfo.CreationTime).c_str());
+        fwprintf(fp, INDENT3 L"LastAccessTime=%s" LN, WinFileTime100nsToLocalTimeStringW(dirInfo->FileInfo.LastAccessTime).c_str());
+        fwprintf(fp, INDENT3 L"LastWriteTime=%s" LN, WinFileTime100nsToLocalTimeStringW(dirInfo->FileInfo.LastWriteTime).c_str());
     }
 
     fwprintf(fp, L"[NegativeCache]" LN);

@@ -71,7 +71,7 @@ PTFS_FILE_CONTEXT;
 //
 // インターフェース定義で使うので、ここで define
 //
-#define CALLER_ARG0				const std::wstring& caller_
+#define CALLER_ARG0				[[maybe_unused]] const std::wstring& caller_
 #define CALLER_ARG				CALLER_ARG0,
 
 #define START_CALLER0			std::wstring(__FUNCTIONW__)
@@ -93,8 +93,9 @@ protected:
 	HANDLE mHandle;
 
 public:
-	HandleRAII() : mHandle(InvalidHandleValue) { }
-	HandleRAII(HANDLE argHandle) : mHandle(argHandle) { }
+	HandleRAII() noexcept : mHandle(InvalidHandleValue) { }
+
+	HandleRAII(HANDLE argHandle) noexcept : mHandle(argHandle) { }
 
 	HandleRAII(HandleRAII& other) noexcept = delete;
 
@@ -130,7 +131,7 @@ public:
 		}
 	}
 
-	virtual ~HandleRAII() { close(); }
+	virtual ~HandleRAII() noexcept { close(); }
 };
 
 class FileHandle : public HandleRAII<INVALID_HANDLE_VALUE>
@@ -157,13 +158,15 @@ public:
 //
 class DirInfoView
 {
+private:
 	FSP_FSCTL_DIR_INFO* const mDirInfo;
 
 public:
 	FSP_FSCTL_FILE_INFO& FileInfo;
 	const WCHAR* const FileNameBuf;
+	std::unordered_map<std::wstring, std::wstring> mUserProperties;
 
-	DirInfoView(FSP_FSCTL_DIR_INFO* argDirInfo)
+	explicit DirInfoView(FSP_FSCTL_DIR_INFO* argDirInfo) noexcept
 		:
 		mDirInfo(argDirInfo),
 		FileInfo(mDirInfo->FileInfo),
@@ -171,12 +174,12 @@ public:
 	{
 	}
 
-	FSP_FSCTL_DIR_INFO* data()
+	FSP_FSCTL_DIR_INFO* data() const noexcept 
 	{
 		return mDirInfo;
 	}
 
-	~DirInfoView()
+	~DirInfoView() noexcept
 	{
 		free(mDirInfo);
 	}
@@ -209,29 +212,16 @@ WINCSELIB_API bool MkdirIfNotExists(const std::wstring& dir);
 WINCSELIB_API bool forEachFiles(const std::wstring& argDir, const std::function<void(const WIN32_FIND_DATA& wfd, const std::wstring& fullPath)>& callback);
 WINCSELIB_API bool forEachDirs(const std::wstring& argDir, const std::function<void(const WIN32_FIND_DATA& wfd, const std::wstring& fullPath)>& callback);
 
-
 WINCSELIB_API bool Base64EncodeA(const std::string& src, std::string* pDst);
 WINCSELIB_API bool Base64DecodeA(const std::string& src, std::string* pDst);
-/*
-WINCSELIB_API std::string URLEncodeA(const std::string& str);
-WINCSELIB_API std::string URLDecodeA(const std::string& str);
 
-WINCSELIB_API bool EncodeFileNameToLocalNameA(const std::string& src, std::string* pDst);
-WINCSELIB_API bool DecodeLocalNameToFileNameA(const std::string& src, std::string* pDst);
-WINCSELIB_API bool EncodeFileNameToLocalNameW(const std::wstring& src, std::wstring* pDst);
-WINCSELIB_API bool DecodeLocalNameToFileNameW(const std::wstring& src, std::wstring* pDst);
-
-WINCSELIB_API bool HandleToPath(HANDLE Handle, std::wstring& wstr);
-WINCSELIB_API bool PathToSDStr(const std::wstring& path, std::wstring& sdstr);
-*/
-
-WINCSELIB_API UINT64 UtcMillisToWinFileTime100ns(UINT64 utcMilliseconds);
+WINCSELIB_API UINT64 UtcMillisToWinFileTime100ns(UINT64 argUtcMillis);
 WINCSELIB_API UINT64 WinFileTime100nsToUtcMillis(UINT64 fileTime100ns);
 
 WINCSELIB_API UINT64 WinFileTimeToWinFileTime100ns(const FILETIME& ft);
-WINCSELIB_API void WinFileTime100nsToWinFile(UINT64 ft100ns, FILETIME* ft);
+WINCSELIB_API void WinFileTime100nsToWinFile(UINT64 ft100ns, FILETIME* pFileTime);
 
-WINCSELIB_API void UtcMillisToWinFileTime(UINT64 utcMilliseconds, FILETIME* ft);
+WINCSELIB_API void UtcMillisToWinFileTime(UINT64 argUtcMillis, FILETIME* pFileTime);
 WINCSELIB_API UINT64 WinFileTimeToUtcMillis(const FILETIME &ft);
 WINCSELIB_API bool PathToWinFileTimes(const std::wstring& path, FILETIME* pFtCreate, FILETIME* pFtAccess, FILETIME* pFtWrite);
 WINCSELIB_API UINT64 GetCurrentUtcMillis();
@@ -261,7 +251,6 @@ WINCSELIB_API std::wstring WildcardToRegexW(const std::wstring& wildcard);
 WINCSELIB_API std::string WildcardToRegexA(const std::string& wildcard);
 
 WINCSELIB_API std::vector<std::wstring> SplitString(const std::wstring& input, wchar_t sep, bool ignoreEmpty);
-//WINCSELIB_API std::wstring JoinStrings(const std::vector<std::wstring>& tokens, wchar_t sep, bool ignoreEmpty);
 WINCSELIB_API std::wstring ToUpper(const std::wstring& input);
 
 WINCSELIB_API int GetIniIntW(const std::wstring& confPath, PCWSTR argSection, PCWSTR keyName, int defaultValue, int minValue, int maxValue);
@@ -302,11 +291,11 @@ class WINCSELIB_API LogBlock
 	PCWSTR mFunc;
 
 public:
-	LogBlock(PCWSTR argFile, int argLine, PCWSTR argFunc);
+	LogBlock(PCWSTR argFile, int argLine, PCWSTR argFunc) noexcept;
 	~LogBlock();
 
-	int depth();
-	static int getCount();
+	int depth() const noexcept;
+	static int getCount() noexcept;
 };
 
 //
@@ -314,10 +303,12 @@ public:
 //
 class LastErrorBackup
 {
-	DWORD mLastError;
+	const DWORD mLastError;
 
 public:
-	LastErrorBackup() : mLastError(::GetLastError())
+	LastErrorBackup() noexcept
+		:
+		mLastError(::GetLastError())
 	{
 	}
 
@@ -332,9 +323,18 @@ struct FatalError : public std::exception
 	const std::string mWhat;
 	const NTSTATUS mNtstatus;
 
-	WINCSELIB_API FatalError(const std::string& argWhat, NTSTATUS argNtstatus);
-	WINCSELIB_API FatalError(const std::string& argWhat, DWORD argLastError);
-	WINCSELIB_API FatalError(const std::string& argWhat);
+	WINCSELIB_API FatalError(const std::string& argWhat, DWORD argLastError) noexcept;
+
+	FatalError(const std::string& argWhat, NTSTATUS argNtstatus) noexcept
+		:
+		mWhat(argWhat), mNtstatus(argNtstatus)
+	{
+	}
+
+	FatalError(const std::string& argWhat) noexcept
+		: mWhat(argWhat), mNtstatus(STATUS_UNSUCCESSFUL)
+	{
+	}
 
 	const char* what() const noexcept override
 	{
@@ -359,7 +359,7 @@ std::wstring getDerivedClassNamesW(T* baseClass)
 template <typename ContainerT, typename SeparatorT>
 std::wstring JoinStrings(const ContainerT& tokens, SeparatorT sep, bool ignoreEmpty)
 {
-	std::wstringstream ss;
+	std::wostringstream ss;
 
 	bool first = true;
 	for (const auto& token: tokens)
@@ -378,8 +378,6 @@ std::wstring JoinStrings(const ContainerT& tokens, SeparatorT sep, bool ignoreEm
 		}
 		else
 		{
-			// ss << sep だとビットシフトの可能性を考慮されコンパイルが失敗する
-
 			ss << sep;
 		}
 

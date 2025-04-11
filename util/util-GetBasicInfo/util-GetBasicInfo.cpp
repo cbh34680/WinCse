@@ -34,16 +34,14 @@ UINT64 WinFileTime100nsToUtcMillis(UINT64 ft100ns)
 
 std::wstring UtcMilliToLocalTimeStringW(UINT64 milliseconds)
 {
-    namespace chrono = std::chrono;
-
     // ミリ秒を chrono::milliseconds に変換
-    const chrono::milliseconds ms{ milliseconds };
+    const std::chrono::milliseconds ms{ milliseconds };
 
     // ミリ秒から chrono::system_clock::time_point に変換
-    const auto tp{ chrono::system_clock::time_point(ms) };
+    const auto tp{ std::chrono::system_clock::time_point(ms) };
 
     // time_point を std::time_t に変換
-    const std::time_t time = chrono::system_clock::to_time_t(tp);
+    const auto time = std::chrono::system_clock::to_time_t(tp);
 
     // ミリ秒部分を取得
     const int fractional_seconds = milliseconds % 1000;
@@ -54,7 +52,7 @@ std::wstring UtcMilliToLocalTimeStringW(UINT64 milliseconds)
     localtime_s(&tm, &time);
 
     // std::tm を文字列にフォーマット
-    std::wstringstream ss;
+    std::wostringstream ss;
     ss << std::put_time(&tm, L"%Y-%m-%d %H:%M:%S");
     ss << "." << std::setw(3) << std::setfill(L'0') << fractional_seconds;
 

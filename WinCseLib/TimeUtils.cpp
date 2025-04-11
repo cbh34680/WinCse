@@ -8,16 +8,14 @@ namespace WCSE {
 // UTC ミリ秒を YYYY-MM-DD HH:MI:SS.NNN 文字列に変換
 std::wstring UtcMilliToLocalTimeStringW(UINT64 milliseconds)
 {
-	namespace chrono = std::chrono;
-
 	// ミリ秒を chrono::milliseconds に変換
-	const chrono::milliseconds ms{ milliseconds };
+	const std::chrono::milliseconds ms{ milliseconds };
 
 	// ミリ秒から chrono::system_clock::time_point に変換
-	const auto tp{ chrono::system_clock::time_point(ms) };
+	const auto tp{ std::chrono::system_clock::time_point(ms) };
 
 	// time_point を std::time_t に変換
-	const std::time_t time = chrono::system_clock::to_time_t(tp);
+	const auto time = std::chrono::system_clock::to_time_t(tp);
 
 	// ミリ秒部分を取得
 	const int fractional_seconds = milliseconds % 1000;
@@ -28,7 +26,8 @@ std::wstring UtcMilliToLocalTimeStringW(UINT64 milliseconds)
 	localtime_s(&tm, &time);
 
 	// std::tm を文字列にフォーマット
-	std::wstringstream ss;
+	std::wostringstream ss;
+
 	ss << std::put_time(&tm, L"%Y-%m-%d %H:%M:%S");
 	ss << "." << std::setw(3) << std::setfill(L'0') << fractional_seconds;
 
@@ -119,15 +118,19 @@ UINT64 STCTimeToWinFileTimeA(const std::string& path)
 }
 
 // UTC のミリ秒を FILETIME 構造体に変換
-void UtcMillisToWinFileTime(UINT64 utcMilliseconds, FILETIME* ft)
+void UtcMillisToWinFileTime(UINT64 argUtcMillis, FILETIME* pFileTime)
 {
-	APP_ASSERT(ft);
+	APP_ASSERT(pFileTime);
 
-	const auto fileTime = UtcMillisToWinFileTime100ns(utcMilliseconds);
+	const auto ft100ns = UtcMillisToWinFileTime100ns(argUtcMillis);
 
+#if 0
 	// FILETIME構造体に変換
-	ft->dwLowDateTime = (DWORD)(fileTime & 0xFFFFFFFF);
-	ft->dwHighDateTime = (DWORD)(fileTime >> 32);
+	pFileTime->dwLowDateTime = (DWORD)(ft100ns & 0xFFFFFFFF);
+	pFileTime->dwHighDateTime = (DWORD)(ft100ns >> 32);
+#else
+	WinFileTime100nsToWinFile(ft100ns, pFileTime);
+#endif
 }
 
 // FILETIME 構造体を 100ns 単位の uitn64_t 値に変換
@@ -136,9 +139,9 @@ UINT64 WinFileTimeToWinFileTime100ns(const FILETIME& ft)
 	return ((PLARGE_INTEGER)&ft)->QuadPart;
 }
 
-void WinFileTime100nsToWinFile(UINT64 ft100ns, FILETIME* ft)
+void WinFileTime100nsToWinFile(UINT64 ft100ns, FILETIME* pFileTime)
 {
-	((PLARGE_INTEGER)ft)->QuadPart = ft100ns;
+	((PLARGE_INTEGER)pFileTime)->QuadPart = ft100ns;
 }
 
 // ミリ秒から100ナノ秒単位への変換
@@ -151,9 +154,9 @@ void WinFileTime100nsToWinFile(UINT64 ft100ns, FILETIME* ft)
 #define EPOCH_DIFFERENCE_100NS					(116444736000000000ULL)
 
 // UTC のミリ秒を Windows のファイル時刻に変換
-UINT64 UtcMillisToWinFileTime100ns(UINT64 utcMilliseconds)
+UINT64 UtcMillisToWinFileTime100ns(UINT64 argUtcMillis)
 {
-	return (utcMilliseconds + EPOCH_DIFFERENCE) * HUNDRED_NANOSECONDS_PER_MILLISECOND;
+	return (argUtcMillis + EPOCH_DIFFERENCE) * HUNDRED_NANOSECONDS_PER_MILLISECOND;
 }
 
 // Windows のファイル時刻を UTC のミリ秒 に変換

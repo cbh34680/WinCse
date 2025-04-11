@@ -17,14 +17,14 @@
 
 std::string BytesToHex(const std::vector<BYTE>& bytes)
 {
-    std::ostringstream oss;
+    std::ostringstream ss;
 
     for (BYTE byte : bytes)
     {
-        oss << std::hex << std::setw(2) << std::setfill('0') << (int)byte;
+        ss << std::hex << std::setw(2) << std::setfill('0') << (int)byte;
     }
 
-    return oss.str();
+    return ss.str();
 }
 
 bool ComputeSHA256(const std::string& input, std::string* pOutput)

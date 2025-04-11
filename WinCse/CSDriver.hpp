@@ -6,14 +6,12 @@
 class CSDriver : public WCSE::ICSDriver
 {
 private:
-	WINCSE_DRIVER_STATS* mStats;
-
-	bool mReadonlyVolume = false;
-
-	WCSE::ICSDevice* mCSDevice;
-
 	const std::wstring mTempDir;
 	const std::wstring mIniSection;
+
+	WINCSE_DRIVER_STATS* mStats;
+	WCSE::ICSDevice* mCSDevice;
+	bool mReadonlyVolume = false;
 
 	struct
 	{
@@ -22,10 +20,10 @@ private:
 	}
 	CreateNew;
 
-	// Worker éÊìæ
+	// Worker
 	std::unordered_map<std::wstring, WCSE::IWorker*> mWorkers;
 
-	WCSE::IWorker* getWorker(const std::wstring& argName)
+	WCSE::IWorker* getWorker(const std::wstring& argName) const
 	{
 		return mWorkers.at(argName);
 	}
@@ -44,7 +42,7 @@ private:
 	{
 		CSDriver* mThat;
 
-		ResourceSweeper(CSDriver* argThat) : mThat(argThat) { }
+		explicit ResourceSweeper(CSDriver* argThat) : mThat(argThat) { }
 
 		std::set<PTFS_FILE_CONTEXT*> mOpenAddrs;
 		void add(PTFS_FILE_CONTEXT* FileContext);
@@ -62,20 +60,24 @@ private:
 		Bucket,
 	};
 
-	NTSTATUS getFileInfoByFileName(CALLER_ARG PCWSTR fileName, FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pFileNameType);
+	NTSTATUS getFileInfoByFileName(CALLER_ARG PCWSTR fileName,
+		FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pFileNameType);
 
 protected:
-	bool shouldIgnoreFileName(const std::wstring& FileName);
+	bool shouldIgnoreFileName(const std::wstring& FileName) const noexcept;
 
 public:
-	CSDriver(
-		WINCSE_DRIVER_STATS* argStats, const std::wstring& argTempDir, const std::wstring& argIniSection,
-		WCSE::NamedWorker argWorkers[], WCSE::ICSDevice* argCSDevice);
+	explicit CSDriver(
+		WINCSE_DRIVER_STATS* argStats, const std::wstring& argTempDir,
+		const std::wstring& argIniSection, WCSE::NamedWorker argWorkers[],
+		WCSE::ICSDevice* argCSDevice);
 
 	~CSDriver();
 
 	// WinFsp Ç©ÇÁåƒÇ—èoÇ≥ÇÍÇÈä÷êî
-	NTSTATUS PreCreateFilesystem(FSP_SERVICE *Service, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
+	NTSTATUS PreCreateFilesystem(FSP_SERVICE* Service,
+		PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
+
 	NTSTATUS OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
 	VOID OnSvcStop() override;
 

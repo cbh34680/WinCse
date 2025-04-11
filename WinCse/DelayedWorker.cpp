@@ -55,7 +55,7 @@ NTSTATUS DelayedWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
 	{
 		auto& thr = mThreads.emplace_back(&DelayedWorker::listenEvent, this, i);
 
-		std::wstringstream ss;
+		std::wostringstream ss;
 		ss << L"WinCse::DelayedWorker ";
 		ss << i;
 
@@ -102,20 +102,20 @@ VOID DelayedWorker::OnSvcStop()
 	mTaskQueue.clear();
 }
 
-void DelayedWorker::listenEvent(const int threadIndex)
+void DelayedWorker::listenEvent(const int argThreadIndex) noexcept
 {
 	NEW_LOG_BLOCK();
 
 	while (1)
 	{
-		//traceW(L"(%d): wait for signal ...", threadIndex);
+		//traceW(L"(%d): wait for signal ...", argThreadIndex);
 		const auto reason = ::WaitForSingleObject(mEvent.handle(), INFINITE);
 
 		bool breakLoop = false;
 
 		if (mEndWorkerFlag)
 		{
-			traceW(L"(%d): receive end worker request", threadIndex);
+			traceW(L"(%d): receive end worker request", argThreadIndex);
 
 			breakLoop = true;
 		}
@@ -127,7 +127,7 @@ void DelayedWorker::listenEvent(const int threadIndex)
 				{
 					// SetEvent の実行
 
-					//traceW(L"(%d): wait for signal: catch signal", threadIndex);
+					//traceW(L"(%d): wait for signal: catch signal", argThreadIndex);
 					break;
 				}
 
@@ -135,7 +135,7 @@ void DelayedWorker::listenEvent(const int threadIndex)
 				{
 					// タイムアウト、又はシステムエラー
 
-					traceW(L"(%d): wait for signal: error code=%ld, break", threadIndex, reason);
+					traceW(L"(%d): wait for signal: error code=%ld, break", argThreadIndex, reason);
 
 					breakLoop = true;
 
@@ -146,7 +146,7 @@ void DelayedWorker::listenEvent(const int threadIndex)
 
 		if (breakLoop)
 		{
-			traceW(L"(%d): catch end-loop request, break", threadIndex);
+			traceW(L"(%d): catch end-loop request, break", argThreadIndex);
 			break;
 		}
 
@@ -157,24 +157,24 @@ void DelayedWorker::listenEvent(const int threadIndex)
 			auto task{ dequeueTask() };
 			if (!task)
 			{
-				//traceW(L"(%d): no more oneshot-tasks", threadIndex);
+				//traceW(L"(%d): no more oneshot-tasks", argThreadIndex);
 				break;
 			}
 
 			try
 			{
-				//traceW(L"(%d): run oneshot task ...", threadIndex);
+				//traceW(L"(%d): run oneshot task ...", argThreadIndex);
 				task->run(std::wstring(task->mCaller) + L"->" + __FUNCTIONW__);
-				//traceW(L"(%d): run oneshot task done", threadIndex);
+				//traceW(L"(%d): run oneshot task done", argThreadIndex);
 			}
 			catch (const std::exception& ex)
 			{
-				traceA("(%d): what: %s", threadIndex, ex.what());
+				traceA("(%d): what: %s", argThreadIndex, ex.what());
 				break;
 			}
 			catch (...)
 			{
-				traceA("(%d): unknown error, continue", threadIndex);
+				traceA("(%d): unknown error, continue", argThreadIndex);
 			}
 		}
 	}
@@ -186,7 +186,7 @@ void DelayedWorker::listenEvent(const int threadIndex)
 		auto task{ dequeueTask() };
 		if (!task)
 		{
-			traceW(L"(%d): no more oneshot-tasks", threadIndex);
+			traceW(L"(%d): no more oneshot-tasks", argThreadIndex);
 			break;
 		}
 
@@ -196,7 +196,7 @@ void DelayedWorker::listenEvent(const int threadIndex)
 		task->cancelled(std::wstring(task->mCaller) + L"->" + __FUNCTIONW__);
 	}
 
-	traceW(L"(%d): exit event loop", threadIndex);
+	traceW(L"(%d): exit event loop", argThreadIndex);
 }
 
 //
@@ -268,12 +268,12 @@ bool DelayedWorker::addTypedTask(CALLER_ARG WCSE::IOnDemandTask* argTask)
 
 		// キューから同じシノニムを持つタスクを探す
 
-		const auto it = std::find_if(mTaskQueue.begin(), mTaskQueue.end(), [&taskName](const auto& task)
+		const auto it = std::find_if(mTaskQueue.cbegin(), mTaskQueue.cend(), [&taskName](const auto& task)
 		{
 			return task->synonymString() == taskName;
 		});
 
-		if (it == mTaskQueue.end())
+		if (it == mTaskQueue.cend())
 		{
 			// 同等のものが存在しない
 
@@ -320,7 +320,7 @@ bool DelayedWorker::addTypedTask(CALLER_ARG WCSE::IOnDemandTask* argTask)
 	return add;
 }
 
-std::unique_ptr<IOnDemandTask> DelayedWorker::dequeueTask()
+std::unique_ptr<IOnDemandTask> DelayedWorker::dequeueTask() noexcept
 {
 	THREAD_SAFE();
 
@@ -349,7 +349,7 @@ bool DelayedWorker::addTypedTask(CALLER_ARG WCSE::IOnDemandTask* argTask)
 	return add;
 }
 
-std::unique_ptr<IOnDemandTask> DelayedWorker::dequeueTask()
+std::unique_ptr<IOnDemandTask> DelayedWorker::dequeueTask() noexcept
 {
 	THREAD_SAFE();
 

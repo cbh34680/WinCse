@@ -61,7 +61,8 @@ NTSTATUS ScheduledWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
 
 		const auto priority = this->getThreadPriority();
 
-		std::wstringstream ss;
+		std::wostringstream ss;
+
 		ss << klassName;
 		ss << L" priority=";
 		ss << priority;
@@ -114,7 +115,7 @@ VOID ScheduledWorker::OnSvcStop()
 	mTasks.clear();
 }
 
-void ScheduledWorker::listenEvent(const int threadIndex)
+void ScheduledWorker::listenEvent(const int argThreadIndex) noexcept
 {
 	NEW_LOG_BLOCK();
 
@@ -124,14 +125,14 @@ void ScheduledWorker::listenEvent(const int threadIndex)
 
 	for (int loopCount=0; ; loopCount++)
 	{
-		//traceW(L"%s(%d): wait for signal ...", klassNameCstr, threadIndex);
+		//traceW(L"%s(%d): wait for signal ...", klassNameCstr, argThreadIndex);
 		const auto reason = ::WaitForSingleObject(mEvent.handle(), timePeriod);	// 1 分間隔
 
 		bool breakLoop = false;
 
 		if (mEndWorkerFlag)
 		{
-			traceW(L"%s(%d): receive end worker request", klassNameCstr, threadIndex);
+			traceW(L"%s(%d): receive end worker request", klassNameCstr, argThreadIndex);
 
 			breakLoop = true;
 		}
@@ -143,7 +144,7 @@ void ScheduledWorker::listenEvent(const int threadIndex)
 				{
 					// タイムアウトでの処理
 
-					//traceW(L"%s(%d): wait for signal: timeout occurred", klassNameCstr, threadIndex);
+					//traceW(L"%s(%d): wait for signal: timeout occurred", klassNameCstr, argThreadIndex);
 					break;
 				}
 
@@ -153,7 +154,7 @@ void ScheduledWorker::listenEvent(const int threadIndex)
 
 					const auto lerr = ::GetLastError();
 					traceW(L"%s(%d): wait for signal: error reason=%ld error=%ld, break",
-						klassNameCstr, threadIndex, reason, lerr);
+						klassNameCstr, argThreadIndex, reason, lerr);
 
 					breakLoop = true;
 
@@ -164,7 +165,7 @@ void ScheduledWorker::listenEvent(const int threadIndex)
 
 		if (breakLoop)
 		{
-			traceW(L"%s(%d): catch end-loop request, break", klassNameCstr, threadIndex);
+			traceW(L"%s(%d): catch end-loop request, break", klassNameCstr, argThreadIndex);
 			break;
 		}
 
@@ -176,26 +177,26 @@ void ScheduledWorker::listenEvent(const int threadIndex)
 			{
 				try
 				{
-					//traceW(L"%s(%d): run idle task ...", klassNameCstr, threadIndex);
+					//traceW(L"%s(%d): run idle task ...", klassNameCstr, argThreadIndex);
 					task->run(std::wstring(task->mCaller) + L"->" + __FUNCTIONW__);
-					//traceW(L"%s(%d): run idle task done", klassNameCstr, threadIndex);
+					//traceW(L"%s(%d): run idle task done", klassNameCstr, argThreadIndex);
 
 					// 処理するごとに他のスレッドに回す
 					::SwitchToThread();
 				}
 				catch (const std::exception& ex)
 				{
-					traceA("%s(%d): catch exception: what=[%s]", klassNameCstr, threadIndex, ex.what());
+					traceA("%s(%d): catch exception: what=[%s]", klassNameCstr, argThreadIndex, ex.what());
 				}
 				catch (...)
 				{
-					traceA("%s(%d): unknown error", klassNameCstr, threadIndex);
+					traceA("%s(%d): unknown error", klassNameCstr, argThreadIndex);
 				}
 			}
 		}
 	}
 
-	traceW(L"%s(%d): exit event loop", klassNameCstr, threadIndex);
+	traceW(L"%s(%d): exit event loop", klassNameCstr, argThreadIndex);
 }
 
 //
@@ -226,7 +227,7 @@ bool ScheduledWorker::addTypedTask(CALLER_ARG WCSE::IScheduledTask* argTask)
 #endif
 }
 
-std::deque<std::shared_ptr<IScheduledTask>> ScheduledWorker::getTasks()
+std::deque<std::shared_ptr<IScheduledTask>> ScheduledWorker::getTasks() const noexcept
 {
 	THREAD_SAFE();
 

@@ -6,9 +6,7 @@ using namespace WCSE;
 //
 // AwsS3
 //
-WCSE::ICSDevice* NewCSDevice(
-    PCWSTR argTempDir, PCWSTR argIniSection,
-    NamedWorker argWorkers[])
+WCSE::ICSDevice* NewCSDevice(PCWSTR argTempDir, PCWSTR argIniSection, NamedWorker argWorkers[])
 {
     std::unordered_map<std::wstring, IWorker*> workers;
 
@@ -17,7 +15,7 @@ WCSE::ICSDevice* NewCSDevice(
         return nullptr;
     }
 
-    for (const auto* key: { L"delayed", L"timer", })
+    for (const auto key: { L"delayed", L"timer", })
     {
         if (workers.find(key) == workers.end())
         {
@@ -28,20 +26,10 @@ WCSE::ICSDevice* NewCSDevice(
     return new AwsS3(argTempDir, argIniSection, std::move(workers));
 }
 
-AwsS3::AwsS3(const std::wstring& argTempDir, const std::wstring& argIniSection,
-    std::unordered_map<std::wstring, IWorker*>&& argWorkers)
-    :
-    mTempDir(argTempDir), mIniSection(argIniSection),
-    mWorkers(std::move(argWorkers))
-{
-    APP_ASSERT(std::filesystem::exists(argTempDir));
-    APP_ASSERT(std::filesystem::is_directory(argTempDir));
-
-    mStats = &mStats_;
-}
-
 AwsS3::~AwsS3()
 {
+    // デストラクタからも呼ばれるので、再入可能としておくこと
+
     NEW_LOG_BLOCK();
 
     this->OnSvcStop();
@@ -50,64 +38,71 @@ AwsS3::~AwsS3()
 
     clearListBucketsCache(START_CALLER0);
     clearObjectCache(START_CALLER0);
-
-    mRefFile.close();
-    mRefDir.close();
 }
 
-bool AwsS3::isInBucketFilters(const std::wstring& arg)
+struct ListBucketsTask : public IOnDemandTask
 {
-    if (mBucketFilters.empty())
+    IgnoreDuplicates getIgnoreDuplicates() const noexcept override { return IgnoreDuplicates::Yes; }
+    Priority getPriority() const noexcept override { return Priority::Low; }
+
+    AwsS3* mAwsS3;
+
+    ListBucketsTask(AwsS3* argAwsS3) : mAwsS3(argAwsS3) { }
+
+    std::wstring synonymString() const noexcept override
     {
-        return true;
+        return L"ListBucketsTask";
     }
 
-    const auto it = std::find_if(mBucketFilters.begin(), mBucketFilters.end(), [&arg](const auto& re)
+    void run(CALLER_ARG0) override
     {
-        return std::regex_match(arg, re);
-    });
+        NEW_LOG_BLOCK();
 
-    return it != mBucketFilters.end();
-}
+        //traceW(L"call ListBuckets");
 
-DirInfoType AwsS3::makeDirInfo_attr(const std::wstring& argFileName, UINT64 argFileTime, UINT32 argFileAttributes)
+        mAwsS3->listBuckets(CONT_CALLER nullptr);
+    }
+};
+
+NTSTATUS AwsS3::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 {
-    APP_ASSERT(!argFileName.empty());
+    StatsIncr(OnSvcStart);
+    NEW_LOG_BLOCK();
 
-    auto dirInfo = makeDirInfo(argFileName);
-    APP_ASSERT(dirInfo);
-
-    UINT32 fileAttributes = argFileAttributes | mDefaultFileAttributes;
-
-    if (argFileName != L"." && argFileName != L".." && argFileName[0] == L'.')
+    const auto ntstatus = AwsS3C::OnSvcStart(argWorkDir, FileSystem);
+    if (!NT_SUCCESS(ntstatus))
     {
-        // 隠しファイル
-
-        fileAttributes |= FILE_ATTRIBUTE_HIDDEN;
+        traceW(L"fault: AwsS3C::OnSvcStart");
+        return ntstatus;
     }
 
-    dirInfo->FileInfo.FileAttributes = fileAttributes;
+    // バケット一覧の先読み
 
-    dirInfo->FileInfo.CreationTime = argFileTime;
-    dirInfo->FileInfo.LastAccessTime = argFileTime;
-    dirInfo->FileInfo.LastWriteTime = argFileTime;
-    dirInfo->FileInfo.ChangeTime = argFileTime;
+    getWorker(L"delayed")->addTask(START_CALLER new ListBucketsTask{ this });
 
-    return dirInfo;
+    return STATUS_SUCCESS;
 }
 
-DirInfoType AwsS3::makeDirInfo_byName(const std::wstring& argFileName, UINT64 argFileTime)
+VOID AwsS3::OnSvcStop()
 {
-    APP_ASSERT(!argFileName.empty());
+    StatsIncr(OnSvcStop);
 
-    const auto lastChar = argFileName[argFileName.length() - 1];
-
-    return makeDirInfo_attr(argFileName, argFileTime, lastChar == L'/' ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL);
+    AwsS3C::OnSvcStop();
 }
 
-DirInfoType AwsS3::makeDirInfo_dir(const std::wstring& argFileName, UINT64 argFileTime)
+void AwsS3::onIdle(CALLER_ARG0)
 {
-    return makeDirInfo_attr(argFileName, argFileTime, FILE_ATTRIBUTE_DIRECTORY);
+    AwsS3C::onIdle(CONT_CALLER0);
+
+    //NEW_LOG_BLOCK();
+
+    // IdleTask から呼び出され、メモリやファイルの古いものを削除
+
+    const auto now{ std::chrono::system_clock::now() };
+
+    // バケット・キャッシュの再作成
+
+    this->reloadListBuckets(CONT_CALLER now - std::chrono::minutes(mSettings->bucketCacheExpiryMin));
 }
 
 NTSTATUS AwsS3::getHandleFromContext(CALLER_ARG
@@ -161,7 +156,7 @@ NTSTATUS OpenContext::openFileHandle(CALLER_ARG DWORD argDesiredAccess, DWORD ar
     APP_ASSERT(mObjKey.meansFile());
     APP_ASSERT(mFile.invalid());
 
-    const std::wstring localPath{ getCacheFilePath() };
+    const auto localPath{ getCacheFilePath() };
 
     const DWORD dwDesiredAccess = mGrantedAccess | argDesiredAccess;
 
@@ -186,39 +181,6 @@ NTSTATUS OpenContext::openFileHandle(CALLER_ARG DWORD argDesiredAccess, DWORD ar
     mFile = Handle;
 
     return STATUS_SUCCESS;
-}
-
-//
-// FileOutputParams
-//
-std::wstring FileOutputParams::str() const
-{
-    std::wstring sCreationDisposition;
-
-    switch (mCreationDisposition)
-    {
-        case CREATE_ALWAYS:     sCreationDisposition = L"CREATE_ALWAYS";     break;
-        case CREATE_NEW:        sCreationDisposition = L"CREATE_NEW";        break;
-        case OPEN_ALWAYS:       sCreationDisposition = L"OPEN_ALWAYS";       break;
-        case OPEN_EXISTING:     sCreationDisposition = L"OPEN_EXISTING";     break;
-        case TRUNCATE_EXISTING: sCreationDisposition = L"TRUNCATE_EXISTING"; break;
-        default: APP_ASSERT(0);
-    }
-
-    std::wstringstream ss;
-
-    ss << L"mPath=";
-    ss << mPath;
-    ss << L" mCreationDisposition=";
-    ss << sCreationDisposition;
-    ss << L" mOffset=";
-    ss << mOffset;
-    ss << L" mLength=";
-    ss << mLength;
-    ss << L" mSpecifyRange=";
-    ss << BOOL_CSTRW(mSpecifyRange);
-
-    return ss.str();
 }
 
 // EOF

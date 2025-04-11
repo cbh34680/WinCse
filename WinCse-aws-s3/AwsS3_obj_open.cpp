@@ -24,7 +24,7 @@ CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
     {
         const auto safeShare{ unsafeShare.lock() }; // 名前のロック
 
-        const std::wstring localPath{ GetCacheFilePath(mCacheDataDir, argObjKey.str()) };
+        const auto localPath{ GetCacheFilePath(mCacheDataDir, argObjKey.str()) };
 
         traceW(L"localPath=%s", localPath.c_str());
 
@@ -230,7 +230,7 @@ void AwsS3::close(CALLER_ARG WCSE::CSDeviceContext* ctx)
 
     // キャッシュ・ファイル名
 
-    const std::wstring localPath{ ctx->getCacheFilePath() };
+    const auto localPath{ ctx->getCacheFilePath() };
 
     traceW(L"uploadWhenClosing mObjKey=%s, localPath=%s", ctx->mObjKey.c_str(), localPath.c_str());
 
@@ -244,7 +244,7 @@ void AwsS3::close(CALLER_ARG WCSE::CSDeviceContext* ctx)
 
     // (config の設定により)アップロードしたファイルを削除する
 
-    if (mConfig.deleteAfterUpload)
+    if (mSettings->deleteAfterUpload)
     {
         if (ctx->isDir())
         {

@@ -19,7 +19,7 @@ void AbnormalEnd(PCSTR file, int line, PCSTR func, int signum)
 	const DWORD pid = ::GetCurrentProcessId();
 	const DWORD tid = ::GetCurrentThreadId();
 
-	std::wstringstream ssPath;
+	std::wostringstream ssPath;
 	ssPath << tempPath;
 
 	if (std::filesystem::is_directory(tempPath + L"WinCse"))
@@ -40,7 +40,8 @@ void AbnormalEnd(PCSTR file, int line, PCSTR func, int signum)
 	std::ofstream ofs{ ssPath.str(), std::ios_base::app };
 
 	//
-	std::stringstream ssCause;
+	std::ostringstream ssCause;
+
 	ssCause << std::endl;
 	ssCause << "cause; ";
 	ssCause << file;
@@ -82,7 +83,7 @@ void AbnormalEnd(PCSTR file, int line, PCSTR func, int signum)
 	{
 		::SymFromAddr(hProcess, (DWORD64)(stack[i]), 0, symbol);
 
-		std::stringstream ss;
+		std::ostringstream ss;
 		ss << frames - i - 1;
 		ss << ": ";
 		ss << symbol->Name;
@@ -109,21 +110,9 @@ void AbnormalEnd(PCSTR file, int line, PCSTR func, int signum)
 	abort();
 }
 
-FatalError::FatalError(const std::string& argWhat, NTSTATUS argNtstatus)
-	:
-	mWhat(argWhat), mNtstatus(argNtstatus)
-{
-}
-
-FatalError::FatalError(const std::string& argWhat, DWORD argLastError)
+FatalError::FatalError(const std::string& argWhat, DWORD argLastError) noexcept
 	:
 	mWhat(argWhat), mNtstatus(FspNtStatusFromWin32(argLastError))
-{
-}
-
-FatalError::FatalError(const std::string& argWhat)
-	:
-	mWhat(argWhat), mNtstatus(STATUS_UNSUCCESSFUL)
 {
 }
 
@@ -360,11 +349,15 @@ ObjectKey ObjectKey::fromPath(const std::wstring& argPath)
 {
 	// パス文字列をバケット名とキーに分割
 
+	APP_ASSERT(!argPath.empty());
+	APP_ASSERT(argPath[0] != L'/');			// バケットの先頭は "/" ではないはず
+
 	std::wstring bucket;
 	std::wstring key;
 
-	std::wstringstream input{ argPath };
 	std::vector<std::wstring> tokens;
+
+	std::wistringstream input{ argPath };
 	std::wstring token;
 
 	while (std::getline(input, token, L'/'))
@@ -388,19 +381,24 @@ ObjectKey ObjectKey::fromPath(const std::wstring& argPath)
 		{
 			bucket = std::move(tokens[0]);
 
-			std::wstringstream output;
+			std::wostringstream ss;
 			for (int i = 1; i < tokens.size(); ++i)
 			{
 				if (i != 1)
 				{
-					output << L'/';
+					ss << L'/';
 				}
-				output << std::move(tokens[i]);
+				ss << tokens[i];
 			}
-			key = output.str();
+			key = ss.str();
+
+			APP_ASSERT(!key.empty());
 
 			if (argPath.back() == L'/')
 			{
+				// "/" で分割しているので、入力の一番最後にある "/" も消えてしまう
+				// この場合を考慮して、キーの最後に "/" を追加
+
 				key += L'/';
 			}
 
@@ -415,11 +413,15 @@ ObjectKey ObjectKey::fromWinPath(const std::wstring& argWinPath)
 {
 	// Windows パス文字列をバケット名とキーに分割
 
+	APP_ASSERT(!argWinPath.empty());
+	APP_ASSERT(argWinPath[0] == L'\\');
+
 	std::wstring bucket;
 	std::wstring key;
 
-	std::wstringstream input{ argWinPath };
 	std::vector<std::wstring> tokens;
+
+	std::wistringstream input{ argWinPath };
 	std::wstring token;
 
 	while (std::getline(input, token, L'\\'))
@@ -429,7 +431,7 @@ ObjectKey ObjectKey::fromWinPath(const std::wstring& argWinPath)
 
 	switch (tokens.size())
 	{
-		case 0:
+		case 0:			// "\bucket" となり、"\" の左側が 0 なので常に "" となるはず
 		case 1:
 		{
 			break;
@@ -445,29 +447,28 @@ ObjectKey ObjectKey::fromWinPath(const std::wstring& argWinPath)
 		{
 			bucket = std::move(tokens[1]);
 
-			std::wstringstream output;
+			std::wostringstream ss;
 			for (int i = 2; i < tokens.size(); ++i)
 			{
 				if (i != 2)
 				{
-					output << L'/';
+					ss << L'/';
 				}
-				output << std::move(tokens[i]);
+				ss << tokens[i];
 			}
-			key = output.str();
+			key = ss.str();
+
+			APP_ASSERT(!key.empty());
+
+			// "\\" で分割するため、引数の最後が "\\" でもなくってしまう
+			// ので、ここで補填する
+
+			if (argWinPath.back() == L'\\')
+			{
+				key += L'/';
+			}
 
 			break;
-		}
-	}
-
-	if (!key.empty())
-	{
-		// "\\" で分割するため、引数の最後が "\\" でもなくってしまう
-		// ので、ここで補填する
-
-		if (argWinPath.back() == L'\\')
-		{
-			key += L'/';
 		}
 	}
 
@@ -485,7 +486,7 @@ bool ObjectKey::operator<(const ObjectKey& other) const noexcept
 	else if (mBucket > other.mBucket) {
 		return false;
 	}
-	else if (mKey < other.mKey) {				// key
+	else if (mKey < other.mKey) {			// key
 		return true;
 	}
 	else if (mKey > other.mKey) {
@@ -678,33 +679,25 @@ LONGLONG FileHandle::getFileSize()
 //
 // LogBlock
 //
-static std::atomic<int> mCounter(0);
-static thread_local int mDepth = 0;
+static thread_local int gDepth = 0;
 
-LogBlock::LogBlock(PCWSTR argFile, int argLine, PCWSTR argFunc)
+LogBlock::LogBlock(PCWSTR argFile, int argLine, PCWSTR argFunc) noexcept
 	:
 	mFile(argFile), mLine(argLine), mFunc(argFunc)
 {
-	mCounter++;
-
-	GetLogger()->traceW_impl(mDepth, mFile, mLine, mFunc, L"{enter}");
-	mDepth++;
+	GetLogger()->traceW_impl(gDepth, mFile, mLine, mFunc, L"{enter}");
+	gDepth++;
 }
 
 LogBlock::~LogBlock()
 {
-	mDepth--;
-	GetLogger()->traceW_impl(mDepth, mFile, -1, mFunc, L"{leave}");
+	gDepth--;
+	GetLogger()->traceW_impl(gDepth, mFile, -1, mFunc, L"{leave}");
 }
 
-int LogBlock::depth()
+int LogBlock::depth() const noexcept
 {
-	return mDepth;
-}
-
-int LogBlock::getCount()
-{
-	return mCounter.load();
+	return gDepth;
 }
 
 } // namespace WCSE

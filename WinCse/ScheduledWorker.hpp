@@ -9,15 +9,15 @@ class ScheduledWorker : public WCSE::ITaskTypedWorker<WCSE::IScheduledTask>
 private:
 	const std::wstring mTempDir;
 	const std::wstring mIniSection;
-	std::list<std::thread> mThreads;
-	std::atomic<bool> mEndWorkerFlag = false;
-	std::deque<std::shared_ptr<WCSE::IScheduledTask>> mTasks;
 
+	std::list<std::thread> mThreads;
+	std::atomic<bool> mEndWorkerFlag;
+	std::deque<std::shared_ptr<WCSE::IScheduledTask>> mTasks;
 	WCSE::EventHandle mEvent;
 
 protected:
-	void listenEvent(const int i);
-	std::deque<std::shared_ptr<WCSE::IScheduledTask>> getTasks();
+	void listenEvent(const int i) noexcept;
+	std::deque<std::shared_ptr<WCSE::IScheduledTask>> getTasks() const noexcept;
 
 	virtual int getThreadPriority() const noexcept = 0;
 	virtual DWORD getTimePeriodMillis() const noexcept = 0;

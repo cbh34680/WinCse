@@ -8,7 +8,7 @@ struct ICSService
 {
 	virtual ~ICSService() = default;
 
-	virtual NTSTATUS PreCreateFilesystem(FSP_SERVICE *Service,
+	virtual NTSTATUS PreCreateFilesystem(FSP_SERVICE* Service,
 		PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) { return STATUS_SUCCESS; };
 
 	virtual NTSTATUS OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem) { return STATUS_SUCCESS; };

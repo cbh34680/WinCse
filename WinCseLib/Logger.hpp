@@ -23,13 +23,14 @@ private:
 	Logger() = default;
 	~Logger() = default;
 
-	bool internalInit(const std::wstring& argTempDir, const std::wstring& argTrcDir, const std::wstring& dllType);
+	bool internalInit(const std::wstring& argTempDir,
+		const std::wstring& argTrcDir, const std::wstring& dllType) noexcept;
 
 protected:
-	void traceW_write(const SYSTEMTIME* st, PCWSTR buf) const;
+	void traceW_write(const SYSTEMTIME* st, PCWSTR buf) const noexcept;
 
 public:
-	PCWSTR getOutputDirectory() override
+	PCWSTR getOutputDirectory() const noexcept override
 	{
 		if (mTraceLogEnabled)
 		{
@@ -40,8 +41,8 @@ public:
 	}
 
 	// ÉçÉOèoóÕ
-	void traceA_impl(int indent, PCSTR, int, PCSTR, PCSTR format, ...) override;
-	void traceW_impl(int indent, PCWSTR, int, PCWSTR, PCWSTR format, ...) override;
+	void traceA_impl(int indent, PCSTR, int, PCSTR, PCSTR format, ...) const noexcept override;
+	void traceW_impl(int indent, PCWSTR, int, PCWSTR, PCWSTR format, ...) const noexcept override;
 
 	// friend
 	friend bool CreateLogger(PCWSTR argTempDir, PCWSTR argTrcDir, PCWSTR argDllType);

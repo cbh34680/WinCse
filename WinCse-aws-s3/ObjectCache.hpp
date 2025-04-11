@@ -56,7 +56,12 @@ public:
 	struct PositiveValue : public CacheValue
 	{
 		T mV;
-        PositiveValue(CALLER_ARG const T& argV) : CacheValue(CONT_CALLER0), mV(argV) { }
+
+        explicit PositiveValue(CALLER_ARG const T& argV)
+            :
+            CacheValue(CONT_CALLER0), mV(argV)
+        {
+        }
 	};
 
 protected:
@@ -73,8 +78,8 @@ protected:
 	int mSetNegative = 0;
 	int mUpdNegative = 0;
 
-    template <typename CacheType>
-    int deleteBy(const std::function<bool(const typename CacheType::iterator&)>& shouldErase, CacheType& cache)
+    template <typename CacheDataT>
+    int deleteBy(const std::function<bool(const typename CacheDataT::iterator&)>& shouldErase, CacheDataT& cache)
     {
         int count = 0;
 
@@ -100,7 +105,7 @@ public:
 
     virtual void report(CALLER_ARG FILE* fp) = 0;
 
-    int deleteByTime(CALLER_ARG std::chrono::system_clock::time_point threshold)
+    int deleteByTime(CALLER_ARG std::chrono::system_clock::time_point threshold) noexcept
     {
         THREAD_SAFE();
         NEW_LOG_BLOCK();
@@ -118,7 +123,7 @@ public:
         return delPositive + delNegative;
     }
 
-    int deleteByKey(CALLER_ARG const WCSE::ObjectKey& argObjKey)
+    int deleteByKey(CALLER_ARG const WCSE::ObjectKey& argObjKey) noexcept
     {
         THREAD_SAFE();
         NEW_LOG_BLOCK();
@@ -167,7 +172,7 @@ public:
         return delPositive + delNegative + delPositiveP + delNegativeP;
     }
 
-    void clear(CALLER_ARG0)
+    void clear(CALLER_ARG0) noexcept
     {
         THREAD_SAFE();
 
@@ -177,7 +182,7 @@ public:
 
     // ----------------------- Positive
 
-    bool get(CALLER_ARG const WCSE::ObjectKey& argObjKey, T* pV)
+    bool get(CALLER_ARG const WCSE::ObjectKey& argObjKey, T* pV) noexcept
     {
         THREAD_SAFE();
         APP_ASSERT(argObjKey.valid());
@@ -203,7 +208,7 @@ public:
         return true;
     }
 
-    void set(CALLER_ARG const WCSE::ObjectKey& argObjKey, const T& argV)
+    void set(CALLER_ARG const WCSE::ObjectKey& argObjKey, const T& argV) noexcept
     {
         THREAD_SAFE();
         NEW_LOG_BLOCK();
@@ -226,7 +231,7 @@ public:
 
     // ----------------------- Negative
 
-    bool isNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey)
+    bool isNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey) noexcept
     {
         THREAD_SAFE();
         APP_ASSERT(argObjKey.valid());
@@ -247,7 +252,7 @@ public:
         return true;
     }
 
-    void addNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey)
+    void addNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey) noexcept
     {
         THREAD_SAFE();
         NEW_LOG_BLOCK();

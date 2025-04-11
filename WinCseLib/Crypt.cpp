@@ -169,33 +169,17 @@ exit:
     return lstatus;
 }
 
-#if 0
-static std::string BytesToHex(const std::vector<BYTE>& bytes)
-{
-    std::ostringstream oss;
-
-    for (BYTE byte : bytes)
-    {
-        oss << std::hex << std::setw(2) << std::setfill('0') << (int)byte;
-    }
-
-    return oss.str();
-}
-
-#else
 static std::string BytesToHex(const BYTE* bytes, const size_t bytesSize)
 {
-    std::ostringstream oss;
+    std::ostringstream ss;
 
     for (int i=0; i<bytesSize; i++)
     {
-        oss << std::hex << std::setw(2) << std::setfill('0') << (int)bytes[i];
+        ss << std::hex << std::setw(2) << std::setfill('0') << (int)bytes[i];
     }
 
-    return oss.str();
+    return ss.str();
 }
-
-#endif
 
 NTSTATUS ComputeSHA256W(const std::wstring& input, std::wstring* pOutput)
 {

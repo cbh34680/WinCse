@@ -101,37 +101,37 @@ bool AwsS3::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoLis
 
     if (argObjKey.isObject())
     {
-        const auto itParent = std::find_if(dirInfoList.begin(), dirInfoList.end(), [](const auto& dirInfo)
+        const auto itParent = std::find_if(dirInfoList.cbegin(), dirInfoList.cend(), [](const auto& dirInfo)
         {
             return wcscmp(dirInfo->FileNameBuf, L"..") == 0;
         });
 
-        if (itParent == dirInfoList.end())
+        if (itParent == dirInfoList.cend())
         {
-            dirInfoList.insert(dirInfoList.begin(), makeDirInfo_dir(L"..", mWorkDirCTime));
+            dirInfoList.insert(dirInfoList.cbegin(), makeDirInfo_dir(L"..", mWorkDirCTime));
         }
         else
         {
             const auto save{ *itParent };
             dirInfoList.erase(itParent);
-            dirInfoList.insert(dirInfoList.begin(), save);
+            dirInfoList.insert(dirInfoList.cbegin(), save);
         }
     }
 
-    const auto itCurr = std::find_if(dirInfoList.begin(), dirInfoList.end(), [](const auto& dirInfo)
+    const auto itCurr = std::find_if(dirInfoList.cbegin(), dirInfoList.cend(), [](const auto& dirInfo)
     {
         return wcscmp(dirInfo->FileNameBuf, L".") == 0;
     });
 
-    if (itCurr == dirInfoList.end())
+    if (itCurr == dirInfoList.cend())
     {
-        dirInfoList.insert(dirInfoList.begin(), makeDirInfo_dir(L".", mWorkDirCTime));
+        dirInfoList.insert(dirInfoList.cbegin(), makeDirInfo_dir(L".", mWorkDirCTime));
     }
     else
     {
         const auto save{ *itCurr };
         dirInfoList.erase(itCurr);
-        dirInfoList.insert(dirInfoList.begin(), save);
+        dirInfoList.insert(dirInfoList.cbegin(), save);
     }
 
     //
@@ -162,7 +162,7 @@ bool AwsS3::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoLis
         {
             const auto safeShare{ unsafeShare.lock() }; // 名前のロック
 
-            if (mConfig.strictFileTimestamp)
+            if (mSettings->strictFileTimestamp)
             {
                 // ディレクトリにファイル名を付与して HeadObject を取得
 

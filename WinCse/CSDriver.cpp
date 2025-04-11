@@ -30,15 +30,10 @@ CSDriver::~CSDriver()
 {
 	NEW_LOG_BLOCK();
 
-	traceW(L"close handle");
-
-	mRefFile.close();
-	mRefDir.close();
-
 	traceW(L"all done.");
 }
 
-bool CSDriver::shouldIgnoreFileName(const std::wstring& arg)
+bool CSDriver::shouldIgnoreFileName(const std::wstring& arg) const noexcept
 {
 	// desktop.ini などリクエストが増え過ぎるものは無視する
 

@@ -25,7 +25,7 @@ NTSTATUS AwsS3::prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, UINT64 argO
         {
             // AwsS3::open() 後の初回の呼び出し
 
-            const std::wstring localPath{ ctx->getCacheFilePath() };
+            const auto localPath{ ctx->getCacheFilePath() };
 
             // ダウンロードが必要か判断
 
@@ -61,12 +61,12 @@ NTSTATUS AwsS3::prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, UINT64 argO
 
                     const FileOutputParams outputParams{ localPath, CREATE_ALWAYS };
 
-                    const auto bytesWritten = this->getObjectAndWriteToFile(CONT_CALLER ctx->mObjKey, outputParams);
+                    const auto bytesWritten = this->apicallGetObjectAndWriteToFile(CONT_CALLER ctx->mObjKey, outputParams);
 
                     if (bytesWritten < 0)
                     {
-                        traceW(L"fault: getObjectAndWriteToFile_Simple bytesWritten=%lld", bytesWritten);
-                        //return STATUS_IO_DEVICE_ERROR;
+                        traceW(L"fault: apicallGetObjectAndWriteToFile bytesWritten=%lld", bytesWritten);
+
                         return FspNtStatusFromWin32(ERROR_IO_DEVICE);
                     }
                 }
@@ -105,9 +105,9 @@ NTSTATUS AwsS3::prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, UINT64 argO
                 {
                     // ダウンロードが必要
 
-                    if (!this->doMultipartDownload(CONT_CALLER ctx, localPath))
+                    if (!this->downloadMultipart(CONT_CALLER ctx, localPath))
                     {
-                        traceW(L"fault: doMultipartDownload");
+                        traceW(L"fault: downloadMultipart");
                         //return STATUS_IO_DEVICE_ERROR;
                         return FspNtStatusFromWin32(ERROR_IO_DEVICE);
                     }

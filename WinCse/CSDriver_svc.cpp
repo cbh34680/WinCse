@@ -12,7 +12,7 @@ static PCWSTR CONFIGFILE_FNAME = L"WinCse.conf";
 // プログラム引数 "-u" から算出されたディレクトリから ini ファイルを読み
 // S3 クライアントを生成する
 //
-NTSTATUS CSDriver::PreCreateFilesystem(FSP_SERVICE *Service, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams)
+NTSTATUS CSDriver::PreCreateFilesystem(FSP_SERVICE* Service, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams)
 {
 	StatsIncr(PreCreateFilesystem);
 

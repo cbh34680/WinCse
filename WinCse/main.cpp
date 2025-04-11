@@ -66,7 +66,7 @@ struct DllModule
 };
 
 #if DIRECT_LINK_TEST
-bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir,
+static bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir,
     PCWSTR iniSection, NamedWorker workers[], DllModule* pDll)
 {
     pDll->mCSDevice = NewCSDevice(tmpDir.c_str(), iniSection, workers);
@@ -80,14 +80,14 @@ bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir,
 // その中にエクスポートされた NewCSDevice() を実行する。
 // 戻り値は ICSDevice* になる。
 //
-bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir,
+static bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir,
     PCWSTR iniSection, NamedWorker workers[], DllModule* pDll)
 {
     NEW_LOG_BLOCK();
 
     bool ret = false;
 
-	const std::wstring dllName{ std::wstring(PROGNAME) + L'-' + dllType + L".dll" };
+	const auto dllName{ std::wstring(PROGNAME) + L'-' + dllType + L".dll" };
 
 	//typedef WCSE::ICSDevice* (*NewCSDevice)(PCWSTR argTempDir, PCWSTR argIniSection, NamedWorker workers[]);
     using NewCSDevice = WCSE::ICSDevice* (*)(PCWSTR argTempDir, PCWSTR argIniSection, NamedWorker workers[]);
@@ -444,7 +444,8 @@ static void writeStats(
     SYSTEMTIME st;
     ::GetLocalTime(&st);
 
-    std::wstringstream ss;
+    std::wostringstream ss;
+
     ss << logDir;
     ss << L'\\';
     ss << L"stats";
@@ -458,9 +459,10 @@ static void writeStats(
     ss << std::setw(2) << std::setfill(L'0') << st.wSecond;
     ss << L".log";
 
-    const std::wstring path{ ss.str() };
+    const auto path{ ss.str() };
 
     FILE* fp = nullptr;
+
     if (_wfopen_s(&fp, path.c_str(), L"wt") == 0)
     {
         if (fp)

@@ -20,7 +20,8 @@ thread_local UINT64 Logger::mTLFlushTime = 0;
 //
 // プログラム引数 "-T" で指定されたディレクトリをログ出力用に保存する
 //
-bool Logger::internalInit(const std::wstring& argTempDir, const std::wstring& argTrcDir, const std::wstring& argDllType)
+bool Logger::internalInit(const std::wstring& argTempDir,
+	const std::wstring& argTrcDir, const std::wstring& argDllType) noexcept
 {
 	namespace fs = std::filesystem;
 
@@ -77,7 +78,7 @@ bool Logger::internalInit(const std::wstring& argTempDir, const std::wstring& ar
 #define FORMAT1		FORMAT_DT "\t" FORMAT_ERR "\t" FORMAT_SRC "\t" FORMAT_FUNC "\t"
 #define FORMAT2		"\n"
 
-void Logger::traceW_impl(int indent, PCWSTR fullPath, int line, PCWSTR func, PCWSTR format, ...)
+void Logger::traceW_impl(int indent, PCWSTR fullPath, int line, PCWSTR func, PCWSTR format, ...) const noexcept 
 {
 	LastErrorBackup _backup;
 
@@ -95,8 +96,9 @@ void Logger::traceW_impl(int indent, PCWSTR fullPath, int line, PCWSTR func, PCW
 	SYSTEMTIME st;
 	::GetLocalTime(&st);
 
-	std::wstringstream ss;
+	std::wostringstream ss;
 	ss << file << L'(' << line << L')';
+
 	const auto src{ ss.str() };
 
 	va_list args;
@@ -131,7 +133,7 @@ void Logger::traceW_impl(int indent, PCWSTR fullPath, int line, PCWSTR func, PCW
 	traceW_write(&st, buf);
 }
 
-void Logger::traceA_impl(int indent, PCSTR fullPath, int line, PCSTR func, PCSTR format, ...)
+void Logger::traceA_impl(int indent, PCSTR fullPath, int line, PCSTR func, PCSTR format, ...) const noexcept 
 {
 	LastErrorBackup _backup;
 
@@ -149,8 +151,9 @@ void Logger::traceA_impl(int indent, PCSTR fullPath, int line, PCSTR func, PCSTR
 	SYSTEMTIME st;
 	::GetLocalTime(&st);
 
-	std::stringstream ss;
+	std::ostringstream ss;
 	ss << file << '(' << line << ')';
+
 	const auto src{ ss.str() };
 
 	va_list args;
@@ -186,13 +189,13 @@ void Logger::traceA_impl(int indent, PCSTR fullPath, int line, PCSTR func, PCSTR
 }
 
 #pragma warning(suppress: 4100)
-void Logger::traceW_write(const SYSTEMTIME* st, PCWSTR buf) const
+void Logger::traceW_write(const SYSTEMTIME* st, PCWSTR buf) const noexcept
 {
 	const auto pid = ::GetCurrentProcessId();
 	const auto tid = ::GetCurrentThreadId();
 
 	{
-		std::wstringstream ss;
+		std::wostringstream ss;
 
 		ss << L"| ";
 		ss << std::setw(3) << (tid % 1000);
@@ -214,7 +217,7 @@ void Logger::traceW_write(const SYSTEMTIME* st, PCWSTR buf) const
 	{
 		if (!mTLFile.is_open())
 		{
-			std::wstringstream ss;
+			std::wostringstream ss;
 
 #ifdef _DEBUG
 			ss << mTraceLogDir << L"\\trace-";
@@ -296,10 +299,12 @@ bool CreateLogger(PCWSTR argTempDir, PCWSTR argTrcDir, PCWSTR argDllType)
 	Logger* logger = new Logger();
 	if (!logger->internalInit(tmpDir, trcDir, dllType))
 	{
+		delete logger;
 		return false;
 	}
 
 	gLogger = logger;
+
 	return true;
 }
 

@@ -148,7 +148,7 @@ bool AwsS3::deleteObject(CALLER_ARG const ObjectKey& argObjKey)
                 return false;
             }
 
-            Aws::S3::Model::Delete delete_objects;
+            std::list<std::wstring> delete_objects;
 
             for (const auto& dirInfo: dirInfoList)
             {
@@ -166,16 +166,13 @@ bool AwsS3::deleteObject(CALLER_ARG const ObjectKey& argObjKey)
                 }
 
                 const auto fileObjKey{ argObjKey.append(dirInfo->FileNameBuf) };
-
-                Aws::S3::Model::ObjectIdentifier obj;
-                obj.SetKey(fileObjKey.keyA());
-                delete_objects.AddObjects(obj);
+                delete_objects.push_back(fileObjKey.key());
 
                 traceW(L"delete_objects.AddObjects fileObjKey=%s", fileObjKey.c_str());
 
                 // ローカルのキャッシュ・ファイルを削除
 
-                const std::wstring localPath{ GetCacheFilePath(mCacheDataDir, fileObjKey.str()) };
+                const auto localPath{ GetCacheFilePath(mCacheDataDir, fileObjKey.str()) };
 
                 if (::DeleteFileW(localPath.c_str()))
                 {
@@ -197,22 +194,16 @@ bool AwsS3::deleteObject(CALLER_ARG const ObjectKey& argObjKey)
                 traceW(L"cache delete num=%d, fileObjKey=%s", num, fileObjKey.c_str());
             }
 
-            if (delete_objects.GetObjects().empty())
+            if (delete_objects.empty())
             {
                 break;
             }
 
-            traceW(L"DeleteObjects bucket=%s size=%zu", argObjKey.bucket().c_str(), delete_objects.GetObjects().size());
+            traceW(L"DeleteObjects bucket=%s size=%zu", argObjKey.bucket().c_str(), delete_objects.size());
 
-            Aws::S3::Model::DeleteObjectsRequest request;
-            request.SetBucket(argObjKey.bucketA());
-            request.SetDelete(delete_objects);
-
-            const auto outcome = mClient->DeleteObjects(request);
-
-            if (!outcomeIsSuccess(outcome))
+            if (!this->apicallDeleteObjects(CONT_CALLER argObjKey.bucket(), delete_objects))
             {
-                traceW(L"fault: DeleteObjects");
+                traceW(L"fault: apicallDeleteObjects");
                 return false;
             }
         }
@@ -220,14 +211,9 @@ bool AwsS3::deleteObject(CALLER_ARG const ObjectKey& argObjKey)
 
     traceW(L"DeleteObject argObjKey=%s", argObjKey.c_str());
 
-    Aws::S3::Model::DeleteObjectRequest request;
-    request.SetBucket(argObjKey.bucketA());
-    request.SetKey(argObjKey.keyA());
-    const auto outcome = mClient->DeleteObject(request);
-
-    if (!outcomeIsSuccess(outcome))
+    if (!this->apicallDeleteObject(CONT_CALLER argObjKey))
     {
-        traceW(L"fault: DeleteObject");
+        traceW(L"fault: apicallDeleteObject");
         return false;
     }
 
@@ -235,7 +221,7 @@ bool AwsS3::deleteObject(CALLER_ARG const ObjectKey& argObjKey)
     {
         // 新規作成時に作られたローカル・ディレクトリが存在したら削除
 
-        const std::wstring localPath{ GetCacheFilePath(mCacheDataDir, argObjKey.str()) };
+        const auto localPath{ GetCacheFilePath(mCacheDataDir, argObjKey.str()) };
 
         if (::RemoveDirectoryW(localPath.c_str()))
         {
@@ -268,62 +254,11 @@ bool AwsS3::putObject(CALLER_ARG const ObjectKey& argObjKey,
 
     traceW(L"argObjKey=%s, argFilePath=%s", argObjKey.c_str(), argFilePath.c_str());
 
-    Aws::S3::Model::PutObjectRequest request;
-    request.SetBucket(argObjKey.bucketA());
-    request.SetKey(argObjKey.keyA());
+    traceW(L"do apicallPutObject");
 
-    if (FA_IS_DIRECTORY(argFileInfo.FileAttributes))
+    if (!this->apicallPutObject(CONT_CALLER argObjKey, argFileInfo, argFilePath))
     {
-        // ディレクトリの場合は空のコンテンツ
-    }
-    else
-    {
-        // ファイルの場合はローカル・キャッシュの内容をアップロードする
-
-        const Aws::String filePath{ WC2MB(argFilePath) };
-
-        std::shared_ptr<Aws::IOStream> inputData = Aws::MakeShared<Aws::FStream>
-        (
-            __FUNCTION__,
-            filePath.c_str(),
-            std::ios_base::in | std::ios_base::binary
-        );
-
-        if (!inputData->good())
-        {
-            const auto lerr = ::GetLastError();
-
-            traceW(L"fault: inputData->good, fail=%s bad=%s, eof=%s, lerr=%lu",
-                BOOL_CSTRW(inputData->fail()), BOOL_CSTRW(inputData->bad()), BOOL_CSTRW(inputData->eof()), lerr);
-
-            return false;
-        }
-
-        request.SetBody(inputData);
-    }
-
-    const auto sCreationTime{ std::to_string(argFileInfo.CreationTime) };
-    const auto sLastWriteTime{ std::to_string(argFileInfo.LastWriteTime) };
-
-    request.AddMetadata("wincse-creation-time", sCreationTime.c_str());
-    request.AddMetadata("wincse-last-write-time", sLastWriteTime.c_str());
-
-    traceA("sCreationTime=%s", sCreationTime.c_str());
-    traceA("sLastWriteTime=%s", sLastWriteTime.c_str());
-
-#if _DEBUG
-    request.AddMetadata("wincse-debug-source-path", WC2MB(argFilePath).c_str());
-    request.AddMetadata("wincse-debug-creation-time", WinFileTime100nsToLocalTimeStringA(argFileInfo.CreationTime).c_str());
-    request.AddMetadata("wincse-debug-last-write-time", WinFileTime100nsToLocalTimeStringA(argFileInfo.LastWriteTime).c_str());
-#endif
-
-    traceW(L"PutObject argObjKey=%s, argFilePath=%s", argObjKey.c_str(), argFilePath.c_str());
-
-    const auto outcome = mClient->PutObject(request);
-
-    if (!outcomeIsSuccess(outcome))
-    {
-        traceW(L"fault: PutObject");
+        traceW(L"fault: apicallPutObject");
         return false;
     }
 
@@ -340,6 +275,7 @@ bool AwsS3::putObject(CALLER_ARG const ObjectKey& argObjKey,
     if (!headObject(CONT_CALLER argObjKey, nullptr))
     {
         traceW(L"fault: headObject");
+        return false;
     }
 
     return true;
@@ -372,8 +308,9 @@ bool AwsS3::renameObject(CALLER_ARG WCSE::CSDeviceContext* ctx, const ObjectKey&
         // ディレクトリの場合、親ディレクトリの CommonPrefix を元にした情報になるので
         // HeadObject によりリモートの情報を取得する
 
-        const auto dirInfo{ this->apicallHeadObject(CONT_CALLER ctx->mObjKey) };
-        if (!dirInfo)
+        DirInfoType dirInfo;
+
+        if (!this->apicallHeadObject(CONT_CALLER ctx->mObjKey, &dirInfo))
         {
             traceW(L"fault: apicallHeadObject");
             return false;
