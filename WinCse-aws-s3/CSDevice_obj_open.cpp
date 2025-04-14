@@ -1,14 +1,13 @@
-#include "AwsS3.hpp"
+#include "CSDevice.hpp"
 #include <fstream>
 #include <iostream>
 
 using namespace WCSE;
 
 
-CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
+CSDeviceContext* CSDevice::create(CALLER_ARG const ObjectKey& argObjKey,
     UINT32 argCreateOptions, UINT32 argGrantedAccess, UINT32 argFileAttributes)
 {
-    StatsIncr(create);
     NEW_LOG_BLOCK();
 
     traceW(L"argObjKey=%s", argObjKey.c_str());
@@ -19,12 +18,13 @@ CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
 
     const auto remotePath{ argObjKey.str() };
     FileHandle hFile;
+    HANDLE Handle = INVALID_HANDLE_VALUE;
 
-    UnprotectedShare<PrepareLocalFileShare> unsafeShare(&mPrepareLocalFileShare, remotePath);   // 名前への参照を登録
+    UnprotectedShare<PrepareLocalFileShare> unsafeShare{ &mPrepareLocalFileShare, remotePath };   // 名前への参照を登録
     {
         const auto safeShare{ unsafeShare.lock() }; // 名前のロック
 
-        const auto localPath{ GetCacheFilePath(mCacheDataDir, argObjKey.str()) };
+        const auto localPath{ GetCacheFilePath(mRuntimeEnv->CacheDataDir, argObjKey.str()) };
 
         traceW(L"localPath=%s", localPath.c_str());
 
@@ -37,71 +37,59 @@ CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
 
         if (isDirectory)
         {
-            /*
-            * It is not widely known but CreateFileW can be used to create directories!
-            * It requires the specification of both FILE_FLAG_BACKUP_SEMANTICS and
-            * FILE_FLAG_POSIX_SEMANTICS. It also requires that FileAttributes has
-            * FILE_ATTRIBUTE_DIRECTORY set.
-            */
-            CreateFlags |= FILE_FLAG_POSIX_SEMANTICS;
-            FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
-
-            // ディレクトリを作成する場合は、上記に加えて CREATE_NEW である必要がある
-
-            // なので、予め削除する
-
-            if (!::RemoveDirectoryW(localPath.c_str()))
-            {
-                const auto lerr = ::GetLastError();
-                if (lerr != ERROR_FILE_NOT_FOUND)
-                {
-                    traceW(L"fault: RemoveDirectory, lerr=%lu", lerr);
-                    return nullptr;
-                }
-            }
+            Handle = mRefDir.handle();
         }
         else
         {
             FileAttributes &= ~FILE_ATTRIBUTE_DIRECTORY;
-        }
 
-        if (0 == FileAttributes)
-        {
-            FileAttributes = FILE_ATTRIBUTE_NORMAL;
-        }
+            if (0 == FileAttributes)
+            {
+                FileAttributes = FILE_ATTRIBUTE_NORMAL;
+            }
 
-        hFile = ::CreateFileW(localPath.c_str(),
-            GrantedAccess,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-            NULL,
-            isDirectory ? CREATE_NEW : CREATE_ALWAYS,
-            CreateFlags | FileAttributes,
-            NULL);
+            hFile = ::CreateFileW(localPath.c_str(),
+                GrantedAccess,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                NULL,
+                isDirectory ? CREATE_NEW : CREATE_ALWAYS,
+                CreateFlags | FileAttributes,
+                NULL);
+
+            if (hFile.invalid())
+            {
+                const auto lerr = ::GetLastError();
+                traceW(L"fault: CreateFileW lerr=%lu", lerr);
+
+                return nullptr;
+            }
+
+            Handle = hFile.handle();
+        }
 
     }   // 名前のロックを解除 (safeShare の生存期間)
 
-    if (hFile.invalid())
-    {
-        const auto lerr = ::GetLastError();
-        traceW(L"fault: CreateFileW lerr=%lu", lerr);
-
-        return nullptr;
-    }
+    APP_ASSERT(Handle != INVALID_HANDLE_VALUE);
 
     FSP_FSCTL_FILE_INFO fileInfo;
-    const auto ntstatus = GetFileInfoInternal(hFile.handle(), &fileInfo);
+
+    const auto ntstatus = GetFileInfoInternal(Handle, &fileInfo);
     if (!NT_SUCCESS(ntstatus))
     {
         traceW(L"fault: GetFileInfoInternal");
         return nullptr;
     }
 
-    OpenContext* ctx = new OpenContext(mCacheDataDir, argObjKey, fileInfo, argCreateOptions, GrantedAccess);
+    Handle = INVALID_HANDLE_VALUE;      // これ以降は使わない
+
+    APP_ASSERT(fileInfo.LastWriteTime);
+
+    OpenContext* ctx = new OpenContext(mRuntimeEnv->CacheDataDir, argObjKey, fileInfo, argCreateOptions, GrantedAccess);
     APP_ASSERT(ctx);
 
     if (isDirectory)
     {
-        // ディレクトリの場合は ctx に保存する必要がないので このまま閉じる
+        // go next
     }
     else
     {
@@ -120,29 +108,28 @@ CSDeviceContext* AwsS3::create(CALLER_ARG const ObjectKey& argObjKey,
     // --> 親ディレクトリのキャッシュを削除しておかないと、新規作成したものが
     //     反映されない状態になってしまう
 
-    const auto num = deleteObjectCache(CONT_CALLER argObjKey);
+    const auto num = mQueryObject->deleteCache(CONT_CALLER argObjKey);
     traceW(L"cache delete num=%d, argObjKey=%s", num, argObjKey.c_str());
 
     return ctx;
 }
 
-CSDeviceContext* AwsS3::open(CALLER_ARG const ObjectKey& argObjKey,
+CSDeviceContext* CSDevice::open(CALLER_ARG const ObjectKey& argObjKey,
     UINT32 CreateOptions, UINT32 GrantedAccess, const FSP_FSCTL_FILE_INFO& FileInfo)
 {
-    StatsIncr(open);
     NEW_LOG_BLOCK();
 
     // DoOpen() から呼び出されるが、ファイルを開く=ダウンロードになってしまうため
     // ここでは UParam に情報のみを保存し、DoRead() から呼び出される readFile() で
     // ファイルのダウンロード処理 (キャッシュ・ファイルの作成) を行う。
 
-    OpenContext* ctx = new OpenContext(mCacheDataDir, argObjKey, FileInfo, CreateOptions, GrantedAccess);
+    OpenContext* ctx = new OpenContext(mRuntimeEnv->CacheDataDir, argObjKey, FileInfo, CreateOptions, GrantedAccess);
     APP_ASSERT(ctx);
 
     return ctx;
 }
 
-bool AwsS3::uploadWhenClosing(CALLER_ARG WCSE::CSDeviceContext* ctx, const std::wstring& localPath)
+bool CSDevice::uploadWhenClosing(CALLER_ARG WCSE::CSDeviceContext* ctx, PCWSTR argSourcePath)
 {
     NEW_LOG_BLOCK();
 
@@ -150,6 +137,8 @@ bool AwsS3::uploadWhenClosing(CALLER_ARG WCSE::CSDeviceContext* ctx, const std::
 
     if (ctx->isDir())
     {
+        APP_ASSERT(!argSourcePath);
+
         // ディレクトリの場合は create のときの情報をそのまま転記
 
         traceW(L"directory");
@@ -187,9 +176,9 @@ bool AwsS3::uploadWhenClosing(CALLER_ARG WCSE::CSDeviceContext* ctx, const std::
 
     // アップロード
 
-    traceW(L"putObject mObjKey=%s, localPath=%s", ctx->mObjKey.c_str(), localPath.c_str());
+    traceW(L"putObject mObjKey=%s, argSourcePath=%s", ctx->mObjKey.c_str(), argSourcePath);
 
-    if (!this->putObject(CONT_CALLER ctx->mObjKey, fileInfo, localPath))
+    if (!this->putObject(CONT_CALLER ctx->mObjKey, fileInfo, argSourcePath))
     {
         traceW(L"fault: putObject");
         return false;
@@ -213,9 +202,8 @@ static std::wstring CsdCtxFlagsStr(uint32_t flags)
     return JoinStrings(strs, L", ", false);
 }
 
-void AwsS3::close(CALLER_ARG WCSE::CSDeviceContext* ctx)
+void CSDevice::close(CALLER_ARG WCSE::CSDeviceContext* ctx)
 {
-    StatsIncr(close);
     NEW_LOG_BLOCK();
     APP_ASSERT(ctx);
 
@@ -232,32 +220,37 @@ void AwsS3::close(CALLER_ARG WCSE::CSDeviceContext* ctx)
 
     const auto localPath{ ctx->getCacheFilePath() };
 
-    traceW(L"uploadWhenClosing mObjKey=%s, localPath=%s", ctx->mObjKey.c_str(), localPath.c_str());
+    // ディレクトリの場合は空コンテンツ
+
+    PCWSTR sourcePath{ ctx->isDir() ? nullptr : localPath.c_str() };
 
     // ファイル・アップロード
 
-    if (!this->uploadWhenClosing(CONT_CALLER ctx, localPath))
+    traceW(L"uploadWhenClosing mObjKey=%s, sourcePath=%s", ctx->mObjKey.c_str(), sourcePath);
+
+    if (this->uploadWhenClosing(CONT_CALLER ctx, sourcePath))
+    {
+        traceW(L"success: uploadWhenClosing");
+    }
+    else
     {
         traceW(L"fault: uploadWhenClosing");
-        return;
+
+        // 後続処理があるので return はしない
+        // return
     }
 
-    // (config の設定により)アップロードしたファイルを削除する
-
-    if (mSettings->deleteAfterUpload)
+    if (sourcePath)
     {
-        if (ctx->isDir())
-        {
-            // ここを通過するのは新規作成時のみであり、空のディレクトリは
-            // リネーム可否の判断材料となるため削除しない
-        }
-        else if (ctx->isFile())
+        // (config の設定により)アップロードしたファイルを削除する
+
+        if (mRuntimeEnv->DeleteAfterUpload)
         {
             // ファイルを削除
 
-            traceW(L"delete local cache: %s", localPath.c_str());
+            traceW(L"delete local cache: %s", sourcePath);
 
-            if (!::DeleteFileW(localPath.c_str()))
+            if (!::DeleteFileW(sourcePath))
             {
                 const auto lerr = ::GetLastError();
                 traceW(L"fault: DeleteFileW, lerr=%lu", lerr);

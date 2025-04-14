@@ -1,4 +1,4 @@
-#include "AwsS3.hpp"
+#include "CSDevice.hpp"
 
 using namespace WCSE;
 
@@ -16,7 +16,7 @@ using namespace WCSE;
 struct ObjectListShare : public SharedBase { };
 static ShareStore<ObjectListShare> gObjectListShare;
 
-bool AwsS3::headObject(CALLER_ARG const ObjectKey& argObjKey, FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */)
+DirInfoType CSDevice::headObject(CALLER_ARG const ObjectKey& argObjKey)
 {
     //THREAD_SAFE();
     //NEW_LOG_BLOCK();
@@ -30,9 +30,7 @@ bool AwsS3::headObject(CALLER_ARG const ObjectKey& argObjKey, FSP_FSCTL_FILE_INF
     // 本来は外部から listObjects() を実行して、ロジックで判断するが
     // 意味的にわかりにくくなるので、ここで吸収する
 
-    DirInfoListType dirInfoList;
-
-    UnprotectedShare<ObjectListShare> unsafeShare(&gObjectListShare, argObjKey.str());   // 名前への参照を登録
+    UnprotectedShare<ObjectListShare> unsafeShare{ &gObjectListShare, argObjKey.str() };   // 名前への参照を登録
     {
         const auto safeShare{ unsafeShare.lock() }; // 名前のロック
 
@@ -40,47 +38,34 @@ bool AwsS3::headObject(CALLER_ARG const ObjectKey& argObjKey, FSP_FSCTL_FILE_INF
 
         if (argObjKey.meansDir())
         {
-            dirInfo = this->unsafeHeadObjectWithCache_CheckDir(CONT_CALLER argObjKey);
+            return mQueryObject->unsafeHeadObject_CheckDir(CONT_CALLER argObjKey);
         }
         else
         {
             APP_ASSERT(argObjKey.meansFile());
 
-            dirInfo = this->unsafeHeadObjectWithCache(CONT_CALLER argObjKey);
-        }
-
-        if (!dirInfo)
-        {
-            return false;
-        }
-
-        if (pFileInfo)
-        {
-            *pFileInfo = dirInfo->FileInfo;
+            return mQueryObject->unsafeHeadObject(CONT_CALLER argObjKey);
         }
 
     }   // 名前のロックを解除 (safeShare の生存期間)
-
-    return true;
 }
 
-bool AwsS3::listObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* pDirInfoList)
+bool CSDevice::listObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* pDirInfoList)
 {
-    StatsIncr(listObjects);
     //THREAD_SAFE();
     NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.meansDir());
 
-    UnprotectedShare<ObjectListShare> unsafeShare(&gObjectListShare, argObjKey.str());   // 名前への参照を登録
+    UnprotectedShare<ObjectListShare> unsafeShare{ &gObjectListShare, argObjKey.str() };   // 名前への参照を登録
     {
         const auto safeShare{ unsafeShare.lock() }; // 名前のロック
 
-        return this->unsafeListObjectsWithCache(CONT_CALLER argObjKey, pDirInfoList);
+        return mQueryObject->unsafeListObjects(CONT_CALLER argObjKey, pDirInfoList);
 
     }   // 名前のロックを解除 (safeShare の生存期間)
 }
 
-bool AwsS3::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* pDirInfoList)
+bool CSDevice::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* pDirInfoList)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.meansDir());
@@ -108,7 +93,7 @@ bool AwsS3::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoLis
 
         if (itParent == dirInfoList.cend())
         {
-            dirInfoList.insert(dirInfoList.cbegin(), makeDirInfo_dir(L"..", mWorkDirCTime));
+            dirInfoList.insert(dirInfoList.cbegin(), makeDirInfoDir(L".."));
         }
         else
         {
@@ -125,7 +110,7 @@ bool AwsS3::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoLis
 
     if (itCurr == dirInfoList.cend())
     {
-        dirInfoList.insert(dirInfoList.cbegin(), makeDirInfo_dir(L".", mWorkDirCTime));
+        dirInfoList.insert(dirInfoList.cbegin(), makeDirInfoDir(L"."));
     }
     else
     {
@@ -158,15 +143,15 @@ bool AwsS3::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoLis
 
         APP_ASSERT(searchObjKey.isObject());
 
-        UnprotectedShare<ObjectListShare> unsafeShare(&gObjectListShare, searchObjKey.str());   // 名前への参照を登録
+        UnprotectedShare<ObjectListShare> unsafeShare{ &gObjectListShare, searchObjKey.str() };   // 名前への参照を登録
         {
             const auto safeShare{ unsafeShare.lock() }; // 名前のロック
 
-            if (mSettings->strictFileTimestamp)
+            if (mRuntimeEnv->StrictFileTimestamp)
             {
                 // ディレクトリにファイル名を付与して HeadObject を取得
 
-                const auto mergeDirInfo{ this->unsafeHeadObjectWithCache(CONT_CALLER searchObjKey) };
+                const auto mergeDirInfo{ mQueryObject->unsafeHeadObject(CONT_CALLER searchObjKey) };
                 if (mergeDirInfo)
                 {
                     dirInfo->FileInfo = mergeDirInfo->FileInfo;
@@ -178,14 +163,14 @@ bool AwsS3::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoLis
             {
                 // ディレクトリにファイル名を付与して HeadObject のキャッシュを検索
 
-                const auto mergeDirInfo{ this->getCachedHeadObject(CONT_CALLER searchObjKey) };
+                const auto mergeDirInfo{ mQueryObject->headObjectCacheOnly(CONT_CALLER searchObjKey) };
                 if (mergeDirInfo)
                 {
                     dirInfo->FileInfo = mergeDirInfo->FileInfo;
                 }
             }
 
-            if (this->isNegativeHeadObject(CONT_CALLER searchObjKey))
+            if (mQueryObject->isNegative(CONT_CALLER searchObjKey))
             {
                 // リージョン違いなどで HeadObject が失敗したものに HIDDEN 属性を追加
 

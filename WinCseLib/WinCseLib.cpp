@@ -1,5 +1,4 @@
 #include "WinCseLib.h"
-#include <sstream>
 #include <fstream>
 #include <filesystem>
 #include <dbghelp.h>
@@ -138,7 +137,7 @@ int NamedWorkersToMap(NamedWorker workers[], std::unordered_map<std::wstring, IW
 }
 
 // ファイル名から FSP_FSCTL_DIR_INFO のヒープ領域を生成し、いくつかのメンバを設定して返却
-DirInfoType makeDirInfo(const std::wstring& argFileName)
+DirInfoType makeEmptyDirInfo(const std::wstring& argFileName)
 {
 	APP_ASSERT(!argFileName.empty());
 
@@ -168,6 +167,32 @@ DirInfoType makeDirInfo(const std::wstring& argFileName)
 	memcpy(dirInfo->FileNameBuf, argFileName.c_str(), keyLenBytes);
 
 	return std::make_shared<DirInfoView>(dirInfo);
+}
+
+DirInfoType makeDirInfo(const std::wstring& argFileName, UINT64 argFileTime, UINT32 argFileAttributes)
+{
+	APP_ASSERT(!argFileName.empty());
+
+	auto dirInfo = makeEmptyDirInfo(argFileName);
+	APP_ASSERT(dirInfo);
+
+	UINT32 fileAttributes = argFileAttributes;
+
+	if (argFileName != L"." && argFileName != L".." && argFileName.at(0) == L'.')
+	{
+		// 隠しファイル
+
+		fileAttributes |= FILE_ATTRIBUTE_HIDDEN;
+	}
+
+	dirInfo->FileInfo.FileAttributes = fileAttributes;
+
+	dirInfo->FileInfo.CreationTime = argFileTime;
+	dirInfo->FileInfo.LastAccessTime = argFileTime;
+	dirInfo->FileInfo.LastWriteTime = argFileTime;
+	dirInfo->FileInfo.ChangeTime = argFileTime;
+
+	return dirInfo;
 }
 
 NTSTATUS HandleToSecurityInfo(HANDLE Handle,
@@ -294,8 +319,9 @@ bool GetIniStringW(const std::wstring& confPath, PCWSTR argSection, PCWSTR keyNa
 
 	::SetLastError(ERROR_SUCCESS);
 	::GetPrivateProfileStringW(argSection, keyName, L"", buf.data(), (DWORD)buf.size(), confPath.c_str());
+	const auto lerr = ::GetLastError();
 
-	if (::GetLastError() != ERROR_SUCCESS)
+	if (lerr != ERROR_SUCCESS)
 	{
 		return false;
 	}
@@ -350,7 +376,7 @@ ObjectKey ObjectKey::fromPath(const std::wstring& argPath)
 	// パス文字列をバケット名とキーに分割
 
 	APP_ASSERT(!argPath.empty());
-	APP_ASSERT(argPath[0] != L'/');			// バケットの先頭は "/" ではないはず
+	APP_ASSERT(argPath.at(0) != L'/');			// バケットの先頭は "/" ではないはず
 
 	std::wstring bucket;
 	std::wstring key;
@@ -414,7 +440,7 @@ ObjectKey ObjectKey::fromWinPath(const std::wstring& argWinPath)
 	// Windows パス文字列をバケット名とキーに分割
 
 	APP_ASSERT(!argWinPath.empty());
-	APP_ASSERT(argWinPath[0] == L'\\');
+	APP_ASSERT(argWinPath.at(0) == L'\\');
 
 	std::wstring bucket;
 	std::wstring key;
@@ -590,7 +616,7 @@ std::string ObjectKey::strA() const
 // CSDeviceContext
 //
 CSDeviceContext::CSDeviceContext(const std::wstring& argCacheDataDir,
-	const WCSE::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo)
+	const WCSE::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo) noexcept
 	:
 	mCacheDataDir(argCacheDataDir),
 	mFileInfo(argFileInfo),

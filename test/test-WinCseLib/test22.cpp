@@ -5,7 +5,7 @@
 #include <chrono>
 #include <functional>
 
-struct HeadObjectCache
+struct CacheHeadObject
 {
     struct CacheValBase
     {
@@ -63,11 +63,11 @@ struct HeadObjectCache
 
 using namespace WCSE;
 
-void HeadObjectCache::report(CALLER_ARG FILE*)
+void CacheHeadObject::report(CALLER_ARG FILE*)
 {
 }
 
-void HeadObjectCache::clear(CALLER_ARG0)
+void CacheHeadObject::clear(CALLER_ARG0)
 {
     std::lock_guard<std::mutex> lock_{ mGuard };
 
@@ -97,7 +97,7 @@ int deleteBy(const std::function<bool(const typename CacheType::iterator&)>& sho
     return count;
 }
 
-int HeadObjectCache::deleteByTime(CALLER_ARG std::chrono::system_clock::time_point threshold)
+int CacheHeadObject::deleteByTime(CALLER_ARG std::chrono::system_clock::time_point threshold)
 {
     std::lock_guard<std::mutex> lock_{ mGuard };
     NEW_LOG_BLOCK();
@@ -116,7 +116,7 @@ int HeadObjectCache::deleteByTime(CALLER_ARG std::chrono::system_clock::time_poi
 }
 
 
-int HeadObjectCache::deleteByKey(CALLER_ARG const WCSE::ObjectKey& argObjKey)
+int CacheHeadObject::deleteByKey(CALLER_ARG const WCSE::ObjectKey& argObjKey)
 {
     std::lock_guard<std::mutex> lock_{ mGuard };
     NEW_LOG_BLOCK();
@@ -166,7 +166,7 @@ int HeadObjectCache::deleteByKey(CALLER_ARG const WCSE::ObjectKey& argObjKey)
 
 // ----------------------- Positive
 
-bool HeadObjectCache::get(CALLER_ARG const WCSE::ObjectKey& argObjKey, WCSE::DirInfoType* pV)
+bool CacheHeadObject::get(CALLER_ARG const WCSE::ObjectKey& argObjKey, WCSE::DirInfoType* pV)
 {
     std::lock_guard<std::mutex> lock_{ mGuard };
     APP_ASSERT(argObjKey.valid());
@@ -192,7 +192,7 @@ bool HeadObjectCache::get(CALLER_ARG const WCSE::ObjectKey& argObjKey, WCSE::Dir
     return true;
 }
 
-void HeadObjectCache::set(CALLER_ARG const WCSE::ObjectKey& argObjKey, const WCSE::DirInfoType& argV)
+void CacheHeadObject::set(CALLER_ARG const WCSE::ObjectKey& argObjKey, const WCSE::DirInfoType& argV)
 {
     std::lock_guard<std::mutex> lock_{ mGuard };
     NEW_LOG_BLOCK();
@@ -217,7 +217,7 @@ void HeadObjectCache::set(CALLER_ARG const WCSE::ObjectKey& argObjKey, const WCS
 
 // ----------------------- Negative
 
-bool HeadObjectCache::isNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey)
+bool CacheHeadObject::isNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey)
 {
     std::lock_guard<std::mutex> lock_{ mGuard };
     APP_ASSERT(argObjKey.valid());
@@ -238,7 +238,7 @@ bool HeadObjectCache::isNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey)
     return true;
 }
 
-void HeadObjectCache::addNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey)
+void CacheHeadObject::addNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey)
 {
     std::lock_guard<std::mutex> lock_{ mGuard };
     NEW_LOG_BLOCK();
@@ -261,7 +261,7 @@ void HeadObjectCache::addNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey)
 
 int test22()
 {
-    HeadObjectCache a;
+    CacheHeadObject a;
 
 	return 0;
 }

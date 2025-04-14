@@ -10,7 +10,6 @@
 #include "CSDriver.hpp"
 #include <csignal>
 #include <iostream>
-#include <sstream>
 #include <iomanip>
 #include <unordered_map>
 
@@ -32,7 +31,7 @@ static void app_sighandler(int signum);
 
 static void writeStats(
     PCWSTR logDir, const WINFSP_STATS* libStats,
-    const WINCSE_DRIVER_STATS* appStats, const WINCSE_DEVICE_STATS* devStats);
+    const WINCSE_DRIVER_STATS* appStats);
 
 /*
  * DEBUG ARGS
@@ -238,10 +237,7 @@ static int app_main(int argc, wchar_t** argv,
                     PCWSTR logDir = GetLogger()->getOutputDirectory();
                     if (logDir)
                     {
-                        WINCSE_DEVICE_STATS devStats{};
-                        dll.mCSDevice->queryStats(&devStats);
-
-                        writeStats(logDir, &appif.FspStats, &appStats, &devStats);
+                        writeStats(logDir, &appif.FspStats, &appStats);
                     }
 
                     std::wcout << L"WinFspMain done. return=" << rc << std::endl;
@@ -438,8 +434,7 @@ static void app_terminate()
 }
 
 static void writeStats(
-    PCWSTR logDir, const WINFSP_STATS* libStats,
-    const WINCSE_DRIVER_STATS* appStats, const WINCSE_DEVICE_STATS* devStats)
+    PCWSTR logDir, const WINFSP_STATS* libStats, const WINCSE_DRIVER_STATS* appStats)
 {
     SYSTEMTIME st;
     ::GetLocalTime(&st);
@@ -519,21 +514,6 @@ static void writeStats(
             fprintf(fp, "\t" "_CallOpen: %ld\n", appStats->_CallOpen);
             fprintf(fp, "\t" "_CallClose: %ld\n", appStats->_CallClose);
             fprintf(fp, "\t" "_ForceClose: %ld\n", appStats->_ForceClose);
-            fputs("\n", fp);
-
-            fputs("[CSDevice Stats]\n", fp);
-            fprintf(fp, "\t" "OnSvcStart: %ld\n", devStats->OnSvcStart);
-            fprintf(fp, "\t" "OnSvcStop: %ld\n", devStats->OnSvcStop);
-            fprintf(fp, "\t" "headBucket: %ld\n", devStats->headBucket);
-            fprintf(fp, "\t" "headObject: %ld\n", devStats->headObject);
-            fprintf(fp, "\t" "listBuckets: %ld\n", devStats->listBuckets);
-            fprintf(fp, "\t" "listObjects: %ld\n", devStats->listObjects);
-            fprintf(fp, "\t" "create: %ld\n", devStats->create);
-            fprintf(fp, "\t" "open: %ld\n", devStats->open);
-            fprintf(fp, "\t" "close: %ld\n", devStats->close);
-            fprintf(fp, "\t" "readObject: %ld\n", devStats->readObject);
-            fprintf(fp, "\t" "cleanup: %ld\n", devStats->cleanup);
-
             fputs("\n", fp);
 
             fclose(fp);

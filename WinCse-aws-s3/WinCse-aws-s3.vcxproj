@@ -19,32 +19,41 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="AwsS3.cpp" />
-    <ClCompile Include="AwsS3A_svc.cpp" />
-    <ClCompile Include="AwsS3B.cpp" />
-    <ClCompile Include="AwsS3C.cpp" />
-    <ClCompile Include="AwsS3_bucket.cpp" />
-    <ClCompile Include="AwsS3A.cpp" />
-    <ClCompile Include="AwsS3_obj_list.cpp" />
-    <ClCompile Include="AwsS3_obj_open.cpp" />
-    <ClCompile Include="AwsS3_obj_pp_util.cpp" />
-    <ClCompile Include="AwsS3_obj_prepare.cpp" />
-    <ClCompile Include="AwsS3_obj_rw.cpp.cpp" />
-    <ClCompile Include="AwsS3C_event.cpp" />
-    <ClCompile Include="ListBucketsCache.cpp" />
+    <ClCompile Include="CSDevice.cpp" />
+    <ClCompile Include="CSDeviceBase.cpp" />
+    <ClCompile Include="CSDeviceBase_notif.cpp" />
+    <ClCompile Include="FileOutputParams.cpp" />
+    <ClCompile Include="OpenContext.cpp" />
+    <ClCompile Include="QueryBucket.cpp" />
+    <ClCompile Include="CSDevice_bucket.cpp" />
+    <ClCompile Include="ExecuteApi.cpp" />
+    <ClCompile Include="CSDevice_event.cpp" />
+    <ClCompile Include="CSDevice_obj_list.cpp" />
+    <ClCompile Include="CSDevice_obj_open.cpp" />
+    <ClCompile Include="CSDevice_obj_pp_util.cpp" />
+    <ClCompile Include="CSDevice_obj_prepare.cpp" />
+    <ClCompile Include="CSDevice_obj_rw.cpp.cpp" />
+    <ClCompile Include="CacheListBuckets.cpp" />
     <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="ObjectCache.cpp" />
+    <ClCompile Include="CacheObject.cpp" />
+    <ClCompile Include="QueryObject.cpp" />
+    <ClCompile Include="RuntimeEnv.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="AwsS3.hpp" />
-    <ClInclude Include="AwsS3A.hpp" />
-    <ClInclude Include="AwsS3B.hpp" />
-    <ClInclude Include="AwsS3C.hpp" />
-    <ClInclude Include="AwsS3_obj_pp_util.h" />
+    <ClInclude Include="CSDevice.hpp" />
+    <ClInclude Include="ExecuteApi.hpp" />
+    <ClInclude Include="CSDeviceBase.hpp" />
+    <ClInclude Include="aws_sdk_s3_client.h" />
+    <ClInclude Include="FileOutputParams.hpp" />
+    <ClInclude Include="OpenContext.hpp" />
+    <ClInclude Include="QueryBucket.hpp" />
+    <ClInclude Include="FilePart.hpp" />
     <ClInclude Include="aws_sdk_s3.h" />
-    <ClInclude Include="ListBucketsCache.hpp" />
-    <ClInclude Include="ObjectCache.hpp" />
+    <ClInclude Include="CacheListBuckets.hpp" />
+    <ClInclude Include="CacheObject.hpp" />
     <ClInclude Include="Protect.hpp" />
+    <ClInclude Include="QueryObject.hpp" />
+    <ClInclude Include="RuntimeEnv.hpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>

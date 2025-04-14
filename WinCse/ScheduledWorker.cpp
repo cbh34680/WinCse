@@ -2,7 +2,6 @@
 #include "ScheduledWorker.hpp"
 #include <filesystem>
 #include <numeric>
-#include <sstream>
 
 using namespace WCSE;
 
@@ -15,8 +14,9 @@ static const int WORKER_MAX = 1;
 static const int WORKER_MAX = 0;
 #endif
 
-ScheduledWorker::ScheduledWorker(const std::wstring& argTempDir, const std::wstring& argIniSection)
-	: mTempDir(argTempDir), mIniSection(argIniSection)
+ScheduledWorker::ScheduledWorker(const std::wstring&, const std::wstring& argIniSection)
+	:
+	mIniSection(argIniSection)
 {
 	// OnSvcStart の呼び出し順によるイベントオブジェクト未生成を
 	// 回避するため、コンストラクタで生成して OnSvcStart で null チェックする

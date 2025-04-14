@@ -70,7 +70,7 @@ NTSTATUS CSDriver::PreCreateFilesystem(FSP_SERVICE* Service, PCWSTR argWorkDir, 
 	for (const auto& it: mWorkers)
 	{
 		const auto worker = it.second;
-		const auto klassName = getDerivedClassNamesW(worker);
+		const auto klassName{ getDerivedClassNamesW(worker) };
 
 		traceW(L"%s::PreCreateFilesystem()", klassName.c_str());
 
@@ -87,7 +87,7 @@ NTSTATUS CSDriver::PreCreateFilesystem(FSP_SERVICE* Service, PCWSTR argWorkDir, 
 	for (int i=0; i<_countof(services); i++)
 	{
 		const auto service = services[i];
-		const auto klassName = getDerivedClassNamesW(service);
+		const auto klassName{ getDerivedClassNamesW(service) };
 
 		traceW(L"%s::PreCreateFilesystem()", klassName.c_str());
 
@@ -183,16 +183,15 @@ NTSTATUS CSDriver::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 
 	// ƒƒ“ƒo‚É•Û‘¶
 
-	mWorkDir = workDir;
-
-	traceW(L"INFO: TempDir=%s, WorkDir=%s", mTempDir.c_str(), mWorkDir.c_str());
+	//mWorkDir = workDir;
+	//traceW(L"INFO: WorkDir=%s", mWorkDir.c_str());
 
 	// OnSvcStart() ‚Ì“`”d
 
 	for (const auto& it: mWorkers)
 	{
 		const auto worker = it.second;
-		const auto klassName = getDerivedClassNamesW(worker);
+		const auto klassName{ getDerivedClassNamesW(worker) };
 
 		traceW(L"%s::OnSvcStart()", klassName.c_str());
 
@@ -209,7 +208,7 @@ NTSTATUS CSDriver::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 	for (int i=0; i<_countof(services); i++)
 	{
 		const auto service = services[i];
-		const auto klassName = getDerivedClassNamesW(service);
+		const auto klassName{ getDerivedClassNamesW(service) };
 
 		traceW(L"%s::OnSvcStart()", klassName.c_str());
 
@@ -235,7 +234,7 @@ VOID CSDriver::OnSvcStop()
 	for (const auto& it: mWorkers)
 	{
 		const auto worker = it.second;
-		const auto klassName = getDerivedClassNamesW(worker);
+		const auto klassName{ getDerivedClassNamesW(worker) };
 
 		traceW(L"%s::OnSvcStop()", klassName.c_str());
 
@@ -247,7 +246,7 @@ VOID CSDriver::OnSvcStop()
 	for (int i=0; i<_countof(services); i++)
 	{
 		const auto service = services[i];
-		const auto klassName = getDerivedClassNamesW(service);
+		const auto klassName{ getDerivedClassNamesW(service) };
 
 		traceW(L"%s::OnSvcStop()", klassName.c_str());
 

@@ -56,9 +56,8 @@ static void test1_1(ICSDevice* cs)
                     continue;
                 }
 
-                FSP_FSCTL_FILE_INFO fileInfo{};
-
-                if (!cs->headObject(START_CALLER ObjectKey{ bucketName, obj->FileNameBuf }, &fileInfo))
+                const auto dirInfo{ cs->headObject(START_CALLER ObjectKey{ bucketName, obj->FileNameBuf }) };
+                if (!dirInfo)
                 {
                     continue;
                 }
@@ -69,7 +68,7 @@ static void test1_1(ICSDevice* cs)
                 ObjectKey objKey{ bucketName, obj->FileNameBuf };
                 std::wcout << L"objKey=" << objKey.c_str() << std::endl;
 
-                CSDeviceContext* ctx = cs->open(START_CALLER objKey, CreateOptions, GrantedAccess, fileInfo);
+                CSDeviceContext* ctx = cs->open(START_CALLER objKey, CreateOptions, GrantedAccess, dirInfo->FileInfo);
                 if (!ctx)
                 {
                     continue;

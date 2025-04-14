@@ -1008,6 +1008,9 @@ int main()
 
     test28();
 
+    void test29();
+    test29();
+
     return EXIT_SUCCESS;
 }
 

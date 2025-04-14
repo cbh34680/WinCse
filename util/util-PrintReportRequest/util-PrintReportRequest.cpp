@@ -4,7 +4,7 @@
 #include <iostream>
 #include <Windows.h>
 
-int wmain(int argc, wchar_t** argv)
+int wmain(int, wchar_t**)
 {
 	HANDLE hEvent = ::OpenEvent(EVENT_ALL_ACCESS, FALSE, L"Global\\WinCse-AwsS3-util-print-report");
 	if (!hEvent)

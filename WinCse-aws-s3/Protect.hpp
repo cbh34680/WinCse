@@ -1,5 +1,6 @@
 #pragma once
 
+#include "WinCseLib.h"
 #include <mutex>
 
 //
@@ -31,18 +32,12 @@ class ProtectedShare
 
 	template<typename T> friend class UnprotectedShare;
 
-	ProtectedShare(T* argV) : mV(argV)
+	ProtectedShare(T* argV) noexcept : mV(argV)
 	{
 		mV->mMutex.lock();
 	}
 
-public:
-	~ProtectedShare()
-	{
-		unlock();
-	}
-
-	void unlock()
+	void unlock() noexcept
 	{
 		if (mV)
 		{
@@ -52,11 +47,17 @@ public:
 		}
 	}
 
-	T* operator->() {
+public:
+	~ProtectedShare()
+	{
+		unlock();
+	}
+
+	T* operator->() noexcept {
 		return mV;
 	}
 
-	const T* operator->() const {
+	const T* operator->() const noexcept {
 		return mV;
 	}
 };
@@ -70,7 +71,7 @@ class UnprotectedShare
 
 public:
 	template <typename... ArgsT>
-	UnprotectedShare(ShareStore<T>* argShareStore, const std::wstring& argName, ArgsT... args)
+	UnprotectedShare(ShareStore<T>* argShareStore, const std::wstring& argName, ArgsT... args) noexcept
 		:
 		mShareStore(argShareStore),
 		mName(argName)
@@ -87,7 +88,8 @@ public:
 
 		static_assert(std::is_base_of<SharedBase, T>::value, "T must be derived from SharedBase");
 
-		mV = dynamic_cast<T*>(it->second.get());
+		//mV = dynamic_cast<T*>(it->second.get());
+		mV = static_cast<T*>(it->second.get());
 		_ASSERT(mV);
 	}
 
@@ -105,7 +107,7 @@ public:
 		}
 	}
 
-	ProtectedShare<T> lock()
+	ProtectedShare<T> lock() const noexcept
 	{
 		return ProtectedShare<T>(this->mV);
 	}

@@ -1,34 +1,12 @@
 #pragma once
 
-#include "AwsS3C.hpp"
+#include "WinCseLib.h"
+#include "CSDeviceBase.hpp"
 #include "Protect.hpp"
+#include "OpenContext.hpp"
+#include "FilePart.hpp"
 
-//
-// open() が呼ばれたときに UParam として PTFS_FILE_CONTEXT に保存する内部情報
-// close() で削除される
-//
-struct OpenContext : public WCSE::CSDeviceContext
-{
-	const UINT32 mCreateOptions;
-	const UINT32 mGrantedAccess;
-
-	explicit OpenContext(
-		const std::wstring& argCacheDataDir,
-		const WCSE::ObjectKey& argObjKey,
-		const FSP_FSCTL_FILE_INFO& argFileInfo,
-		const UINT32 argCreateOptions,
-		const UINT32 argGrantedAccess)
-		:
-		CSDeviceContext(argCacheDataDir, argObjKey, argFileInfo),
-		mCreateOptions(argCreateOptions),
-		mGrantedAccess(argGrantedAccess)
-	{
-	}
-
-	NTSTATUS openFileHandle(CALLER_ARG DWORD argDesiredAccess, DWORD argCreationDisposition);
-};
-
-class AwsS3 : public AwsS3C
+class CSDevice : public CSDeviceBase
 {
 private:
 	// ファイル生成時の排他制御
@@ -36,7 +14,8 @@ private:
 	ShareStore<PrepareLocalFileShare> mPrepareLocalFileShare;
 
 	// バケット操作関連
-	bool reloadListBuckets(CALLER_ARG std::chrono::system_clock::time_point threshold);
+
+	bool reloadBuckets(CALLER_ARG std::chrono::system_clock::time_point threshold);
 
 	// Read 関連
 
@@ -44,29 +23,40 @@ private:
 	bool downloadMultipart(CALLER_ARG OpenContext* ctx, const std::wstring& localPath);
 
 	// Upload
-	bool uploadWhenClosing(CALLER_ARG WCSE::CSDeviceContext* argCSDeviceContext, const std::wstring& localPath);
+	bool uploadWhenClosing(CALLER_ARG WCSE::CSDeviceContext* argCSDCtx, PCWSTR sourcePath);
 
 	bool putObject(CALLER_ARG const WCSE::ObjectKey& argObjKey,
-		const FSP_FSCTL_FILE_INFO& argFileInfo,
-		const std::wstring& argFilePath);
+		const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath);
+
+	// ファイル/ディレクトリに特化
+
+	WCSE::DirInfoType makeDirInfoDir(const std::wstring& argFileName)
+	{
+		return WCSE::makeDirInfo(argFileName, mRuntimeEnv->DefaultCommonPrefixTime, FILE_ATTRIBUTE_DIRECTORY | mRuntimeEnv->DefaultFileAttributes);
+	}
 
 public:
+	void onTimer(CALLER_ARG0);
 	void onIdle(CALLER_ARG0);
+	void onNotif(CALLER_ARG DWORD argEventId, PCWSTR argEventName);
 
 public:
-	using AwsS3C::AwsS3C;
+	explicit CSDevice(const std::wstring& argTempDir, const std::wstring& argIniSection,
+		const std::unordered_map<std::wstring, WCSE::IWorker*>& argWorkers)
+		:
+		CSDeviceBase(argTempDir, argIniSection, argWorkers)
+	{
+	}
 
-	~AwsS3();
+	~CSDevice();
 
 	NTSTATUS OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
-	VOID OnSvcStop() override;
 
-	bool headBucket(CALLER_ARG const std::wstring& argBucket,
-		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) override;
+	WCSE::DirInfoType headBucket(CALLER_ARG const std::wstring& argBucket) override;
+
 	bool listBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList /* nullable */) override;
 
-	bool headObject(CALLER_ARG const WCSE::ObjectKey& argObjKey,
-		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) override;
+	WCSE::DirInfoType headObject(CALLER_ARG const WCSE::ObjectKey& argObjKey) override;
 
 	bool listObjects(CALLER_ARG const WCSE::ObjectKey& argObjKey,
 		WCSE::DirInfoListType* pDirInfoList /* nullable */) override;
@@ -76,7 +66,7 @@ public:
 
 	bool deleteObject(CALLER_ARG const WCSE::ObjectKey& argObjKey) override;
 
-	bool renameObject(CALLER_ARG WCSE::CSDeviceContext* argCSDeviceContext,
+	NTSTATUS renameObject(CALLER_ARG WCSE::CSDeviceContext* argCSDCtx,
 		const WCSE::ObjectKey& argNewObjKey) override;
 
 	WCSE::CSDeviceContext* create(CALLER_ARG const WCSE::ObjectKey& argObjKey,
@@ -85,19 +75,17 @@ public:
 	WCSE::CSDeviceContext* open(CALLER_ARG const WCSE::ObjectKey& argObjKey,
 		UINT32 CreateOptions, UINT32 GrantedAccess, const FSP_FSCTL_FILE_INFO& FileInfo) override;
 
-	void close(CALLER_ARG WCSE::CSDeviceContext* argCSDeviceContext) override;
+	void close(CALLER_ARG WCSE::CSDeviceContext* argCSDCtx) override;
 
-	NTSTATUS readObject(CALLER_ARG WCSE::CSDeviceContext* argCSDeviceContext,
+	NTSTATUS readObject(CALLER_ARG WCSE::CSDeviceContext* argCSDCtx,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred) override;
 
-	NTSTATUS writeObject(CALLER_ARG WCSE::CSDeviceContext* argCSDeviceContext,
+	NTSTATUS writeObject(CALLER_ARG WCSE::CSDeviceContext* argCSDCtx,
 		PVOID Buffer, UINT64 Offset, ULONG Length, BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
 		PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO* FileInfo) override;
 
-	NTSTATUS getHandleFromContext(CALLER_ARG WCSE::CSDeviceContext* argCSDeviceContext,
+	NTSTATUS getHandleFromContext(CALLER_ARG WCSE::CSDeviceContext* argCSDCtx,
 		DWORD argDesiredAccess, DWORD argCreationDisposition, PHANDLE pHandle) override;
-
-private:
 };
 
 #ifdef WINCSEAWSS3_EXPORTS

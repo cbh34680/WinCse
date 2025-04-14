@@ -6,11 +6,10 @@
 class CSDriver : public WCSE::ICSDriver
 {
 private:
-	const std::wstring mTempDir;
 	const std::wstring mIniSection;
 
-	WINCSE_DRIVER_STATS* mStats;
-	WCSE::ICSDevice* mCSDevice;
+	WINCSE_DRIVER_STATS* const mStats;
+	WCSE::ICSDevice* const mCSDevice;
 	bool mReadonlyVolume = false;
 
 	struct
@@ -23,8 +22,10 @@ private:
 	// Worker
 	std::unordered_map<std::wstring, WCSE::IWorker*> mWorkers;
 
-	WCSE::IWorker* getWorker(const std::wstring& argName) const
+	WCSE::IWorker* getWorker(const std::wstring& argName) const noexcept
 	{
+		APP_ASSERT(mWorkers.find(argName) != mWorkers.cend());
+
 		return mWorkers.at(argName);
 	}
 
@@ -32,7 +33,7 @@ private:
 	std::wregex mIgnoreFileNamePatterns;
 
 	// 作業用ディレクトリ (プログラム引数 "-u" から算出される)
-	std::wstring mWorkDir;
+	//std::wstring mWorkDir;
 
 	// 属性参照用ファイル・ハンドル
 	WCSE::FileHandle mRefFile;
@@ -40,13 +41,17 @@ private:
 
 	struct ResourceSweeper
 	{
-		CSDriver* mThat;
-
-		explicit ResourceSweeper(CSDriver* argThat) : mThat(argThat) { }
-
+		CSDriver* const mThat;
 		std::set<PTFS_FILE_CONTEXT*> mOpenAddrs;
-		void add(PTFS_FILE_CONTEXT* FileContext);
-		void remove(PTFS_FILE_CONTEXT* FileContext);
+
+		explicit ResourceSweeper(CSDriver* argThat) noexcept
+			:
+			mThat(argThat)
+		{
+		}
+
+		void add(PTFS_FILE_CONTEXT* FileContext) noexcept;
+		void remove(PTFS_FILE_CONTEXT* FileContext) noexcept;
 
 		~ResourceSweeper();
 	}
@@ -63,6 +68,9 @@ private:
 	NTSTATUS getFileInfoByFileName(CALLER_ARG PCWSTR fileName,
 		FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pFileNameType);
 
+	NTSTATUS verifyFileUniqueness(CALLER_ARG
+		PCWSTR argFileName, bool argIsDir, WCSE::ObjectKey* pObjKey) const noexcept;
+
 protected:
 	bool shouldIgnoreFileName(const std::wstring& FileName) const noexcept;
 
@@ -70,7 +78,7 @@ public:
 	explicit CSDriver(
 		WINCSE_DRIVER_STATS* argStats, const std::wstring& argTempDir,
 		const std::wstring& argIniSection, WCSE::NamedWorker argWorkers[],
-		WCSE::ICSDevice* argCSDevice);
+		WCSE::ICSDevice* argCSDevice) noexcept;
 
 	~CSDriver();
 

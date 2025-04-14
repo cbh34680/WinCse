@@ -2,29 +2,6 @@
 #pragma warning(push)
 #pragma warning(disable: 4100)
 
-typedef struct
-{
-	long OnSvcStart;
-	long OnSvcStop;
-
-	long headBucket;
-	long getBucket;
-	long listBuckets;
-
-	long headObject;
-	long listObjects;
-	long listDisplayObjects;
-
-	long create;
-	long open;
-	long readObject;
-	long writeObject;
-	long close;
-	long cleanup;
-	long readDirectory;
-}
-WINCSE_DEVICE_STATS;
-
 namespace WCSE {
 
 // 文字列をバケット名とキーに分割
@@ -45,7 +22,7 @@ private:
 public:
 	ObjectKey() = default;
 
-	explicit ObjectKey(const std::wstring& argBucket, const std::wstring& argKey)
+	explicit ObjectKey(const std::wstring& argBucket, const std::wstring& argKey) noexcept
 		:
 		mBucket(argBucket),
 		mKey(argKey)
@@ -98,7 +75,7 @@ public:
 		{
 			// ".", ".." 以外で先頭が "." で始まっているものは隠しファイルの扱い
 
-			if (mKey != L"." && mKey != L".." && mKey[0] == L'.')
+			if (mKey != L"." && mKey != L".." && mKey.at(0) == L'.')
 			{
 				return true;
 			}
@@ -121,7 +98,7 @@ struct CSDeviceContext
 	uint32_t mFlags = 0U;
 
 	WINCSELIB_API explicit CSDeviceContext(const std::wstring& argCacheDataDir,
-		const WCSE::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo);
+		const WCSE::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo) noexcept;
 
 	WINCSELIB_API std::wstring getCacheFilePath() const;
 
@@ -150,15 +127,11 @@ struct ICSDevice : public ICSService
 {
 	virtual ~ICSDevice() = default;
 
-	virtual void queryStats(WINCSE_DEVICE_STATS* pStats) = 0;
-
-	virtual bool headBucket(CALLER_ARG const std::wstring& argBucket,
-		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) = 0;
+	virtual DirInfoType headBucket(CALLER_ARG const std::wstring& argBucket) = 0;
 
 	virtual bool listBuckets(CALLER_ARG DirInfoListType* pDirInfoList) = 0;
 
-	virtual bool headObject(CALLER_ARG const ObjectKey& argObjKey,
-		FSP_FSCTL_FILE_INFO* pFileInfo /* nullable */) = 0;
+	virtual DirInfoType headObject(CALLER_ARG const ObjectKey& argObjKey) = 0;
 
 	virtual bool listObjects(CALLER_ARG const ObjectKey& argObjKey,
 		DirInfoListType* pDirInfoList /* nullable */) = 0;
@@ -178,21 +151,21 @@ struct ICSDevice : public ICSService
 		const UINT32 CreateOptions, const UINT32 GrantedAccess,
 		const FSP_FSCTL_FILE_INFO& FileInfo) = 0;
 
-	virtual void close(CALLER_ARG CSDeviceContext* argCSDeviceContext) = 0;
+	virtual void close(CALLER_ARG CSDeviceContext* argCSDCtx) = 0;
 
-	virtual NTSTATUS readObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
+	virtual NTSTATUS readObject(CALLER_ARG CSDeviceContext* argCSDCtx,
 		PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred) = 0;
 
-	virtual NTSTATUS writeObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
+	virtual NTSTATUS writeObject(CALLER_ARG CSDeviceContext* argCSDCtx,
 		PVOID Buffer, UINT64 Offset, ULONG Length, BOOLEAN WriteToEndOfFile,
 		BOOLEAN ConstrainedIo, PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO* FileInfo) = 0;
 
 	virtual bool deleteObject(CALLER_ARG const ObjectKey& argObjKey) = 0;
 
-	virtual bool renameObject(CALLER_ARG CSDeviceContext* argCSDeviceContext,
+	virtual NTSTATUS renameObject(CALLER_ARG CSDeviceContext* argCSDCtx,
 		const ObjectKey& argNewObjKey) = 0;
 
-	virtual NTSTATUS getHandleFromContext(CALLER_ARG CSDeviceContext* argCSDeviceContext,
+	virtual NTSTATUS getHandleFromContext(CALLER_ARG CSDeviceContext* argCSDCtx,
 		const DWORD argDesiredAccess, const DWORD argCreationDisposition, PHANDLE pHandle) = 0;
 };
 

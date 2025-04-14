@@ -7,7 +7,6 @@
 class ScheduledWorker : public WCSE::ITaskTypedWorker<WCSE::IScheduledTask>
 {
 private:
-	const std::wstring mTempDir;
 	const std::wstring mIniSection;
 
 	std::list<std::thread> mThreads;

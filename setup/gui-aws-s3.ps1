@@ -11,7 +11,7 @@ $Error.Clear();
 $CurrentDir      = Get-Location
 
 $AppName         = "WinCse"
-$Type            = "aws-s3"
+$DllType            = "aws-s3"
 $ExeFileName     = "${AppName}.exe"
 $ConfFileName    = "${AppName}.conf"
 $LogDirName      = "log"
@@ -421,6 +421,7 @@ $btn_reg.Add_Click({
     }
 
     # Values
+    $cguid = [guid]::NewGuid().ToString()
     $keyid = $tbx_keyid.Text.Trim()
     $secret = $tbx_secret.Text.Trim()
     $region = $tbx_region.Text.Trim()
@@ -440,7 +441,7 @@ $btn_reg.Add_Click({
     }
 
     if ($chk_log.Checked) {
-        $logdir = "${workdir}\${Type}\${LogDirName}"
+        $logdir = "${workdir}\${DllType}\${LogDirName}"
         $WinFspLog = "${logdir}\${WinFspLogFName}"
 
         if (-not (Test-Path -Path $logdir)) {
@@ -463,7 +464,7 @@ $btn_reg.Add_Click({
 "@
     }
 
-    $reg_name = "${AppName}.${Type}.${drive}"
+    $reg_name = "${AppName}.${DllType}.${drive}"
 
     # Write "reg-add.bat"
     $add_reg_bat = @"
@@ -566,16 +567,19 @@ Description of the files in this directory
 ; ${conf_path}
 ;
 [default]
-type=${Type}
+type=${DllType}
 
 ; AWS client credentials
 aws_access_key_id=${keyid}
 aws_secret_access_key=${secret}
 region=${region}
 
+; Client Identifier
+client_guid=${cguid}
+
 ; You can select the bucket names to display using wildcards as follows.
 ; default: Not set
-#bucket_filters=my-bucket-1,my-bucket-2*
+#bucket_filters=my-bucket-1 my-bucket-2*
 
 ; Delete the cache files after the upload is completed.
 ; valid value: 0 or non-zero
@@ -607,8 +611,8 @@ region=${region}
 
 ; Object cache expiration period.
 ; valid range: 1 to 60 (1 hour)
-; default: 3
-#object_cache_expiry_min=3
+; default: 5
+#object_cache_expiry_min=5
 
 ; The duration for retaining cache files.
 ; valid range: 1 to 10080 (1 week)

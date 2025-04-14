@@ -182,7 +182,7 @@ void setupWinCseGlobal(WINCSE_IF* argWinCseIf)
 }
 
 template<typename MethodType, typename... Args>
-NTSTATUS relayReturnable(MethodType method, Args... args)
+NTSTATUS relayReturnable(const MethodType method, Args... args) noexcept
 {
     try
     {
@@ -201,7 +201,7 @@ NTSTATUS relayReturnable(MethodType method, Args... args)
 }
 
 template<typename MethodType, typename... Args>
-VOID relayNonReturnable(MethodType method, Args... args)
+VOID relayNonReturnable(const MethodType method, Args... args) noexcept
 {
     try
     {

@@ -1,6 +1,5 @@
 #include "WinCseLib.h"
 #include "CSDriver.hpp"
-#include <sstream>
 
 using namespace WCSE;
 
@@ -26,8 +25,25 @@ NTSTATUS CSDriver::getFileInfoByFileName(CALLER_ARG PCWSTR fileName,
 			return STATUS_OBJECT_NAME_INVALID;
 		}
 
-		if (objKey.isObject())
+		if (objKey.isBucket())
 		{
+			// "\bucket" のパターン
+
+			APP_ASSERT(objKey.isBucket());
+
+			const auto dirInfo{ mCSDevice->headBucket(CONT_CALLER objKey.bucket()) };
+			if (dirInfo)
+			{
+				*pFileInfo = dirInfo->FileInfo;
+				*pFileNameType = FileNameType::Bucket;
+
+				return STATUS_SUCCESS;
+			}
+		}
+		else if (objKey.isObject())
+		{
+			// "\bucket\***" のパターン
+
 			{
 				// 新規作成時はまだストレージに存在しない状態なので、メモリ操作により
 				// 問い合わせに回答する
@@ -61,23 +77,27 @@ NTSTATUS CSDriver::getFileInfoByFileName(CALLER_ARG PCWSTR fileName,
 			// 同じ名前のファイルとディレクトリが存在したときに、ディレクトリを優先するため
 			// 引数の名前をディレクトリに変換しストレージを調べ、存在しないときはファイルとして調べる
 
-			if (mCSDevice->headObject(CONT_CALLER objKey.toDir(), pFileInfo))
+			auto dirInfo = mCSDevice->headObject(CONT_CALLER objKey.toDir());
+			if (dirInfo)
 			{
 				// "\bucket\dir" のパターン
 				// 
 				// ディレクトリを採用
 
+				*pFileInfo = dirInfo->FileInfo;
 				*pFileNameType = FileNameType::DirectoryObject;
 
 				return STATUS_SUCCESS;
 			}
 
-			if (mCSDevice->headObject(CONT_CALLER objKey, pFileInfo))
+			dirInfo = mCSDevice->headObject(CONT_CALLER objKey);
+			if (dirInfo)
 			{
 				// "\bucket\dir\file.txt" のパターン
 				// 
 				// ファイルを採用
 
+				*pFileInfo = dirInfo->FileInfo;
 				*pFileNameType = FileNameType::FileObject;
 
 				return STATUS_SUCCESS;
@@ -85,16 +105,7 @@ NTSTATUS CSDriver::getFileInfoByFileName(CALLER_ARG PCWSTR fileName,
 		}
 		else
 		{
-			// "\bucket" のパターン
-
-			APP_ASSERT(objKey.isBucket());
-
-			if (mCSDevice->headBucket(CONT_CALLER objKey.bucket(), pFileInfo))
-			{
-				*pFileNameType = FileNameType::Bucket;
-
-				return STATUS_SUCCESS;
-			}
+			APP_ASSERT(0);
 		}
 	}
 

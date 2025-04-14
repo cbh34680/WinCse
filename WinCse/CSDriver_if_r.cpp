@@ -63,23 +63,23 @@ NTSTATUS CSDriver::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern
 	PWSTR Marker, PVOID Buffer, ULONG BufferLength, PULONG PBytesTransferred)
 {
 	StatsIncr(DoReadDirectory);
-	APP_ASSERT(FileContext && Buffer && PBytesTransferred);
+    NEW_LOG_BLOCK();
+
+    APP_ASSERT(FileContext && Buffer && PBytesTransferred);
 	APP_ASSERT(FA_IS_DIRECTORY(FileContext->FileInfo.FileAttributes));
 
-    std::wregex re;
-    std::wregex* pRe = nullptr;
+    std::unique_ptr<std::wregex> re;
 
     if (Pattern)
     {
-        const auto pattern = WildcardToRegexW(Pattern);
-        re = std::wregex(pattern);
-        pRe = &re;
+        // 引数のパターンを正規表現に変換
+
+        re = std::make_unique<std::wregex>(WildcardToRegexW(Pattern));
     }
 
     // ディレクトリの中の一覧取得
 
     PCWSTR FileName = FileContext->FileName;
-
     DirInfoListType dirInfoList;
 
     if (wcscmp(FileName, L"\\") == 0)
@@ -88,16 +88,19 @@ NTSTATUS CSDriver::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern
 
         if (!mCSDevice->listBuckets(START_CALLER &dirInfoList))
         {
-            NEW_LOG_BLOCK();
             traceW(L"not fouund/1");
 
             return STATUS_OBJECT_NAME_INVALID;
         }
+
+        if (dirInfoList.empty())
+        {
+            traceW(L"empty buckets");
+            return STATUS_SUCCESS;
+        }
     }
     else
     {
-        NEW_LOG_BLOCK();
-
         // "\bucket" または "\bucket\key"
 
         const auto objKey{ ObjectKey::fromWinPath(FileName) };
@@ -126,51 +129,49 @@ NTSTATUS CSDriver::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern
         }
 
         // 少なくとも "." はあるので空ではないはず
-        APP_ASSERT(!dirInfoList.empty());
 
         //traceW(L"object count: %zu", dirInfoList.size());
     }
 
-    if (!dirInfoList.empty())
+    APP_ASSERT(!dirInfoList.empty());
+
+    // 取得したものを WinFsp に転送する
+
+    NTSTATUS DirBufferResult = STATUS_SUCCESS;
+
+    if (FspFileSystemAcquireDirectoryBuffer(&FileContext->DirBuffer, 0 == Marker, &DirBufferResult))
     {
-        // 取得したものを WinFsp に転送する
-
-        NTSTATUS DirBufferResult = STATUS_SUCCESS;
-
-        if (FspFileSystemAcquireDirectoryBuffer(&FileContext->DirBuffer, 0 == Marker, &DirBufferResult))
+        for (const auto& dirInfo: dirInfoList)
         {
-            for (const auto& dirInfo: dirInfoList)
+            if (shouldIgnoreFileName(dirInfo->FileNameBuf))
             {
-                if (shouldIgnoreFileName(dirInfo->FileNameBuf))
+                continue;
+            }
+
+            if (re)
+            {
+                if (!std::regex_match(dirInfo->FileNameBuf, *re))
                 {
                     continue;
                 }
-
-                if (pRe)
-                {
-                    if (!std::regex_match(dirInfo->FileNameBuf, *pRe))
-                    {
-                        continue;
-                    }
-                }
-
-                if (!FspFileSystemFillDirectoryBuffer(&FileContext->DirBuffer, dirInfo->data(), &DirBufferResult))
-                {
-                    break;
-                }
             }
 
-            FspFileSystemReleaseDirectoryBuffer(&FileContext->DirBuffer);
+            if (!FspFileSystemFillDirectoryBuffer(&FileContext->DirBuffer, dirInfo->data(), &DirBufferResult))
+            {
+                break;
+            }
         }
 
-        if (!NT_SUCCESS(DirBufferResult))
-        {
-            return DirBufferResult;
-        }
-
-        FspFileSystemReadDirectoryBuffer(&FileContext->DirBuffer,
-            Marker, Buffer, BufferLength, PBytesTransferred);
+        FspFileSystemReleaseDirectoryBuffer(&FileContext->DirBuffer);
     }
+
+    if (!NT_SUCCESS(DirBufferResult))
+    {
+        return DirBufferResult;
+    }
+
+    FspFileSystemReadDirectoryBuffer(&FileContext->DirBuffer,
+        Marker, Buffer, BufferLength, PBytesTransferred);
 
     return STATUS_SUCCESS;
 }

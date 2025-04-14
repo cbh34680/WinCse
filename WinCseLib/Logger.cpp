@@ -1,7 +1,6 @@
 #include "WinCseLib.h"
 #include "Logger.hpp"
 #include <filesystem>
-#include <sstream>
 #include <iostream>
 
 #undef traceW

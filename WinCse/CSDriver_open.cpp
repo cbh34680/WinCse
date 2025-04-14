@@ -1,7 +1,6 @@
 #include "WinCseLib.h"
 #include "CSDriver.hpp"
 #include <filesystem>
-#include <sstream>
 
 using namespace WCSE;
 
@@ -20,82 +19,29 @@ NTSTATUS CSDriver::DoCreate(PCWSTR FileName,
 	traceW(L"FileName=%s, CreateOptions=%u, GrantedAccess=%u, FileAttributes=%u, SecurityDescriptor=%p, AllocationSize=%llu, PFileContext=%p, FileInfo=%p",
 		FileName, CreateOptions, GrantedAccess, FileAttributes, SecurityDescriptor, AllocationSize, PFileContext, FileInfo);
 
+	// 一時ファイルのときは拒否
+	// --> MS Office などが中間ファイルを作ることに対応
+
 	if (FA_MEANS_TEMPORARY(FileAttributes))
 	{
 		traceW(L"Deny opening temporary files");
 		return FspNtStatusFromWin32(ERROR_WRITE_PROTECT);
 	}
 
-	if (this->shouldIgnoreFileName(FileName))
-	{
-		// "desktop.ini" などは無視させる
+	// 作成対象と同じファイル名が存在するかチェック
 
-		traceW(L"ignore pattern");
-		return STATUS_OBJECT_NAME_INVALID;
+	const bool isDIr = CreateOptions & FILE_DIRECTORY_FILE;
+
+	ObjectKey newObjKey;
+	const auto ntstatus = this->verifyFileUniqueness(START_CALLER FileName, isDIr, &newObjKey);
+	if (!NT_SUCCESS(ntstatus))
+	{
+		traceW(L"fault: verifyFileUniqueness");
+
+		return ntstatus;
 	}
 
-	const ObjectKey objKey{ ObjectKey::fromWinPath(FileName) };
-	if (objKey.invalid())
-	{
-		traceW(L"invalid FileName=%s", FileName);
-
-		return STATUS_OBJECT_NAME_INVALID;
-	}
-
-	traceW(L"objKey=%s", objKey.str().c_str());
-
-	if (objKey.isBucket())
-	{
-		// バケットに対する create の実行
-
-		//return STATUS_ACCESS_DENIED;
-		//return FspNtStatusFromWin32(ERROR_ACCESS_DENIED);
-		//return FspNtStatusFromWin32(ERROR_WRITE_PROTECT);
-		//return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
-		return STATUS_OBJECT_NAME_COLLISION;				// https://github.com/winfsp/winfsp/issues/601
-	}
-
-	APP_ASSERT(objKey.isObject());
-
-	if (CreateOptions & FILE_DIRECTORY_FILE)
-	{
-		// "ディレクトリ" のとき
-		// 
-		// --> 同名のファイルを検索
-
-		if (mCSDevice->headObject(START_CALLER objKey, nullptr))
-		{
-			// 同じ名前の "ファイル" が存在する
-
-			traceW(L"fault: exists same name");
-			return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
-		}
-	}
-	else
-	{
-		// "ファイル" のとき
-		//
-		// --> 同名のディレクトリを検索
-
-		if (mCSDevice->headObject(START_CALLER objKey.toDir(), nullptr))
-		{
-			// 同じ名前の "ディレクトリ" が存在する
-
-			traceW(L"fault: exists same name");
-			return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
-		}
-	}
-
-	const ObjectKey createObjKey{ CreateOptions & FILE_DIRECTORY_FILE ? objKey.toDir() : objKey };
-
-	if (mCSDevice->headObject(START_CALLER createObjKey, nullptr))
-	{
-		// 同じ名前のものが存在するとき
-
-		traceW(L"fault: exists same name");
-		//return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
-		return STATUS_OBJECT_NAME_COLLISION;				// https://github.com/winfsp/winfsp/issues/601
-	}
+	// create 処理開始
 
 	auto fc{ std::unique_ptr<PTFS_FILE_CONTEXT, void(*)(void*)>((PTFS_FILE_CONTEXT*)calloc(1, sizeof(PTFS_FILE_CONTEXT)), free) };
 	if (!fc)
@@ -118,7 +64,7 @@ NTSTATUS CSDriver::DoCreate(PCWSTR FileName,
 
 	StatsIncr(_CallCreate);
 
-	CSDeviceContext* ctx = mCSDevice->create(START_CALLER createObjKey,
+	CSDeviceContext* ctx = mCSDevice->create(START_CALLER newObjKey,
 		CreateOptions, GrantedAccess, FileAttributes);
 
 	if (!ctx)

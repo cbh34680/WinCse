@@ -1,6 +1,5 @@
 #include "WinCseLib.h"
 #include <bcrypt.h>
-#include <sstream>
 #include <iomanip>
 
 //
@@ -9,8 +8,25 @@
 
 namespace WCSE {
 
-// AES ‚ğg‚Á‚Ä•œ†‰»
+// GUID ‚Ì¶¬
+std::wstring CreateGuidW()
+{
+    GUID guid{};
+    const auto hresult = ::CoCreateGuid(&guid);
+    APP_ASSERT(hresult == S_OK);
 
+    RPC_WSTR rpcString = nullptr;
+
+    const auto rpcStatus = ::UuidToStringW(&guid, &rpcString);
+    APP_ASSERT(rpcStatus == RPC_S_OK);
+
+    const std::wstring guidString{ reinterpret_cast<wchar_t*>(rpcString) };
+    ::RpcStringFreeW(&rpcString);
+
+    return guidString;
+}
+
+// AES ‚ğg‚Á‚Ä•œ†‰»
 bool DecryptAES(const std::vector<BYTE>& key, const std::vector<BYTE>& iv, 
     const std::vector<BYTE>& encrypted, std::vector<BYTE>* pDecrypted)
 {

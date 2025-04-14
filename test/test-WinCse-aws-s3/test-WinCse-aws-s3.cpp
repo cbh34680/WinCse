@@ -1,6 +1,6 @@
 ﻿#include <iostream>
 #include <Windows.h>
-#include "AwsS3.hpp"
+#include "CSDevice.hpp"
 
 using namespace WCSE;
 
@@ -44,8 +44,7 @@ struct ShareStore<Shared_Multipart> gMultipartDB;
 
 void test13_worker(int id, const std::wstring& key, int sec)
 {
-    UnprotectedShare<Shared_Simple> unlockLocal(&gSimpleDB, key);
-
+    UnprotectedShare<Shared_Simple> unlockLocal{ &gSimpleDB, key };
     {
         const auto lockedLocal{ unlockLocal.lock() };
 
@@ -74,7 +73,7 @@ void test13()
     std::wcout << L"done." << std::endl;
 }
 
-int wmain(int argc, wchar_t** argv)
+int wmain(int, wchar_t**)
 {
     int test1(int argc, wchar_t** argv);
 	//test1(argc, argv);

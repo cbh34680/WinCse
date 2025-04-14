@@ -1,5 +1,4 @@
 #include "WinCseLib.h"
-#include <sstream>
 #include <fstream>
 #include <filesystem>
 #include <sddl.h>

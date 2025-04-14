@@ -60,6 +60,7 @@ typedef struct
 PTFS_FILE_CONTEXT;
 
 #include <string>
+#include <string_view>
 #include <list>
 #include <vector>
 #include <memory>
@@ -67,6 +68,7 @@ PTFS_FILE_CONTEXT;
 #include <unordered_map>
 #include <mutex>
 #include <functional>
+#include <sstream>
 
 //
 // インターフェース定義で使うので、ここで define
@@ -179,7 +181,7 @@ public:
 		return mDirInfo;
 	}
 
-	~DirInfoView() noexcept
+	~DirInfoView()
 	{
 		free(mDirInfo);
 	}
@@ -259,6 +261,7 @@ WINCSELIB_API bool GetIniStringA(const std::string& confPath, PCSTR argSection, 
 
 WINCSELIB_API size_t HashString(const std::wstring& str);
 
+WINCSELIB_API std::wstring CreateGuidW();
 WINCSELIB_API bool DecryptAES(const std::vector<BYTE>& key, const std::vector<BYTE>& iv, const std::vector<BYTE>& encrypted, std::vector<BYTE>* pDecrypted);
 WINCSELIB_API LSTATUS GetCryptKeyFromRegistryA(std::string* pOutput);
 WINCSELIB_API LSTATUS GetCryptKeyFromRegistryW(std::wstring* pOutput);
@@ -276,7 +279,8 @@ WINCSELIB_API ILogger* GetLogger();
 WINCSELIB_API void DeleteLogger();
 
 // ファイル名から FSP_FSCTL_DIR_INFO のヒープ領域を生成し、いくつかのメンバを設定して返却
-WINCSELIB_API DirInfoType makeDirInfo(const std::wstring& argFileName);
+WINCSELIB_API DirInfoType makeEmptyDirInfo(const std::wstring& argFileName);
+WINCSELIB_API DirInfoType makeDirInfo(const std::wstring& argFileName, UINT64 argFileTime, UINT32 argFileAttributes);
 
 WINCSELIB_API bool SplitPath(const std::wstring& argKey,
     std::wstring* pParentDir /* nullable */, std::wstring* pFileName /* nullable */);
@@ -295,7 +299,6 @@ public:
 	~LogBlock();
 
 	int depth() const noexcept;
-	static int getCount() noexcept;
 };
 
 //
@@ -327,7 +330,8 @@ struct FatalError : public std::exception
 
 	FatalError(const std::string& argWhat, NTSTATUS argNtstatus) noexcept
 		:
-		mWhat(argWhat), mNtstatus(argNtstatus)
+		mWhat(argWhat),
+		mNtstatus(argNtstatus)
 	{
 	}
 

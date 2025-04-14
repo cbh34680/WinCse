@@ -1,5 +1,4 @@
-#include "AwsS3.hpp"
-#include "AwsS3_obj_pp_util.h"
+#include "CSDevice.hpp"
 
 using namespace WCSE;
 
@@ -9,14 +8,18 @@ struct ReadPartTask : public IOnDemandTask
     IgnoreDuplicates getIgnoreDuplicates() const noexcept override { return IgnoreDuplicates::No; }
     Priority getPriority() const noexcept override { return Priority::Middle; }
 
-    AwsS3* mAwsS3;
+    ExecuteApi* mExecuteApi;
     const ObjectKey mObjKey;
     const std::wstring mLocalPath;
     std::shared_ptr<FilePart> mFilePart;
 
-    ReadPartTask(AwsS3* argAwsS3, const ObjectKey& argObjKey,
+    ReadPartTask(ExecuteApi* argExecuteApi, const ObjectKey& argObjKey,
         const std::wstring argLocalPath, std::shared_ptr<FilePart> argFilePart)
-        : mAwsS3(argAwsS3), mObjKey(argObjKey), mLocalPath(argLocalPath), mFilePart(argFilePart)
+        :
+        mExecuteApi(argExecuteApi),
+        mObjKey(argObjKey),
+        mLocalPath(argLocalPath),
+        mFilePart(argFilePart)
     {
     }
 
@@ -42,7 +45,7 @@ struct ReadPartTask : public IOnDemandTask
                     mFilePart->mLength
                 };
 
-                const auto bytesWritten = mAwsS3->apicallGetObjectAndWriteToFile(CONT_CALLER mObjKey, outputParams);
+                const auto bytesWritten = mExecuteApi->GetObjectAndWriteToFile(CONT_CALLER mObjKey, outputParams);
 
                 if (bytesWritten > 0)
                 {
@@ -50,7 +53,7 @@ struct ReadPartTask : public IOnDemandTask
                 }
                 else
                 {
-                    traceW(L"fault: apicallGetObjectAndWriteToFile bytesWritten=%lld", bytesWritten);
+                    traceW(L"fault: GetObjectAndWriteToFile bytesWritten=%lld", bytesWritten);
                 }
             }
         }
@@ -82,7 +85,7 @@ struct ReadPartTask : public IOnDemandTask
 //
 // 取得データをパートに分けて分割ダウンロードする
 //
-bool AwsS3::downloadMultipart(CALLER_ARG OpenContext* ctx, const std::wstring& localPath)
+bool CSDevice::downloadMultipart(CALLER_ARG OpenContext* ctx, const std::wstring& localPath)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(ctx);
@@ -100,7 +103,7 @@ bool AwsS3::downloadMultipart(CALLER_ARG OpenContext* ctx, const std::wstring& l
     for (int i=0; i<numParts; i++)
     {
         fileParts.emplace_back(
-            std::make_shared<FilePart>(mStats,
+            std::make_shared<FilePart>(
             PART_SIZE_BYTE * i,                       // Offset
             (ULONG)min(PART_SIZE_BYTE, remaining)     // Length
         )
@@ -113,7 +116,10 @@ bool AwsS3::downloadMultipart(CALLER_ARG OpenContext* ctx, const std::wstring& l
     {
         // マルチパートの読み込みを遅延タスクに登録
 
-        getWorker(L"delayed")->addTask(CONT_CALLER new ReadPartTask(this, ctx->mObjKey, localPath, filePart));
+        auto task{ new ReadPartTask(this->mExecuteApi.get(), ctx->mObjKey, localPath, filePart) };
+        APP_ASSERT(task);
+
+        getWorker(L"delayed")->addTask(CONT_CALLER task);
     }
 
     bool errorExists = false;

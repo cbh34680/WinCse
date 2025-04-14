@@ -1,6 +1,8 @@
 #pragma once
 
-class ListBucketsCache
+#include "WinCseLib.h"
+
+class CacheListBuckets
 {
 private:
 	WCSE::DirInfoListType mList;
@@ -25,19 +27,19 @@ protected:
 public:
 	std::chrono::system_clock::time_point getLastSetTime(CALLER_ARG0) const noexcept;
 
-	bool getBucketRegion(CALLER_ARG const std::wstring& argBucketName, std::wstring* pBucketRegion) const noexcept;
-	void addBucketRegion(CALLER_ARG const std::wstring& argBucketName, const std::wstring& argBucketRegion) noexcept;
-
 	void clear(CALLER_ARG0) noexcept;
 
-	bool empty(CALLER_ARG0) const noexcept
-	{
-		return mList.empty();
-	}
+	bool empty(CALLER_ARG0) const noexcept;
 
 	void set(CALLER_ARG const WCSE::DirInfoListType& argDirInfoList) noexcept;
-	WCSE::DirInfoListType get(CALLER_ARG0) noexcept;
+	void get(CALLER_ARG WCSE::DirInfoListType* pDirInfoList) noexcept;
 	WCSE::DirInfoType find(CALLER_ARG const std::wstring& argBucketName) noexcept;
+
+	bool getBucketRegion(CALLER_ARG
+		const std::wstring& argBucketName, std::wstring* pBucketRegion) const noexcept;
+
+	void addBucketRegion(CALLER_ARG
+		const std::wstring& argBucketName, const std::wstring& argBucketRegion) noexcept;
 
 	void report(CALLER_ARG FILE* fp) const noexcept;
 };

@@ -1,5 +1,4 @@
 #include "WinCseLib.h"
-#include <sstream>
 #include <iomanip>
 #include <cwctype>
 #include <algorithm>

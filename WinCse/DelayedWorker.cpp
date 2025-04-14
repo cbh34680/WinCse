@@ -1,7 +1,6 @@
 #include "WinCseLib.h"
 #include "DelayedWorker.hpp"
 #include <filesystem>
-#include <sstream>
 
 using namespace WCSE;
 
@@ -11,7 +10,7 @@ using namespace WCSE;
 
 #if ENABLE_TASK
 // タスク処理が有効
-const int WORKER_MAX = 4;
+const int WORKER_MAX = 6;
 
 #else
 // タスク処理が無効
@@ -19,8 +18,10 @@ const int WORKER_MAX = 0;
 
 #endif
 
-DelayedWorker::DelayedWorker(const std::wstring& tmpdir, const std::wstring& iniSection)
-	: mTempDir(tmpdir), mIniSection(iniSection), mTaskSkipCount(0)
+DelayedWorker::DelayedWorker(const std::wstring&, const std::wstring& argIniSection)
+	:
+	mIniSection(argIniSection),
+	mTaskSkipCount(0)
 {
 	// OnSvcStart の呼び出し順によるイベントオブジェクト未生成を
 	// 回避するため、コンストラクタで生成して OnSvcStart で null チェックする

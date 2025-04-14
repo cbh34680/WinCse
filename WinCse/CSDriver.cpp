@@ -8,19 +8,17 @@ using namespace WCSE;
 static PCWSTR const DEFAULT_IGNORE_PATTERNS = LR"(\b(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif)|\.DS_Store)$)";
 
 CSDriver::CSDriver(WINCSE_DRIVER_STATS* argStats,
-	const std::wstring& argTempDir, const std::wstring& argIniSection,
-	NamedWorker argWorkers[], ICSDevice* argCSDevice)
+	const std::wstring&, const std::wstring& argIniSection,
+	NamedWorker argWorkers[], ICSDevice* argCSDevice) noexcept
 	:
 	mStats(argStats),
-	mTempDir(argTempDir), mIniSection(argIniSection),
+	mIniSection(argIniSection),
 	mCSDevice(argCSDevice),
 	mResourceSweeper(this),
 	mIgnoreFileNamePatterns{ DEFAULT_IGNORE_PATTERNS, std::regex_constants::icase }
 {
 	NEW_LOG_BLOCK();
 
-	APP_ASSERT(std::filesystem::exists(argTempDir));
-	APP_ASSERT(std::filesystem::is_directory(argTempDir));
 	APP_ASSERT(argCSDevice);
 
 	NamedWorkersToMap(argWorkers, &mWorkers);
@@ -78,7 +76,7 @@ CSDriver::ResourceSweeper::~ResourceSweeper()
 static std::mutex gGuard;
 #define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ gGuard }
 
-void CSDriver::ResourceSweeper::add(PTFS_FILE_CONTEXT* FileContext)
+void CSDriver::ResourceSweeper::add(PTFS_FILE_CONTEXT* FileContext) noexcept
 {
 	THREAD_SAFE();
 	APP_ASSERT(mOpenAddrs.find(FileContext) == mOpenAddrs.end());
@@ -86,7 +84,7 @@ void CSDriver::ResourceSweeper::add(PTFS_FILE_CONTEXT* FileContext)
 	mOpenAddrs.insert(FileContext);
 }
 
-void CSDriver::ResourceSweeper::remove(PTFS_FILE_CONTEXT* FileContext)
+void CSDriver::ResourceSweeper::remove(PTFS_FILE_CONTEXT* FileContext) noexcept
 {
 	THREAD_SAFE();
 	APP_ASSERT(mOpenAddrs.find(FileContext) != mOpenAddrs.end());

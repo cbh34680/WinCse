@@ -3,6 +3,7 @@
 
 #pragma comment(lib, "winfsp-x64.lib")
 #pragma comment(lib, "bcrypt.lib")
+#pragma comment(lib, "Rpcrt4.lib")
 
 #pragma warning(disable: 4100)
 

@@ -1,34 +1,32 @@
-#include "AwsS3.hpp"
+#include "CSDevice.hpp"
 #include <filesystem>
 
 using namespace WCSE;
 
 
-void AwsS3C::onTimer(CALLER_ARG0)
+void CSDevice::onTimer(CALLER_ARG0)
 {
-    AwsS3A::onTimer(CONT_CALLER0);
-
     //NEW_LOG_BLOCK();
 
     // TimerTask から呼び出され、メモリの古いものを削除
 
     const auto now{ std::chrono::system_clock::now() };
 
-    const auto numDelete = this->deleteOldObjectCache(CONT_CALLER now - std::chrono::minutes(mSettings->objectCacheExpiryMin));
-    if (numDelete)
+    const auto num = mQueryObject->deleteOldCache(
+        CONT_CALLER now - std::chrono::minutes(mRuntimeEnv->ObjectCacheExpiryMin));
+
+    if (num > 0)
     {
         NEW_LOG_BLOCK();
 
-        traceW(L"delete %d records", numDelete);
+        traceW(L"delete %d records", num);
 
         //traceW(L"done.");
     }
 }
 
-void AwsS3C::onIdle(CALLER_ARG0)
+void CSDevice::onIdle(CALLER_ARG0)
 {
-    AwsS3A::onIdle(CONT_CALLER0);
-
     //NEW_LOG_BLOCK();
 
     // IdleTask から呼び出され、メモリやファイルの古いものを削除
@@ -39,13 +37,13 @@ void AwsS3C::onIdle(CALLER_ARG0)
     //
     // 最終アクセス日時から一定時間経過したキャッシュ・ファイルを削除する
 
-    APP_ASSERT(std::filesystem::is_directory(mCacheDataDir));
+    APP_ASSERT(std::filesystem::is_directory(mRuntimeEnv->CacheDataDir));
 
     const auto duration = now.time_since_epoch();
     const UINT64 nowMillis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-    const int cacheFileRetentionMin = mSettings->cacheFileRetentionMin;
+    const int cacheFileRetentionMin = mRuntimeEnv->CacheFileRetentionMin;
 
-    forEachFiles(mCacheDataDir, [this, nowMillis, cacheFileRetentionMin](const auto& wfd, const auto& fullPath)
+    forEachFiles(mRuntimeEnv->CacheDataDir, [this, nowMillis, cacheFileRetentionMin](const auto& wfd, const auto& fullPath)
     {
         const auto fileMillis = WinFileTimeToUtcMillis(wfd.ftLastAccessTime);
         const auto diffMillis = nowMillis - fileMillis;
@@ -72,7 +70,7 @@ void AwsS3C::onIdle(CALLER_ARG0)
     // ファイル・キャッシュのディレクトリ
     // 上記でファイルが削除され、空になったディレクトリは削除
 
-    forEachDirs(mCacheDataDir, [this, nowMillis, cacheFileRetentionMin](const auto& wfd, const auto& fullPath)
+    forEachDirs(mRuntimeEnv->CacheDataDir, [this, nowMillis, cacheFileRetentionMin](const auto& wfd, const auto& fullPath)
     {
         const auto fileMillis = WinFileTimeToUtcMillis(wfd.ftLastAccessTime);
         const auto diffMillis = nowMillis - fileMillis;
@@ -95,19 +93,23 @@ void AwsS3C::onIdle(CALLER_ARG0)
             }
             else
             {
-               traceW(L"--> Removed");
+                traceW(L"--> Removed");
             }
         }
     });
 
     //traceW(L"done.");
+
+    // IdleTask から呼び出され、メモリやファイルの古いものを削除
+
+    // バケット・キャッシュの再作成
+
+    this->reloadBuckets(CONT_CALLER now - std::chrono::minutes(mRuntimeEnv->BucketCacheExpiryMin));
 }
 
-void AwsS3C::onNotifEvent(CALLER_ARG DWORD argEventId, PCWSTR argEventName)
+void CSDevice::onNotif(CALLER_ARG DWORD argEventId, PCWSTR argEventName)
 {
     NEW_LOG_BLOCK();
-
-    AwsS3A::onNotifEvent(CONT_CALLER argEventId, argEventName);
 
     switch (argEventId)
     {
@@ -121,7 +123,7 @@ void AwsS3C::onNotifEvent(CALLER_ARG DWORD argEventId, PCWSTR argEventName)
 
             std::wostringstream ss;
 
-            ss << mCacheReportDir;
+            ss << mRuntimeEnv->CacheReportDir;
             ss << L'\\';
             ss << L"report";
             ss << L'-';
@@ -145,13 +147,11 @@ void AwsS3C::onNotifEvent(CALLER_ARG DWORD argEventId, PCWSTR argEventName)
                     fwprintf(fp, L"ProcessHandle=%lu\n", handleCount);
                 }
 
-                fwprintf(fp, L"ClientPtr.RefCount=%d\n", this->getClientRefCount());
-
                 fwprintf(fp, L"[ListBucketsCache]\n");
-                this->reportListBucketsCache(START_CALLER fp);
+                mQueryBucket->reportListBucketsCache(START_CALLER fp);
 
                 fwprintf(fp, L"[ObjectCache]\n");
-                this->reportObjectCache(START_CALLER fp);
+                mQueryObject->reportCache(START_CALLER fp);
 
                 fclose(fp);
                 fp = nullptr;
@@ -164,12 +164,13 @@ void AwsS3C::onNotifEvent(CALLER_ARG DWORD argEventId, PCWSTR argEventName)
 
         case 1:
         {
-            this->clearListBucketsCache(START_CALLER0);
-            this->clearObjectCache(START_CALLER0);
+            mQueryBucket->clearListBucketsCache(START_CALLER0);
+            mQueryObject->clearCache(START_CALLER0);
+
             this->onTimer(START_CALLER0);
             this->onIdle(START_CALLER0);
 
-            //reloadListBucketsCache(START_CALLER std::chrono::system_clock::now());
+            //this->reloadBuckets(START_CALLER std::chrono::system_clock::now());
 
             traceW(L">>>>> CACHE CLEAN <<<<<");
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "WinCseLib.h"
+
 // HeadObject, ListObjectsV2 から取得したデータをキャッシュする
 // どちらも型が異なるだけ (DirInfoType, DirInfoListType) なのでテンプレートにして
 // このファイルの最後でそれぞれの型のクラスを実体化させている
@@ -32,10 +34,10 @@
 #define THREAD_SAFE()       std::lock_guard<std::mutex> lock_{ mGuard }
 
 template<typename T>
-class ObjectCacheTemplate
+class ObjectCacheTmpl
 {
 public:
-    virtual ~ObjectCacheTemplate() = default;
+    virtual ~ObjectCacheTmpl() = default;
 
 	struct CacheValue
 	{
@@ -79,7 +81,9 @@ protected:
 	int mUpdNegative = 0;
 
     template <typename CacheDataT>
-    int deleteBy(const std::function<bool(const typename CacheDataT::iterator&)>& shouldErase, CacheDataT& cache)
+    int deleteBy(
+        const std::function<bool(const typename CacheDataT::iterator&)>& shouldErase,
+        CacheDataT& cache) const noexcept
     {
         int count = 0;
 
@@ -108,7 +112,6 @@ public:
     int deleteByTime(CALLER_ARG std::chrono::system_clock::time_point threshold) noexcept
     {
         THREAD_SAFE();
-        NEW_LOG_BLOCK();
 
         const auto OldAccessTime = [&threshold](const auto& it)
         {
@@ -118,15 +121,21 @@ public:
         const int delPositive = deleteBy(OldAccessTime, mPositive);
         const int delNegative = deleteBy(OldAccessTime, mNegative);
 
-        traceW(L"* delete records: Positive=%d, Negative=%d", delPositive, delNegative);
+        const int sum = delPositive + delNegative;
 
-        return delPositive + delNegative;
+        if (sum > 0)
+        {
+            NEW_LOG_BLOCK();
+
+            traceW(L"* delete records: Positive=%d, Negative=%d", delPositive, delNegative);
+        }
+
+        return sum;
     }
 
     int deleteByKey(CALLER_ARG const WCSE::ObjectKey& argObjKey) noexcept
     {
         THREAD_SAFE();
-        NEW_LOG_BLOCK();
 
         const auto EqualObjKey = [&argObjKey](const auto& it)
         {
@@ -166,10 +175,17 @@ public:
             // 親ディレクトリは存在しないので問題なし
         }
 
-        traceW(L"* delete records: argObjKey=%s, Positive=%d, Negative=%d, PositiveP=%d, NegativeP=%d",
-            argObjKey.c_str(), delPositive, delNegative, delPositiveP, delNegativeP);
+        const int sum = delPositive + delNegative + delPositiveP + delNegativeP;
 
-        return delPositive + delNegative + delPositiveP + delNegativeP;
+        if (sum > 0)
+        {
+            NEW_LOG_BLOCK();
+
+            traceW(L"* delete records: argObjKey=%s, Positive=%d, Negative=%d, PositiveP=%d, NegativeP=%d",
+                argObjKey.c_str(), delPositive, delNegative, delPositiveP, delNegativeP);
+        }
+
+        return sum;
     }
 
     void clear(CALLER_ARG0) noexcept
@@ -226,6 +242,7 @@ public:
         }
 
         traceW(L"* argObjKey=%s", argObjKey.c_str());
+
         mPositive.emplace(argObjKey, PositiveValue{ CONT_CALLER argV });
     }
 
@@ -268,6 +285,7 @@ public:
         }
 
         traceW(L"* argObjKey=%s", argObjKey.c_str());
+
         mNegative.emplace(argObjKey, NegativeValue{ CONT_CALLER0 });
     }
 };
@@ -276,13 +294,13 @@ public:
 
 #pragma warning(pop)
 
-class HeadObjectCache : public ObjectCacheTemplate<WCSE::DirInfoType>
+class CacheHeadObject : public ObjectCacheTmpl<WCSE::DirInfoType>
 {
 public:
     void report(CALLER_ARG FILE* fp);
 };
 
-class ListObjectsCache : public ObjectCacheTemplate<WCSE::DirInfoListType>
+class CacheListObjects : public ObjectCacheTmpl<WCSE::DirInfoListType>
 {
 public:
     void report(CALLER_ARG FILE* fp);

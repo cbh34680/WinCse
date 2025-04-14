@@ -371,6 +371,77 @@ NTSTATUS CSDriver::DoSetSecurity(PTFS_FILE_CONTEXT* FileContext,
 	//return STATUS_SUCCESS;
 }
 
+NTSTATUS CSDriver::verifyFileUniqueness(CALLER_ARG
+	PCWSTR argFileName, bool argIsDir, ObjectKey* pObjKey) const noexcept
+{
+	NEW_LOG_BLOCK();
+
+	// 変更後の名前が無視対象かどうか確認
+
+	if (this->shouldIgnoreFileName(argFileName))
+	{
+		traceW(L"ignore pattern");
+		return STATUS_OBJECT_NAME_INVALID;
+	}
+
+	auto fileObjKey{ ObjectKey::fromWinPath(argFileName) };
+	traceW(L"fileObjKey=%s", fileObjKey.c_str());
+
+	if (fileObjKey.invalid())
+	{
+		return STATUS_OBJECT_NAME_INVALID;
+	}
+
+	if (fileObjKey.isBucket())
+	{
+		// バケットに対する create の実行
+
+		traceW(L"not object: fileObjKey=%s", fileObjKey.c_str());
+
+		//return STATUS_ACCESS_DENIED;
+		//return FspNtStatusFromWin32(ERROR_ACCESS_DENIED);
+		//return FspNtStatusFromWin32(ERROR_WRITE_PROTECT);
+		//return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
+		return STATUS_OBJECT_NAME_COLLISION;				// https://github.com/winfsp/winfsp/issues/601
+	}
+
+	APP_ASSERT(fileObjKey.isObject());
+
+	// 変更先の名前が存在するか確認
+
+	auto objKey{ argIsDir ? fileObjKey.toDir() : std::move(fileObjKey) };
+	APP_ASSERT(objKey.isObject());
+
+	traceW(L"objKey=%s", objKey.c_str());
+
+	if (mCSDevice->headObject(START_CALLER objKey))
+	{
+		traceW(L"already exists: objKey=%s", objKey.c_str());
+
+		//return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
+		return STATUS_OBJECT_NAME_COLLISION;				// https://github.com/winfsp/winfsp/issues/601
+	}
+
+	// ファイル名、ディレクトリ名を反転させ名前が存在するか確認
+
+	const auto chkObjKey{ argIsDir ? objKey.toFile() : objKey.toDir() };
+	APP_ASSERT(chkObjKey.isObject());
+
+	traceW(L"chkObjKey=%s", chkObjKey.c_str());
+
+	if (mCSDevice->headObject(START_CALLER chkObjKey))
+	{
+		traceW(L"already exists: chkObjKey=%s", chkObjKey.c_str());
+
+		//return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
+		return STATUS_OBJECT_NAME_COLLISION;				// https://github.com/winfsp/winfsp/issues/601
+	}
+
+	*pObjKey = std::move(objKey);
+
+	return STATUS_SUCCESS;
+}
+
 NTSTATUS CSDriver::DoRename(PTFS_FILE_CONTEXT* FileContext,
 	PWSTR FileName, PWSTR NewFileName, BOOLEAN ReplaceIfExists)
 {
@@ -382,45 +453,27 @@ NTSTATUS CSDriver::DoRename(PTFS_FILE_CONTEXT* FileContext,
 
 	CSDeviceContext* ctx = (CSDeviceContext*)FileContext->UParam;
 	APP_ASSERT(ctx);
-	APP_ASSERT(ctx->mObjKey.valid());
 
-	// 変更先の名前が存在するか確認
+	// 作成対象と同じファイル名が存在するかチェック
 
-	auto newFileKey{ ObjectKey::fromWinPath(NewFileName) };
-	APP_ASSERT(newFileKey.isObject());
-
-	const auto newObjKey{ ctx->isDir() ? newFileKey.toDir() : std::move(newFileKey) };
-	APP_ASSERT(newObjKey.isObject());
-
-	traceW(L"newObjKey=%s", newObjKey.c_str());
-
-	if (mCSDevice->headObject(START_CALLER newObjKey, nullptr))
+	ObjectKey newObjKey;
+	auto ntstatus = this->verifyFileUniqueness(START_CALLER NewFileName, ctx->isDir(), &newObjKey);
+	if (!NT_SUCCESS(ntstatus))
 	{
-		traceW(L"already exists: newObjKey=%s", newObjKey.c_str());
+		traceW(L"fault: verifyFileUniqueness");
 
-		return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
+		return ntstatus;
 	}
 
-	// ファイル名、ディレクトリ名を反転させ名前が存在するか確認
+	// rename 処理開始
 
-	const auto chkObjKey{ ctx->isDir() ? newObjKey.toFile() : newObjKey.toDir() };
-
-	traceW(L"chkObjKey=%s", chkObjKey.c_str());
-
-	if (mCSDevice->headObject(START_CALLER chkObjKey, nullptr))
-	{
-		traceW(L"already exists: chkObjKey=%s", chkObjKey.c_str());
-
-		return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
-	}
-
-	// リネーム処理の実行
-
-	if (!mCSDevice->renameObject(START_CALLER ctx, newObjKey))
+	ntstatus = mCSDevice->renameObject(START_CALLER ctx, newObjKey);
+	if (!NT_SUCCESS(ntstatus))
 	{
 		traceW(L"fault: renameObject");
 
-		return STATUS_INVALID_DEVICE_REQUEST;
+		return ntstatus;
+		//return STATUS_INVALID_DEVICE_REQUEST;
 	}
 	
 	return STATUS_SUCCESS;

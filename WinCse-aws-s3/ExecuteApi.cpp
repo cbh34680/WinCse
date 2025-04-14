@@ -1,48 +1,103 @@
-#include "AwsS3.hpp"
+#include "ExecuteApi.hpp"
+#include "aws_sdk_s3.h"
 #include <fstream>
 
 using namespace WCSE;
 
 
-//
-// FileOutputParams
-//
-std::wstring FileOutputParams::str() const
+ExecuteApi::ExecuteApi(
+    const RuntimeEnv* argRuntimeEnv,
+    const std::wstring& argRegion,
+    const std::wstring& argAccessKeyId,
+    const std::wstring& argSecretAccessKey) noexcept
+    :
+    mRuntimeEnv(argRuntimeEnv)
 {
-    std::wstring sCreationDisposition;
+    NEW_LOG_BLOCK();
 
-    switch (mCreationDisposition)
+    // S3 クライアントの生成
+
+    mSdkOptions = std::make_unique<Aws::SDKOptions>();
+    Aws::InitAPI(*mSdkOptions);
+
+    std::string region{ WC2MB(argRegion) };
+
+    Aws::Client::ClientConfiguration config;
+    if (argRegion.empty())
     {
-        case CREATE_ALWAYS:     sCreationDisposition = L"CREATE_ALWAYS";     break;
-        case CREATE_NEW:        sCreationDisposition = L"CREATE_NEW";        break;
-        case OPEN_ALWAYS:       sCreationDisposition = L"OPEN_ALWAYS";       break;
-        case OPEN_EXISTING:     sCreationDisposition = L"OPEN_EXISTING";     break;
-        case TRUNCATE_EXISTING: sCreationDisposition = L"TRUNCATE_EXISTING"; break;
-        default: APP_ASSERT(0);
+        // とりあえずデフォルト・リージョンとして設定しておく
+
+        region = AWS_DEFAULT_REGION;
     }
 
-    std::wostringstream ss;
+    traceA("region=%s", region.c_str());
 
-    ss << L"mPath=";
-    ss << mPath;
-    ss << L" mCreationDisposition=";
-    ss << sCreationDisposition;
-    ss << L" mOffset=";
-    ss << mOffset;
-    ss << L" mLength=";
-    ss << mLength;
+    // 東京) Aws::Region::AP_NORTHEAST_1;
+    // 大阪) Aws::Region::AP_NORTHEAST_3;
 
-    return ss.str();
+    config.region = region;
+
+    Aws::S3::S3Client* client = nullptr;
+
+    if (!argAccessKeyId.empty() && !argSecretAccessKey.empty())
+    {
+        const Aws::Auth::AWSCredentials credentials{ WC2MB(argAccessKeyId), WC2MB(argSecretAccessKey) };
+
+        client = new Aws::S3::S3Client(credentials, nullptr, config);
+
+        traceW(L"use credentials");
+    }
+    else
+    {
+        client = new Aws::S3::S3Client(config);
+    }
+
+    APP_ASSERT(client);
+    mS3Client = std::unique_ptr<Aws::S3::S3Client>(client);
 }
 
-bool AwsS3A::apicallListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList)
+ExecuteApi::~ExecuteApi()
+{
+    NEW_LOG_BLOCK();
+
+    // デストラクタからも呼ばれるので、再入可能としておくこと
+
+    // AWS S3 処理終了
+
+    if (mSdkOptions)
+    {
+        traceW(L"aws shutdown");
+
+        Aws::ShutdownAPI(*mSdkOptions);
+        mSdkOptions.reset();
+    }
+}
+
+bool ExecuteApi::Ping(CALLER_ARG0)
+{
+    NEW_LOG_BLOCK();
+
+    // S3 接続試験
+    traceW(L"Connection test");
+
+    const auto outcome = mS3Client->ListBuckets();
+    if (!outcomeIsSuccess(outcome))
+    {
+        traceW(L"fault: ListBuckets");
+        return false;
+    }
+
+    return true;
+}
+
+bool ExecuteApi::ListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(pDirInfoList);
 
     Aws::S3::Model::ListBucketsRequest request;
 
-    const auto outcome = mClient->ListBuckets(request);
+    const auto outcome = mS3Client->ListBuckets(request);
     if (!outcomeIsSuccess(outcome))
     {
         traceW(L"fault: ListBuckets");
@@ -74,7 +129,7 @@ bool AwsS3A::apicallListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList)
 
         // ディレクトリ・エントリを生成
 
-        auto dirInfo = makeDirInfo_dir(bucketName, FileTime);
+        auto dirInfo = makeDirInfoDir(bucketName, FileTime);
         APP_ASSERT(dirInfo);
 
         // バケットは常に読み取り専用
@@ -86,9 +141,9 @@ bool AwsS3A::apicallListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList)
 
         // 最大バケット表示数の確認
 
-        if (mSettings->maxDisplayBuckets > 0)
+        if (mRuntimeEnv->MaxDisplayBuckets > 0)
         {
-            if (dirInfoList.size() >= mSettings->maxDisplayBuckets)
+            if (dirInfoList.size() >= mRuntimeEnv->MaxDisplayBuckets)
             {
                 break;
             }
@@ -100,7 +155,8 @@ bool AwsS3A::apicallListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList)
     return true;
 }
 
-bool AwsS3A::apicallGetBucketRegion(CALLER_ARG const std::wstring& argBucketName, std::wstring* pBucketRegion)
+bool ExecuteApi::GetBucketRegion(CALLER_ARG
+    const std::wstring& argBucketName, std::wstring* pBucketRegion)
 {
     NEW_LOG_BLOCK();
 
@@ -111,7 +167,7 @@ bool AwsS3A::apicallGetBucketRegion(CALLER_ARG const std::wstring& argBucketName
     Aws::S3::Model::GetBucketLocationRequest request;
     request.SetBucket(WC2MB(argBucketName));
 
-    const auto outcome = mClient->GetBucketLocation(request);
+    const auto outcome = mS3Client->GetBucketLocation(request);
     if (!outcomeIsSuccess(outcome))
     {
         traceW(L"fault: GetBucketLocation");
@@ -123,6 +179,12 @@ bool AwsS3A::apicallGetBucketRegion(CALLER_ARG const std::wstring& argBucketName
     const auto& result = outcome.GetResult();
     const auto& location = result.GetLocationConstraint();
 
+    if (location == Aws::S3::Model::BucketLocationConstraint::NOT_SET)
+    {
+        traceW(L"location is NOT_SET");
+        return false;
+    }
+
     *pBucketRegion = MB2WC(mapper::GetNameForBucketLocationConstraint(location));
 
     //traceW(L"success, region is %s", bucketRegion.c_str());
@@ -130,7 +192,8 @@ bool AwsS3A::apicallGetBucketRegion(CALLER_ARG const std::wstring& argBucketName
     return true;
 }
 
-bool AwsS3A::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoType* pDirInfo)
+bool ExecuteApi::HeadObject(CALLER_ARG
+    const ObjectKey& argObjKey, DirInfoType* pDirInfo)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(pDirInfo);
@@ -142,7 +205,7 @@ bool AwsS3A::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoTyp
     request.SetBucket(argObjKey.bucketA());
     request.SetKey(argObjKey.keyA());
 
-    const auto outcome = mClient->HeadObject(request);
+    const auto outcome = mS3Client->HeadObject(request);
     if (!outcomeIsSuccess(outcome))
     {
         // HeadObject の実行時エラー、またはオブジェクトが見つからない
@@ -158,7 +221,7 @@ bool AwsS3A::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoTyp
         return false;
     }
 
-    auto dirInfo = makeDirInfo(filename);
+    auto dirInfo = makeEmptyDirInfo(filename);
     APP_ASSERT(dirInfo);
 
     const auto& result = outcome.GetResult();
@@ -169,7 +232,7 @@ bool AwsS3A::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoTyp
     UINT64 creationTime = lastModified;
     UINT64 lastAccessTime = lastModified;
     UINT64 lastWriteTime = lastModified;
-    UINT32 fileAttributes = mDefaultFileAttributes;
+    UINT32 fileAttributes = mRuntimeEnv->DefaultFileAttributes;
 
     if (argObjKey.meansDir())
     {
@@ -178,12 +241,12 @@ bool AwsS3A::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoTyp
 
     const auto& metadata = result.GetMetadata();
 
-    if (metadata.find("wincse-creation-time") != metadata.end())
+    if (metadata.find("wincse-creation-time") != metadata.cend())
     {
         creationTime = std::stoull(metadata.at("wincse-creation-time"));
     }
 
-    if (metadata.find("wincse-last-write-time") != metadata.end())
+    if (metadata.find("wincse-last-write-time") != metadata.cend())
     {
         lastWriteTime = std::stoull(metadata.at("wincse-last-write-time"));
     }
@@ -209,6 +272,14 @@ bool AwsS3A::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoTyp
     dirInfo->FileInfo.ChangeTime = lastModified;
     dirInfo->FileInfo.IndexNumber = HashString(argObjKey.str());
 
+    dirInfo->mUserProperties.insert({ L"wincse-last-modified", std::to_wstring(lastModified) });
+
+    if (metadata.find("wincse-client-guid") != metadata.cend())
+    {
+        dirInfo->mUserProperties.insert(
+            { L"wincse-client-guid", MB2WC(metadata.at("wincse-client-guid")) });
+    }
+
     *pDirInfo = std::move(dirInfo);
 
     return true;
@@ -218,7 +289,7 @@ bool AwsS3A::apicallHeadObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoTyp
 // ListObjectsV2 API を実行し結果を引数のポインタの指す変数に保存する
 // 引数の条件に合致するオブジェクトが見つからないときは false を返却
 //
-bool AwsS3A::apicallListObjectsV2(CALLER_ARG const ObjectKey& argObjKey,
+bool ExecuteApi::ListObjectsV2(CALLER_ARG const ObjectKey& argObjKey,
     bool argDelimiter, int argLimit, DirInfoListType* pDirInfoList)
 {
     NEW_LOG_BLOCK();
@@ -261,7 +332,7 @@ bool AwsS3A::apicallListObjectsV2(CALLER_ARG const ObjectKey& argObjKey,
             request.SetContinuationToken(continuationToken);
         }
 
-        const auto outcome = mClient->ListObjectsV2(request);
+        const auto outcome = mS3Client->ListObjectsV2(request);
         if (!outcomeIsSuccess(outcome))
         {
             traceW(L"fault: ListObjectsV2");
@@ -288,7 +359,7 @@ bool AwsS3A::apicallListObjectsV2(CALLER_ARG const ObjectKey& argObjKey,
         {
             // タイムスタンプが採取できなければ参照ディレクトリのものを採用
 
-            commonPrefixTime = mWorkDirCTime;
+            commonPrefixTime = mRuntimeEnv->DefaultCommonPrefixTime;
         }
 
         // ディレクトリの収集
@@ -325,7 +396,7 @@ bool AwsS3A::apicallListObjectsV2(CALLER_ARG const ObjectKey& argObjKey,
 
             dirNames.insert(key);
 
-            dirInfoList.push_back(makeDirInfo_dir(key, commonPrefixTime));
+            dirInfoList.push_back(makeDirInfoDir(key, commonPrefixTime));
 
             if (argLimit > 0)
             {
@@ -335,11 +406,11 @@ bool AwsS3A::apicallListObjectsV2(CALLER_ARG const ObjectKey& argObjKey,
                 }
             }
 
-            if (mSettings->maxDisplayObjects > 0)
+            if (mRuntimeEnv->MaxDisplayObjects > 0)
             {
-                if (dirInfoList.size() >= mSettings->maxDisplayObjects)
+                if (dirInfoList.size() >= mRuntimeEnv->MaxDisplayObjects)
                 {
-                    traceW(L"warning: over max-objects(%d)", mSettings->maxDisplayObjects);
+                    traceW(L"warning: over max-objects(%d)", mRuntimeEnv->MaxDisplayObjects);
 
                     goto exit;
                 }
@@ -386,12 +457,12 @@ bool AwsS3A::apicallListObjectsV2(CALLER_ARG const ObjectKey& argObjKey,
                 continue;
             }
 
-            auto dirInfo = makeDirInfo(key);
+            auto dirInfo = makeEmptyDirInfo(key);
             APP_ASSERT(dirInfo);
 
-            UINT32 FileAttributes = mDefaultFileAttributes;
+            UINT32 FileAttributes = mRuntimeEnv->DefaultFileAttributes;
 
-            if (key != L"." && key != L".." && key[0] == L'.')
+            if (key != L"." && key != L".." && key.at(0) == L'.')
             {
                 // ".", ".." 以外で先頭が "." で始まっているものは隠しファイルの扱い
 
@@ -434,13 +505,13 @@ bool AwsS3A::apicallListObjectsV2(CALLER_ARG const ObjectKey& argObjKey,
                 }
             }
 
-            if (mSettings->maxDisplayObjects > 0)
+            if (mRuntimeEnv->MaxDisplayObjects > 0)
             {
-                if (dirInfoList.size() >= mSettings->maxDisplayObjects)
+                if (dirInfoList.size() >= mRuntimeEnv->MaxDisplayObjects)
                 {
                     // 結果リストが ini ファイルで指定した最大値に到達
 
-                    traceW(L"warning: over max-objects(%d)", mSettings->maxDisplayObjects);
+                    traceW(L"warning: over max-objects(%d)", mRuntimeEnv->MaxDisplayObjects);
 
                     goto exit;
                 }
@@ -456,7 +527,8 @@ exit:
     return true;
 }
 
-bool AwsS3A::apicallDeleteObjects(CALLER_ARG const std::wstring& argBucket, const std::list<std::wstring>& argKeys)
+bool ExecuteApi::DeleteObjects(CALLER_ARG
+    const std::wstring& argBucket, const std::list<std::wstring>& argKeys)
 {
     NEW_LOG_BLOCK();
 
@@ -475,7 +547,7 @@ bool AwsS3A::apicallDeleteObjects(CALLER_ARG const std::wstring& argBucket, cons
     request.SetBucket(WC2MB(argBucket));
     request.SetDelete(delete_objects);
 
-    const auto outcome = mClient->DeleteObjects(request);
+    const auto outcome = mS3Client->DeleteObjects(request);
 
     if (!outcomeIsSuccess(outcome))
     {
@@ -486,7 +558,7 @@ bool AwsS3A::apicallDeleteObjects(CALLER_ARG const std::wstring& argBucket, cons
     return true;
 }
 
-bool AwsS3A::apicallDeleteObject(CALLER_ARG const ObjectKey& argObjKey)
+bool ExecuteApi::DeleteObject(CALLER_ARG const ObjectKey& argObjKey)
 {
     NEW_LOG_BLOCK();
 
@@ -495,7 +567,7 @@ bool AwsS3A::apicallDeleteObject(CALLER_ARG const ObjectKey& argObjKey)
     Aws::S3::Model::DeleteObjectRequest request;
     request.SetBucket(argObjKey.bucketA());
     request.SetKey(argObjKey.keyA());
-    const auto outcome = mClient->DeleteObject(request);
+    const auto outcome = mS3Client->DeleteObject(request);
 
     if (!outcomeIsSuccess(outcome))
     {
@@ -506,13 +578,13 @@ bool AwsS3A::apicallDeleteObject(CALLER_ARG const ObjectKey& argObjKey)
     return true;
 }
 
-bool AwsS3A::apicallPutObject(CALLER_ARG const ObjectKey& argObjKey,
-    const FSP_FSCTL_FILE_INFO& argFileInfo, const std::wstring& argFilePath)
+bool ExecuteApi::PutObject(CALLER_ARG const ObjectKey& argObjKey,
+    const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.isObject());
 
-    traceW(L"argObjKey=%s, argFilePath=%s", argObjKey.c_str(), argFilePath.c_str());
+    traceW(L"argObjKey=%s, argSourcePath=%s", argObjKey.c_str(), argSourcePath);
 
     Aws::S3::Model::PutObjectRequest request;
     request.SetBucket(argObjKey.bucketA());
@@ -521,12 +593,14 @@ bool AwsS3A::apicallPutObject(CALLER_ARG const ObjectKey& argObjKey,
     if (FA_IS_DIRECTORY(argFileInfo.FileAttributes))
     {
         // ディレクトリの場合は空のコンテンツ
+
+        APP_ASSERT(!argSourcePath);
     }
     else
     {
         // ファイルの場合はローカル・キャッシュの内容をアップロードする
 
-        const Aws::String filePath{ WC2MB(argFilePath) };
+        const Aws::String filePath{ WC2MB(argSourcePath) };
 
         std::shared_ptr<Aws::IOStream> inputData = Aws::MakeShared<Aws::FStream>(
             __FUNCTION__,
@@ -547,24 +621,31 @@ bool AwsS3A::apicallPutObject(CALLER_ARG const ObjectKey& argObjKey,
         request.SetBody(inputData);
     }
 
-    const auto sCreationTime{ std::to_string(argFileInfo.CreationTime) };
-    const auto sLastWriteTime{ std::to_string(argFileInfo.LastWriteTime) };
+    const auto creationTime{ std::to_string(argFileInfo.CreationTime) };
+    const auto lastWriteTime{ std::to_string(argFileInfo.LastWriteTime) };
+    const auto clientGuid{ WC2MB(mRuntimeEnv->ClientGuid) };
 
-    request.AddMetadata("wincse-creation-time", sCreationTime.c_str());
-    request.AddMetadata("wincse-last-write-time", sLastWriteTime.c_str());
+    request.AddMetadata("wincse-creation-time", creationTime.c_str());
+    request.AddMetadata("wincse-last-write-time", lastWriteTime.c_str());
+    request.AddMetadata("wincse-client-guid", clientGuid.c_str());
 
-    traceA("sCreationTime=%s", sCreationTime.c_str());
-    traceA("sLastWriteTime=%s", sLastWriteTime.c_str());
+    traceA("creationTime=%s, lastWriteTime=%s, ClientGuid=%s",
+        creationTime.c_str(), lastWriteTime.c_str(), clientGuid.c_str());
 
 #if _DEBUG
-    request.AddMetadata("wincse-debug-source-path", WC2MB(argFilePath).c_str());
+    if (argSourcePath)
+    {
+        request.AddMetadata("wincse-debug-source-path", WC2MB(argSourcePath).c_str());
+    }
+
     request.AddMetadata("wincse-debug-creation-time", WinFileTime100nsToLocalTimeStringA(argFileInfo.CreationTime).c_str());
     request.AddMetadata("wincse-debug-last-write-time", WinFileTime100nsToLocalTimeStringA(argFileInfo.LastWriteTime).c_str());
+    request.AddMetadata("wincse-debug-last-access-time", WinFileTime100nsToLocalTimeStringA(argFileInfo.LastAccessTime).c_str());
 #endif
 
-    traceW(L"PutObject argObjKey=%s, argFilePath=%s", argObjKey.c_str(), argFilePath.c_str());
+    traceW(L"PutObject argObjKey=%s, argSourcePath=%s", argObjKey.c_str(), argSourcePath);
 
-    const auto outcome = mClient->PutObject(request);
+    const auto outcome = mS3Client->PutObject(request);
 
     if (!outcomeIsSuccess(outcome))
     {
@@ -585,7 +666,7 @@ bool AwsS3A::apicallPutObject(CALLER_ARG const ObjectKey& argObjKey,
 //      それ以外    CreateFile 後に SetFilePointerEx が実行される
 //
 
-static INT64 outputObjectResultToFile(CALLER_ARG
+static INT64 writeObjectResultToFile(CALLER_ARG
     const Aws::S3::Model::GetObjectResult& argResult, const FileOutputParams& argFOParams)
 {
     NEW_LOG_BLOCK();
@@ -688,7 +769,7 @@ static INT64 outputObjectResultToFile(CALLER_ARG
 //      それ以外    CreateFile 後に SetFilePointerEx が実行される
 //
 
-INT64 AwsS3A::apicallGetObjectAndWriteToFile(CALLER_ARG
+INT64 ExecuteApi::GetObjectAndWriteToFile(CALLER_ARG
     const ObjectKey& argObjKey, const FileOutputParams& argFOParams)
 {
     NEW_LOG_BLOCK();
@@ -719,7 +800,7 @@ INT64 AwsS3A::apicallGetObjectAndWriteToFile(CALLER_ARG
         request.SetRange(range);
     }
 
-    const auto outcome = mClient->GetObject(request);
+    const auto outcome = mS3Client->GetObject(request);
     if (!outcomeIsSuccess(outcome))
     {
         traceW(L"fault: GetObject");
@@ -730,11 +811,11 @@ INT64 AwsS3A::apicallGetObjectAndWriteToFile(CALLER_ARG
 
     // result の内容をファイルに出力する
 
-    const auto bytesWritten = outputObjectResultToFile(CONT_CALLER result, argFOParams);
+    const auto bytesWritten = writeObjectResultToFile(CONT_CALLER result, argFOParams);
 
     if (bytesWritten < 0)
     {
-        traceW(L"fault: outputObjectResultToFile");
+        traceW(L"fault: writeObjectResultToFile");
         return -1LL;
     }
 

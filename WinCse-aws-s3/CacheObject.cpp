@@ -1,5 +1,5 @@
 #include "WinCseLib.h"
-#include "ObjectCache.hpp"
+#include "CacheObject.hpp"
 
 using namespace WCSE;
 
@@ -12,7 +12,7 @@ using namespace WCSE;
 #define INDENT5         L"\t\t\t\t\t"
 
 
-void HeadObjectCache::report(CALLER_ARG FILE* fp)
+void CacheHeadObject::report(CALLER_ARG FILE* fp)
 {
 	std::lock_guard<std::mutex> lock_{ mGuard };
 
@@ -65,7 +65,7 @@ void HeadObjectCache::report(CALLER_ARG FILE* fp)
     }
 }
 
-void ListObjectsCache::report(CALLER_ARG FILE* fp)
+void CacheListObjects::report(CALLER_ARG FILE* fp)
 {
     std::lock_guard<std::mutex> lock_{ mGuard };
 

@@ -1,10 +1,11 @@
 #pragma once
 
+#include "WinCseLib.h"
+
 constexpr UINT64 PART_SIZE_BYTE = WCSE::FILESIZE_1MiBu * 4;
 
 struct FilePart
 {
-    WINCSE_DEVICE_STATS* mStats;
     const UINT64 mOffset;
     const ULONG mLength;
 
@@ -13,8 +14,10 @@ struct FilePart
 
     std::atomic<bool> mInterrupt = false;
 
-    FilePart(WINCSE_DEVICE_STATS* argStats, UINT64 argOffset, ULONG argLength)
-        : mStats(argStats), mOffset(argOffset), mLength(argLength)
+    explicit FilePart(UINT64 argOffset, ULONG argLength) noexcept
+        :
+        mOffset(argOffset),
+        mLength(argLength)
     {
         mDone = ::CreateEventW(NULL,
             TRUE,				// 手動リセットイベント
@@ -24,7 +27,7 @@ struct FilePart
         APP_ASSERT(mDone.valid());
     }
 
-    void SetResult(bool argResult)
+    void SetResult(bool argResult) noexcept
     {
         mResult = argResult;
         const auto b = ::SetEvent(mDone.handle());					// シグナル状態に設定

@@ -7,7 +7,6 @@
 class DelayedWorker : public WCSE::ITaskTypedWorker<WCSE::IOnDemandTask>
 {
 private:
-	const std::wstring mTempDir;
 	const std::wstring mIniSection;
 
 	std::list<std::thread> mThreads;

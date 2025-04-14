@@ -2,6 +2,10 @@
 
 #ifdef _DEBUG
 
+#ifdef _CRTDBG_MAP_ALLOC
+#undef _CRTDBG_MAP_ALLOC
+#endif
+
 #undef new
 #undef malloc
 #undef realloc

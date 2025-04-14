@@ -1,5 +1,4 @@
-#include "AwsS3.hpp"
-#include "AwsS3_obj_pp_util.h"
+#include "CSDevice.hpp"
 
 using namespace WCSE;
 
@@ -7,7 +6,7 @@ using namespace WCSE;
 static NTSTATUS syncFileAttributes(CALLER_ARG
     const FSP_FSCTL_FILE_INFO& fileInfo, const std::wstring& localPath, bool* pNeedDownload);
 
-NTSTATUS AwsS3::prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, UINT64 argOffset, ULONG argLength)
+NTSTATUS CSDevice::prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, UINT64 argOffset, ULONG argLength)
 {
     NEW_LOG_BLOCK();
 
@@ -17,7 +16,7 @@ NTSTATUS AwsS3::prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, UINT64 argO
 
     // ファイル名への参照を登録
 
-    UnprotectedShare<PrepareLocalFileShare> unsafeShare(&mPrepareLocalFileShare, remotePath);    // 名前への参照を登録
+    UnprotectedShare<PrepareLocalFileShare> unsafeShare{ &mPrepareLocalFileShare, remotePath };    // 名前への参照を登録
     {
         const auto safeShare{ unsafeShare.lock() }; // 名前のロック
 
@@ -61,11 +60,11 @@ NTSTATUS AwsS3::prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, UINT64 argO
 
                     const FileOutputParams outputParams{ localPath, CREATE_ALWAYS };
 
-                    const auto bytesWritten = this->apicallGetObjectAndWriteToFile(CONT_CALLER ctx->mObjKey, outputParams);
+                    const auto bytesWritten = mExecuteApi->GetObjectAndWriteToFile(CONT_CALLER ctx->mObjKey, outputParams);
 
                     if (bytesWritten < 0)
                     {
-                        traceW(L"fault: apicallGetObjectAndWriteToFile bytesWritten=%lld", bytesWritten);
+                        traceW(L"fault: GetObjectAndWriteToFile bytesWritten=%lld", bytesWritten);
 
                         return FspNtStatusFromWin32(ERROR_IO_DEVICE);
                     }
