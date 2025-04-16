@@ -1,4 +1,3 @@
-#include "WinCseLib.h"
 #include "ScheduledWorker.hpp"
 #include <filesystem>
 #include <numeric>

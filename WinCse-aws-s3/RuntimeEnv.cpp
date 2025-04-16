@@ -19,10 +19,13 @@ std::wstring RuntimeEnv::str() const noexcept
         KV_TO_WSTR(DefaultCommonPrefixTime),
         KV_TO_WSTR(DefaultFileAttributes),
         KV_BOOL(DeleteAfterUpload),
+        KV_TO_WSTR(DeleteDirCondition),
         KV_TO_WSTR(MaxDisplayBuckets),
         KV_TO_WSTR(MaxDisplayObjects),
         KV_TO_WSTR(ObjectCacheExpiryMin),
-        KV_WSTR(Region),
+        KV_BOOL(ReadOnly),
+        KV_WSTR(ClientRegion),
+        KV_BOOL(StrictBucketRegion),
         KV_BOOL(StrictFileTimestamp)
         }, L", ", false);
 }

@@ -3,7 +3,7 @@
 using namespace WCSE;
 
 
-NTSTATUS OpenContext::openFileHandle(CALLER_ARG DWORD argDesiredAccess, DWORD argCreationDisposition)
+NTSTATUS OpenContext::openFileHandle(CALLER_ARG DWORD argDesiredAccess, DWORD argCreationDisposition) noexcept
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(isFile());

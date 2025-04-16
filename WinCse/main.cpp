@@ -5,9 +5,9 @@
 
 
 #include "WinCseLib.h"
+#include "CSDriver.hpp"
 #include "DelayedWorker.hpp"
 #include "TimerWorker.hpp"
-#include "CSDriver.hpp"
 #include <csignal>
 #include <iostream>
 #include <iomanip>
@@ -17,7 +17,7 @@
 
 #if DIRECT_LINK_TEST
 #pragma comment(lib, "WinCse-aws-s3.lib")
-#include "..\WinCse-aws-s3\\AwsS3.hpp"
+#include "..\WinCse-aws-s3\\CSDevice.hpp"
 #endif
 
 
@@ -290,13 +290,13 @@ int wmain(int argc, wchar_t** argv)
 
     std::wcout << L"[External Libraries]" << std::endl;
     std::wcout << L"WinFsp: 2.0.23075" << std::endl;
-    std::wcout << L"aws-sdk-cpp: Commit 475d367" << std::endl;
+    std::wcout << L"aws-sdk-cpp: Commit b43cee1" << std::endl;
 
 #ifdef _DEBUG
     ::_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
     std::wcout << L"[WinCse]" << std::endl;
-    std::wcout << L"Build: 2025/04/02 17:10 JST" << std::endl;
+    std::wcout << L"Build: 2025/04/15 18:20 JST" << std::endl;
 
 #if WINFSP_PASSTHROUGH
     std::wcout << L"Type: passthrough" << std::endl;

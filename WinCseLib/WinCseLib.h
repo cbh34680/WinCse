@@ -59,16 +59,18 @@ typedef struct
 }
 PTFS_FILE_CONTEXT;
 
+#include <chrono>
+#include <functional>
+#include <list>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <regex>
+#include <sstream>
 #include <string>
 #include <string_view>
-#include <list>
-#include <vector>
-#include <memory>
-#include <chrono>
 #include <unordered_map>
-#include <mutex>
-#include <functional>
-#include <sstream>
+#include <vector>
 
 //
 // インターフェース定義で使うので、ここで define
@@ -192,6 +194,8 @@ using DirInfoListType = std::list<DirInfoType>;
 
 }
 
+#include "ObjectKey.hpp"
+
 // インターフェース定義
 #include "ICSService.hpp"
 #include "ICSDriver.hpp"
@@ -214,52 +218,35 @@ WINCSELIB_API bool MkdirIfNotExists(const std::wstring& dir);
 WINCSELIB_API bool forEachFiles(const std::wstring& argDir, const std::function<void(const WIN32_FIND_DATA& wfd, const std::wstring& fullPath)>& callback);
 WINCSELIB_API bool forEachDirs(const std::wstring& argDir, const std::function<void(const WIN32_FIND_DATA& wfd, const std::wstring& fullPath)>& callback);
 
-WINCSELIB_API bool Base64EncodeA(const std::string& src, std::string* pDst);
-WINCSELIB_API bool Base64DecodeA(const std::string& src, std::string* pDst);
-
 WINCSELIB_API UINT64 UtcMillisToWinFileTime100ns(UINT64 argUtcMillis);
 WINCSELIB_API UINT64 WinFileTime100nsToUtcMillis(UINT64 fileTime100ns);
-
 WINCSELIB_API UINT64 WinFileTimeToWinFileTime100ns(const FILETIME& ft);
 WINCSELIB_API void WinFileTime100nsToWinFile(UINT64 ft100ns, FILETIME* pFileTime);
-
 WINCSELIB_API void UtcMillisToWinFileTime(UINT64 argUtcMillis, FILETIME* pFileTime);
 WINCSELIB_API UINT64 WinFileTimeToUtcMillis(const FILETIME &ft);
-WINCSELIB_API bool PathToWinFileTimes(const std::wstring& path, FILETIME* pFtCreate, FILETIME* pFtAccess, FILETIME* pFtWrite);
 WINCSELIB_API UINT64 GetCurrentUtcMillis();
 WINCSELIB_API UINT64 GetCurrentWinFileTime100ns();
-
 WINCSELIB_API long long int TimePointToUtcMillis(const std::chrono::system_clock::time_point& tp);
-WINCSELIB_API long long int TimePointToUtcSecs(const std::chrono::system_clock::time_point& tp);
 WINCSELIB_API std::wstring TimePointToLocalTimeStringW(const std::chrono::system_clock::time_point& tp);
-
 WINCSELIB_API std::wstring UtcMilliToLocalTimeStringW(UINT64 milliseconds);
 WINCSELIB_API std::wstring WinFileTime100nsToLocalTimeStringW(UINT64 fileTime100ns);
 WINCSELIB_API std::string WinFileTime100nsToLocalTimeStringA(UINT64 ft100ns);
 WINCSELIB_API std::wstring WinFileTimeToLocalTimeStringW(const FILETIME &ft);
-
 WINCSELIB_API UINT64 STCTimeToUTCMilliSecW(const std::wstring& path);
 WINCSELIB_API UINT64 STCTimeToWinFileTimeW(const std::wstring& path);
 WINCSELIB_API UINT64 STCTimeToUTCMilliSecA(const std::string& path);
-WINCSELIB_API UINT64 STCTimeToWinFileTimeA(const std::string& path);
 
 WINCSELIB_API std::wstring MB2WC(const std::string& str);
 WINCSELIB_API std::string WC2MB(const std::wstring& wstr);
-
 WINCSELIB_API std::wstring TrimW(const std::wstring& str);
-WINCSELIB_API std::string TrimA(const std::string& str);
-
 WINCSELIB_API std::wstring WildcardToRegexW(const std::wstring& wildcard);
-WINCSELIB_API std::string WildcardToRegexA(const std::string& wildcard);
-
 WINCSELIB_API std::vector<std::wstring> SplitString(const std::wstring& input, wchar_t sep, bool ignoreEmpty);
-WINCSELIB_API std::wstring ToUpper(const std::wstring& input);
-
-WINCSELIB_API int GetIniIntW(const std::wstring& confPath, PCWSTR argSection, PCWSTR keyName, int defaultValue, int minValue, int maxValue);
-WINCSELIB_API bool GetIniStringW(const std::wstring& confPath, PCWSTR argSection, PCWSTR keyName, std::wstring* pValue);
-WINCSELIB_API bool GetIniStringA(const std::string& confPath, PCSTR argSection, PCSTR keyName, std::string* pValue);
-
+WINCSELIB_API bool Base64DecodeA(const std::string& src, std::string* pDst);
 WINCSELIB_API size_t HashString(const std::wstring& str);
+
+WINCSELIB_API int GetIniIntW(const std::wstring& confPath, const std::wstring& argSection, PCWSTR keyName, int defaultValue, int minValue, int maxValue);
+WINCSELIB_API bool GetIniBoolW(const std::wstring& confPath, const std::wstring& argSection, PCWSTR keyName, bool defaultValue);
+WINCSELIB_API bool GetIniStringW(const std::wstring& confPath, const std::wstring& argSection, PCWSTR keyName, std::wstring* pValue);
 
 WINCSELIB_API std::wstring CreateGuidW();
 WINCSELIB_API bool DecryptAES(const std::vector<BYTE>& key, const std::vector<BYTE>& iv, const std::vector<BYTE>& encrypted, std::vector<BYTE>* pDecrypted);

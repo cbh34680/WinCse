@@ -1,8 +1,7 @@
 #pragma once
 
-#include <thread>
+#include "WinCseLib.h"
 #include <queue>
-#include <atomic>
 
 class ScheduledWorker : public WCSE::ITaskTypedWorker<WCSE::IScheduledTask>
 {

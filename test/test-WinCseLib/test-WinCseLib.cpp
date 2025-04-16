@@ -1,19 +1,70 @@
 ﻿// test-WinCseLib.cpp : このファイルには 'main' 関数が含まれています。プログラム実行の開始と終了がそこで行われます。
 //
 #pragma comment(lib, "WinCseLib.lib")
+#pragma comment(lib, "Crypt32.lib")             // CryptBinaryToStringA
 
 #include "WinCseLib.h"
 #include <iostream>
 #include <thread>
 //#include <map>
-#include <regex>
-#include <sstream>
 #include <deque>
 #include <bcrypt.h>
 #include <filesystem>
 
+// パスから FILETIME の値を取得
+
 using namespace WCSE;
 using namespace std;
+
+bool PathToWinFileTimes(const std::wstring& path, FILETIME* pFtCreate, FILETIME* pFtAccess, FILETIME* pFtWrite)
+{
+    FileHandle hFile = ::CreateFileW
+    (
+        path.c_str(),
+        FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        NULL,
+        OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS,
+        NULL
+    );
+
+    if(hFile.invalid())
+    {
+        return false;
+    }
+
+    return ::GetFileTime(hFile.handle(), pFtCreate, pFtAccess, pFtWrite);
+}
+
+bool Base64EncodeA(const std::string& src, std::string* pDst)
+{
+    DWORD dstSize = 0;
+
+    BOOL b = ::CryptBinaryToStringA(
+        reinterpret_cast<const BYTE*>(src.c_str()), (DWORD)src.size(),
+        CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, NULL, &dstSize);
+
+    if (!b)
+    {
+        return false;
+    }
+
+    std::vector<char> dst(dstSize);
+
+    b = ::CryptBinaryToStringA(
+        reinterpret_cast<const BYTE*>(src.c_str()), (DWORD)src.size(),
+        CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, dst.data(), &dstSize);
+
+    if (!b)
+    {
+        return false;
+    }
+
+    *pDst = std::string(dst.cbegin(), dst.cend() - 1);
+
+    return true;
+}
 
 void test1()
 {
@@ -428,13 +479,12 @@ void test9()
             std::wcout << L"toParentDir: ";
             if (parentDir)
             {
-                std::wcout << parentDir->toDir().str();
+                std::wcout << parentDir->toDir().str() << std::endl;
             }
             else
             {
-                std::wcout << L"*** error ***";
+                std::wcout << L"*** error ***" << std::endl;
             }
-            std::wcout << std::endl;
         }
 
         std::wcout << std::endl;
@@ -959,18 +1009,23 @@ void test28()
     std::wcout << t28JoinStrings(vec, L',', true) << std::endl;
 }
 
-int main()
+int wmain()
 {
     // chcp 65001
-    ::SetConsoleOutputCP(CP_UTF8);
-    //std::locale::global(std::locale(""));
-    _wsetlocale(LC_ALL, L"");
-    wcout.imbue(locale(""));
-    wcerr.imbue(locale(""));
-    //cout.imbue(locale(""));
-    cerr.imbue(locale(""));
+    std::locale::global(std::locale("", LC_ALL));
+    std::wcout.imbue(std::locale("", LC_ALL));
+    std::wcerr.imbue(std::locale("", LC_ALL));
 
-    test1();
+    // これやらないと日本語が出力できない
+    _wsetlocale(LC_ALL, L"");
+    setlocale(LC_ALL, "");
+    ::SetConsoleOutputCP(CP_UTF8);
+
+    //std::ios::sync_with_stdio(false);
+
+    std::wcout << L"START" << std::endl;
+
+    //test1();
     //test2();
     //test3();
     //test4();
@@ -978,7 +1033,7 @@ int main()
     //test6();
     //test7();
     //test8();
-    //test9();
+    test9();
     //test10();
     //test11();
     //test12();

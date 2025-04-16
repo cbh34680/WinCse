@@ -3,9 +3,6 @@
 #include <filesystem>
 #include <dbghelp.h>
 
-#pragma comment(lib, "Crypt32.lib")             // CryptBinaryToStringA
-#pragma comment(lib, "Dbghelp.lib")             // SymInitialize
-
 
 namespace WCSE {
 
@@ -286,14 +283,16 @@ bool SplitPath(const std::wstring& argKey, std::wstring* pParentDir /* nullable 
 	return true;
 }
 
-int GetIniIntW(const std::wstring& confPath, PCWSTR argSection, PCWSTR keyName, int defaultValue, int minValue, int maxValue)
+int GetIniIntW(const std::wstring& confPath, const std::wstring& argSection, PCWSTR keyName, int defaultValue, int minValue, int maxValue)
 {
 	LastErrorBackup _backup;
 
-	APP_ASSERT(argSection);
-	APP_ASSERT(argSection[0]);
+	const auto section = argSection.c_str();
 
-	int ret = ::GetPrivateProfileIntW(argSection, keyName, defaultValue, confPath.c_str());
+	APP_ASSERT(section);
+	APP_ASSERT(section[0]);
+
+	int ret = ::GetPrivateProfileIntW(section, keyName, defaultValue, confPath.c_str());
 	if (ret < minValue)
 	{
 		ret = minValue;
@@ -306,19 +305,39 @@ int GetIniIntW(const std::wstring& confPath, PCWSTR argSection, PCWSTR keyName, 
 	return ret;
 }
 
-#define INI_LINE_BUFSIZ		(1024)
-
-bool GetIniStringW(const std::wstring& confPath, PCWSTR argSection, PCWSTR keyName, std::wstring* pValue)
+bool GetIniBoolW(const std::wstring& confPath, const std::wstring& argSection, PCWSTR keyName, bool defaultValue)
 {
 	LastErrorBackup _backup;
 
-	APP_ASSERT(argSection);
-	APP_ASSERT(argSection[0]);
+	const auto section = argSection.c_str();
+
+	APP_ASSERT(section);
+	APP_ASSERT(section[0]);
+
+	int ret = ::GetPrivateProfileIntW(section, keyName, -1, confPath.c_str());
+	if (ret == -1)
+	{
+		return defaultValue;
+	}
+
+	return ret ? true : false;
+}
+
+#define INI_LINE_BUFSIZ		(1024)
+
+bool GetIniStringW(const std::wstring& confPath, const std::wstring& argSection, PCWSTR keyName, std::wstring* pValue)
+{
+	LastErrorBackup _backup;
+
+	const auto section = argSection.c_str();
+
+	APP_ASSERT(section);
+	APP_ASSERT(section[0]);
 
 	std::vector<WCHAR> buf(INI_LINE_BUFSIZ);
 
 	::SetLastError(ERROR_SUCCESS);
-	::GetPrivateProfileStringW(argSection, keyName, L"", buf.data(), (DWORD)buf.size(), confPath.c_str());
+	::GetPrivateProfileStringW(section, keyName, L"", buf.data(), (DWORD)buf.size(), confPath.c_str());
 	const auto lerr = ::GetLastError();
 
 	if (lerr != ERROR_SUCCESS)
@@ -331,46 +350,9 @@ bool GetIniStringW(const std::wstring& confPath, PCWSTR argSection, PCWSTR keyNa
 	return true;
 }
 
-bool GetIniStringA(const std::string& confPath, PCSTR argSection, PCSTR keyName, std::string* pValue)
-{
-	LastErrorBackup _backup;
-
-	APP_ASSERT(argSection);
-	APP_ASSERT(argSection[0]);
-
-	std::vector<char> buf(INI_LINE_BUFSIZ);
-
-	::SetLastError(ERROR_SUCCESS);
-	::GetPrivateProfileStringA(argSection, keyName, "", buf.data(), (DWORD)buf.size(), confPath.c_str());
-
-	if (::GetLastError() != ERROR_SUCCESS)
-	{
-		return false;
-	}
-
-	*pValue = std::string(buf.data());
-
-	return true;
-}
-
 //
 // ObjectKey
 //
-void ObjectKey::reset() noexcept
-{
-	mHasBucket = !mBucket.empty();
-	mHasKey = !mKey.empty();
-	mBucketKey = mBucket + L'/' + mKey;
-
-	//
-	// キーが空 (!mHasKey) --> bucket			== ディレクトリ
-	// 空でない (mHasKey)  --> bucket/key		== ファイル
-	//                         bucket/key/		== ディレクトリ
-	//
-	mMeansDir = mHasBucket ? (!mHasKey || (mHasKey && mKey.back() == L'/')) : false;
-	mMeansFile = mHasBucket ? (mHasKey && mKey.back() != L'/') : false;
-}
-
 ObjectKey ObjectKey::fromPath(const std::wstring& argPath)
 {
 	// パス文字列をバケット名とキーに分割
@@ -439,8 +421,10 @@ ObjectKey ObjectKey::fromWinPath(const std::wstring& argWinPath)
 {
 	// Windows パス文字列をバケット名とキーに分割
 
-	APP_ASSERT(!argWinPath.empty());
-	APP_ASSERT(argWinPath.at(0) == L'\\');
+	if (argWinPath.empty() || argWinPath.at(0) != L'\\')
+	{
+		return ObjectKey();
+	}
 
 	std::wstring bucket;
 	std::wstring key;
@@ -501,80 +485,7 @@ ObjectKey ObjectKey::fromWinPath(const std::wstring& argWinPath)
 	return ObjectKey(bucket, key);
 }
 
-//
-// std::map のキーにする場合に必要
-//
-bool ObjectKey::operator<(const ObjectKey& other) const noexcept
-{
-	if (mBucket < other.mBucket) {			// bucket
-		return true;
-	}
-	else if (mBucket > other.mBucket) {
-		return false;
-	}
-	else if (mKey < other.mKey) {			// key
-		return true;
-	}
-	else if (mKey > other.mKey) {
-		return false;
-	}
-
-	return false;
-}
-
-bool ObjectKey::operator>(const ObjectKey& other) const noexcept
-{
-	if (this->operator<(other))
-	{
-		return false;
-	}
-	else if (this->operator==(other))
-	{
-		return false;
-	}
-
-	return true;
-}
-
-ObjectKey ObjectKey::toFile() const noexcept
-{
-	//
-	// キーの後ろに "/" を付与したものを返却する
-	// キーがない場合は自分のコピーを返す			--> バケット名のみの場合
-	// そもそもディレクトリの場合もコピーを返す
-	//
-
-	if (mHasBucket && mHasKey)
-	{
-		if (mMeansDir)
-		{
-			return ObjectKey{ mBucket, mKey.substr(0, mKey.size() - 1) };
-		}
-	}
-
-	return *this;
-}
-
-ObjectKey ObjectKey::toDir() const noexcept
-{
-	//
-	// キーの後ろに "/" を付与したものを返却する
-	// キーがない場合は自分のコピーを返す			--> バケット名のみの場合
-	// そもそもディレクトリの場合もコピーを返す
-	//
-
-	if (mHasBucket && mHasKey)
-	{
-		if (mMeansFile)
-		{
-			return ObjectKey{ mBucket, mKey + L'/' };
-		}
-	}
-
-	return *this;
-}
-
-std::unique_ptr<ObjectKey> ObjectKey::toParentDir() const
+std::optional<ObjectKey> ObjectKey::toParentDir() const
 {
 	//
 	// キーがあった場合は "/" で分割した親ディレクトリを返す
@@ -585,32 +496,17 @@ std::unique_ptr<ObjectKey> ObjectKey::toParentDir() const
 		std::wstring parentDir;
 		if (SplitPath(mKey, &parentDir, nullptr))
 		{
-			return std::make_unique<ObjectKey>(mBucket, parentDir);
+			return ObjectKey{ mBucket, parentDir };
 		}
 	}
 
-	return nullptr;
+	return std::nullopt;
 }
 
-ObjectKey ObjectKey::append(const std::wstring& arg) const noexcept
-{
-	return ObjectKey{ mBucket, mKey + arg };
-}
 
-std::string ObjectKey::bucketA() const
-{
-	return WC2MB(mBucket);
-}
-
-std::string ObjectKey::keyA() const
-{
-	return WC2MB(mKey);
-}
-
-std::string ObjectKey::strA() const
-{
-	return WC2MB(mBucketKey);
-}
+std::string ObjectKey::bucketA() const { return WC2MB(mBucket); }
+std::string ObjectKey::keyA() const { return WC2MB(mKey); }
+std::string ObjectKey::strA() const { return WC2MB(mBucketKey); }
 
 //
 // CSDeviceContext

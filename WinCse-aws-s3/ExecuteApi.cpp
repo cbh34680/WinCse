@@ -73,7 +73,7 @@ ExecuteApi::~ExecuteApi()
     }
 }
 
-bool ExecuteApi::Ping(CALLER_ARG0)
+bool ExecuteApi::Ping(CALLER_ARG0) const
 {
     NEW_LOG_BLOCK();
 
@@ -90,7 +90,7 @@ bool ExecuteApi::Ping(CALLER_ARG0)
     return true;
 }
 
-bool ExecuteApi::ListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList)
+bool ExecuteApi::ListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList) const noexcept
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(pDirInfoList);
@@ -129,7 +129,7 @@ bool ExecuteApi::ListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList)
 
         // ディレクトリ・エントリを生成
 
-        auto dirInfo = makeDirInfoDir(bucketName, FileTime);
+        auto dirInfo = makeDirInfoDir2(bucketName, FileTime);
         APP_ASSERT(dirInfo);
 
         // バケットは常に読み取り専用
@@ -156,9 +156,10 @@ bool ExecuteApi::ListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList)
 }
 
 bool ExecuteApi::GetBucketRegion(CALLER_ARG
-    const std::wstring& argBucketName, std::wstring* pBucketRegion)
+    const std::wstring& argBucketName, std::wstring* pBucketRegion) const noexcept
 {
     NEW_LOG_BLOCK();
+    APP_ASSERT(pBucketRegion);
 
     //traceW(L"do GetBucketLocation()");
 
@@ -192,8 +193,7 @@ bool ExecuteApi::GetBucketRegion(CALLER_ARG
     return true;
 }
 
-bool ExecuteApi::HeadObject(CALLER_ARG
-    const ObjectKey& argObjKey, DirInfoType* pDirInfo)
+bool ExecuteApi::HeadObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoType* pDirInfo) const noexcept
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(pDirInfo);
@@ -290,7 +290,7 @@ bool ExecuteApi::HeadObject(CALLER_ARG
 // 引数の条件に合致するオブジェクトが見つからないときは false を返却
 //
 bool ExecuteApi::ListObjectsV2(CALLER_ARG const ObjectKey& argObjKey,
-    bool argDelimiter, int argLimit, DirInfoListType* pDirInfoList)
+    bool argDelimiter, int argLimit, DirInfoListType* pDirInfoList) const noexcept
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(pDirInfoList);
@@ -396,7 +396,7 @@ bool ExecuteApi::ListObjectsV2(CALLER_ARG const ObjectKey& argObjKey,
 
             dirNames.insert(key);
 
-            dirInfoList.push_back(makeDirInfoDir(key, commonPrefixTime));
+            dirInfoList.push_back(makeDirInfoDir2(key, commonPrefixTime));
 
             if (argLimit > 0)
             {
@@ -450,7 +450,7 @@ bool ExecuteApi::ListObjectsV2(CALLER_ARG const ObjectKey& argObjKey,
 
             APP_ASSERT(!key.empty());
 
-            if (dirNames.find(key) != dirNames.end())
+            if (dirNames.find(key) != dirNames.cend())
             {
                 // ディレクトリと同じ名前のファイルは無視
 
@@ -528,9 +528,11 @@ exit:
 }
 
 bool ExecuteApi::DeleteObjects(CALLER_ARG
-    const std::wstring& argBucket, const std::list<std::wstring>& argKeys)
+    const std::wstring& argBucket, const std::list<std::wstring>& argKeys) const noexcept
 {
     NEW_LOG_BLOCK();
+    APP_ASSERT(!argBucket.empty());
+    APP_ASSERT(!argKeys.empty());
 
     Aws::S3::Model::Delete delete_objects;
 
@@ -558,9 +560,10 @@ bool ExecuteApi::DeleteObjects(CALLER_ARG
     return true;
 }
 
-bool ExecuteApi::DeleteObject(CALLER_ARG const ObjectKey& argObjKey)
+bool ExecuteApi::DeleteObject(CALLER_ARG const ObjectKey& argObjKey) const noexcept
 {
     NEW_LOG_BLOCK();
+    APP_ASSERT(argObjKey.isObject());
 
     traceW(L"DeleteObject argObjKey=%s", argObjKey.c_str());
 
@@ -579,7 +582,7 @@ bool ExecuteApi::DeleteObject(CALLER_ARG const ObjectKey& argObjKey)
 }
 
 bool ExecuteApi::PutObject(CALLER_ARG const ObjectKey& argObjKey,
-    const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath)
+    const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath) const noexcept
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.isObject());
@@ -677,7 +680,7 @@ static INT64 writeObjectResultToFile(CALLER_ARG
     const auto pbuf = argResult.GetBody().rdbuf();
     const auto inputSize = argResult.GetContentLength();  // ファイルサイズ
 
-    std::vector<char> vbuffer(1024 * 64);       // 64Kib
+    std::vector<char> vbuffer(FILESIZE_1KiBu * 64);       // 64Kib
 
     // result の内容をファイルに出力する
 
@@ -770,7 +773,7 @@ static INT64 writeObjectResultToFile(CALLER_ARG
 //
 
 INT64 ExecuteApi::GetObjectAndWriteToFile(CALLER_ARG
-    const ObjectKey& argObjKey, const FileOutputParams& argFOParams)
+    const ObjectKey& argObjKey, const FileOutputParams& argFOParams) const noexcept
 {
     NEW_LOG_BLOCK();
 

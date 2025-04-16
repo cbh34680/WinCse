@@ -14,7 +14,7 @@ WCSE::ICSDevice* NewCSDevice(PCWSTR argTempDir, PCWSTR argIniSection, NamedWorke
 
     for (const auto key: { L"delayed", L"timer", })
     {
-        if (workers.find(key) == workers.end())
+        if (workers.find(key) == workers.cend())
         {
             return nullptr;
         }

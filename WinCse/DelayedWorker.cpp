@@ -1,4 +1,3 @@
-#include "WinCseLib.h"
 #include "DelayedWorker.hpp"
 #include <filesystem>
 

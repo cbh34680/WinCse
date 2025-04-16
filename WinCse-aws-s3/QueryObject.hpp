@@ -22,17 +22,16 @@ public:
 	{
 	}
 
-	WCSE::DirInfoType headObjectCacheOnly(CALLER_ARG const WCSE::ObjectKey& argObjKey);
-	bool isNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey);
-	void reportCache(CALLER_ARG FILE* fp);
-	int deleteOldCache(CALLER_ARG std::chrono::system_clock::time_point threshold);
-	int clearCache(CALLER_ARG0);
-	int deleteCache(CALLER_ARG const WCSE::ObjectKey& argObjKey);
+	bool headObjectFromCache(CALLER_ARG const WCSE::ObjectKey& argObjKey, WCSE::DirInfoType* pDirInfo) const noexcept;
+	bool isNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey) const noexcept;
+	void reportCache(CALLER_ARG FILE* fp) const noexcept;
+	int deleteOldCache(CALLER_ARG std::chrono::system_clock::time_point threshold) noexcept;
+	int clearCache(CALLER_ARG0) noexcept;
+	int deleteCache(CALLER_ARG const WCSE::ObjectKey& argObjKey) noexcept;
 
-	WCSE::DirInfoType unsafeHeadObject(CALLER_ARG const WCSE::ObjectKey& argObjKey);
-	WCSE::DirInfoType unsafeHeadObject_CheckDir(CALLER_ARG const WCSE::ObjectKey& argObjKey);
-	bool unsafeListObjects(CALLER_ARG const WCSE::ObjectKey& argObjKey,
-		WCSE::DirInfoListType* pDirInfoList /* nullable */);
+	bool unsafeHeadObject(CALLER_ARG const WCSE::ObjectKey& argObjKey, WCSE::DirInfoType* pDirInfo) noexcept;
+	bool unsafeHeadObject_CheckDir(CALLER_ARG const WCSE::ObjectKey& argObjKey, WCSE::DirInfoType* pDirInfo) noexcept;
+	bool unsafeListObjects(CALLER_ARG const WCSE::ObjectKey& argObjKey, WCSE::DirInfoListType* pDirInfoList) noexcept;
 };
 
 // EOF

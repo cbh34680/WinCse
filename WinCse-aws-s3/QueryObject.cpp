@@ -3,30 +3,23 @@
 using namespace WCSE;
 
 
-DirInfoType QueryObject::headObjectCacheOnly(CALLER_ARG const ObjectKey& argObjKey)
+bool QueryObject::headObjectFromCache(CALLER_ARG const ObjectKey& argObjKey, DirInfoType* pDirInfo) const noexcept
 {
-    DirInfoType dirInfo;
-
-    if (mCacheHeadObject.get(CONT_CALLER argObjKey, &dirInfo))
-    {
-        return dirInfo;
-    }
-
-    return nullptr;
+    return mCacheHeadObject.get(CONT_CALLER argObjKey, pDirInfo);
 }
 
-bool QueryObject::isNegative(CALLER_ARG const ObjectKey& argObjKey)
+bool QueryObject::isNegative(CALLER_ARG const ObjectKey& argObjKey) const noexcept
 {
     return mCacheHeadObject.isNegative(CONT_CALLER argObjKey); 
 }
 
-void QueryObject::reportCache(CALLER_ARG FILE* fp)
+void QueryObject::reportCache(CALLER_ARG FILE* fp) const noexcept
 {
     mCacheHeadObject.report(CONT_CALLER fp);
     mCacheListObjects.report(CONT_CALLER fp);
 }
 
-int QueryObject::deleteOldCache(CALLER_ARG std::chrono::system_clock::time_point threshold)
+int QueryObject::deleteOldCache(CALLER_ARG std::chrono::system_clock::time_point threshold) noexcept
 {
     const auto delHead = mCacheHeadObject.deleteByTime(CONT_CALLER threshold);
     const auto delList = mCacheListObjects.deleteByTime(CONT_CALLER threshold);
@@ -34,14 +27,14 @@ int QueryObject::deleteOldCache(CALLER_ARG std::chrono::system_clock::time_point
     return delHead + delList;
 }
 
-int QueryObject::clearCache(CALLER_ARG0)
+int QueryObject::clearCache(CALLER_ARG0) noexcept
 {
     const auto now{ std::chrono::system_clock::now() };
 
     return this->deleteOldCache(CONT_CALLER now);
 }
 
-int QueryObject::deleteCache(CALLER_ARG const ObjectKey& argObjKey)
+int QueryObject::deleteCache(CALLER_ARG const ObjectKey& argObjKey) noexcept
 {
     const auto delHead = mCacheHeadObject.deleteByKey(CONT_CALLER argObjKey);
     const auto delList = mCacheListObjects.deleteByKey(CONT_CALLER argObjKey);
@@ -49,7 +42,7 @@ int QueryObject::deleteCache(CALLER_ARG const ObjectKey& argObjKey)
     return delHead + delList;
 }
 
-DirInfoType QueryObject::unsafeHeadObject(CALLER_ARG const ObjectKey& argObjKey)
+bool QueryObject::unsafeHeadObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoType* pDirInfo) noexcept
 {
     APP_ASSERT(!argObjKey.isBucket());
 
@@ -59,7 +52,7 @@ DirInfoType QueryObject::unsafeHeadObject(CALLER_ARG const ObjectKey& argObjKey)
     {
         // ネガティブ・キャッシュ中に見つかった
 
-        return nullptr;
+        return false;
     }
 
     // ポジティブ・キャッシュを調べる
@@ -76,21 +69,18 @@ DirInfoType QueryObject::unsafeHeadObject(CALLER_ARG const ObjectKey& argObjKey)
 
         // HeadObject API の実行
 
-        if (mExecuteApi->HeadObject(CONT_CALLER argObjKey, &dirInfo))
-        {
-            traceW(L"success: HeadObject");
-        }
-        else
+        if (!mExecuteApi->HeadObject(CONT_CALLER argObjKey, &dirInfo))
         {
             // ネガティブ・キャッシュに登録
-
 
             traceW(L"fault: headObject");
 
             mCacheHeadObject.addNegative(CONT_CALLER argObjKey);
 
-            return nullptr;
+            return false;
         }
+
+        traceW(L"success: HeadObject");
 
         // キャッシュにコピー
 
@@ -101,10 +91,15 @@ DirInfoType QueryObject::unsafeHeadObject(CALLER_ARG const ObjectKey& argObjKey)
 
     APP_ASSERT(dirInfo);
 
-    return dirInfo;
+    if (pDirInfo)
+    {
+        *pDirInfo = std::move(dirInfo);
+    }
+
+    return true;
 }
 
-DirInfoType QueryObject::unsafeHeadObject_CheckDir(CALLER_ARG const ObjectKey& argObjKey)
+bool QueryObject::unsafeHeadObject_CheckDir(CALLER_ARG const ObjectKey& argObjKey, DirInfoType* pDirInfo) noexcept
 {
     APP_ASSERT(!argObjKey.isBucket());
 
@@ -114,7 +109,7 @@ DirInfoType QueryObject::unsafeHeadObject_CheckDir(CALLER_ARG const ObjectKey& a
     {
         // ネガティブ・キャッシュ中に見つかった
 
-        return nullptr;
+        return false;
     }
 
     // ポジティブ・キャッシュを調べる
@@ -131,10 +126,15 @@ DirInfoType QueryObject::unsafeHeadObject_CheckDir(CALLER_ARG const ObjectKey& a
 
         if (mExecuteApi->HeadObject(CONT_CALLER argObjKey, &dirInfo))
         {
+            // 空のディレクトリ・オブジェクト(ex. "dir/") が存在する状況
+
             traceW(L"success: HeadObject");
         }
         else
         {
+            // 下位の層にオブジェクトが存在するが、自層に空のディレクトリ・オブジェクト
+            // は存在しない状況
+
             traceW(L"fault: HeadObject");
 
             // 親ディレクトリの CommonPrefix からディレクトリ情報を取得
@@ -155,7 +155,7 @@ DirInfoType QueryObject::unsafeHeadObject_CheckDir(CALLER_ARG const ObjectKey& a
 
                 mCacheHeadObject.addNegative(CONT_CALLER argObjKey);
 
-                return nullptr;
+                return false;
             }
 
             // 親ディレクトリのリストから名前の一致するものを探す
@@ -186,7 +186,7 @@ DirInfoType QueryObject::unsafeHeadObject_CheckDir(CALLER_ARG const ObjectKey& a
 
                 mCacheHeadObject.addNegative(CONT_CALLER argObjKey);
 
-                return nullptr;
+                return false;
             }
         }
 
@@ -199,11 +199,15 @@ DirInfoType QueryObject::unsafeHeadObject_CheckDir(CALLER_ARG const ObjectKey& a
 
     APP_ASSERT(dirInfo);
 
-    return dirInfo;
+    if (pDirInfo)
+    {
+        *pDirInfo = std::move(dirInfo);
+    }
+
+    return true;
 }
 
-bool QueryObject::unsafeListObjects(CALLER_ARG const ObjectKey& argObjKey,
-    DirInfoListType* pDirInfoList /* nullable */)
+bool QueryObject::unsafeListObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* pDirInfoList) noexcept
 {
     APP_ASSERT(argObjKey.meansDir());
 

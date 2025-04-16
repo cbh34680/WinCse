@@ -21,14 +21,14 @@ public:
 	{
 	}
 
-	void clearListBucketsCache(CALLER_ARG0);
-	void reportListBucketsCache(CALLER_ARG FILE* fp);
+	void clearCache(CALLER_ARG0) noexcept;
+	void reportCache(CALLER_ARG FILE* fp) const noexcept;
 
-	std::wstring unsafeGetBucketRegion(CALLER_ARG const std::wstring& argBucketName);
-	WCSE::DirInfoType unsafeHeadBucket(CALLER_ARG const std::wstring& bucketName);
-	bool unsafeListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList /* nullable */,
-		const std::vector<std::wstring>& options);
-	bool unsafeReloadListBuckets(CALLER_ARG std::chrono::system_clock::time_point threshold);
+	std::wstring unsafeGetBucketRegion(CALLER_ARG const std::wstring& argBucketName) noexcept;
+	bool unsafeHeadBucket(CALLER_ARG const std::wstring& bucketName, WCSE::DirInfoType* pDirInfo) noexcept;
+	bool unsafeListBuckets(CALLER_ARG
+		WCSE::DirInfoListType* pDirInfoList, const std::vector<std::wstring>& options) noexcept;
+	bool unsafeReload(CALLER_ARG std::chrono::system_clock::time_point threshold) noexcept;
 };
 
 // EOF

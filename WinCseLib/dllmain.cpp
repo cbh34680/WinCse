@@ -4,6 +4,8 @@
 #pragma comment(lib, "winfsp-x64.lib")
 #pragma comment(lib, "bcrypt.lib")
 #pragma comment(lib, "Rpcrt4.lib")
+#pragma comment(lib, "Crypt32.lib")             // CryptBinaryToStringA
+#pragma comment(lib, "Dbghelp.lib")             // SymInitialize
 
 #pragma warning(disable: 4100)
 

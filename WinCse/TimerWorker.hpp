@@ -1,5 +1,6 @@
 #pragma once
 
+#include "WinCseLib.h"
 #include "ScheduledWorker.hpp"
 
 class TimerWorker : public ScheduledWorker

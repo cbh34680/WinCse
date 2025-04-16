@@ -63,7 +63,7 @@ bool CSDeviceBase::createNotifListener(CALLER_ARG0)
     return true;
 }
 
-void CSDeviceBase::notifListener()
+void CSDeviceBase::notifListener() noexcept
 {
     NEW_LOG_BLOCK();
 

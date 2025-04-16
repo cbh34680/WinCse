@@ -1,7 +1,6 @@
 #pragma once
 
-#include <thread>
-#include <atomic>
+#include "WinCseLib.h"
 #include <queue>
 
 class DelayedWorker : public WCSE::ITaskTypedWorker<WCSE::IOnDemandTask>

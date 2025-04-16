@@ -1,11 +1,8 @@
-#include "WinCseLib.h"
 #include "CSDriver.hpp"
 #include <filesystem>
 
 
 using namespace WCSE;
-
-static PCWSTR const DEFAULT_IGNORE_PATTERNS = LR"(\b(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif)|\.DS_Store)$)";
 
 CSDriver::CSDriver(WINCSE_DRIVER_STATS* argStats,
 	const std::wstring&, const std::wstring& argIniSection,
@@ -14,8 +11,7 @@ CSDriver::CSDriver(WINCSE_DRIVER_STATS* argStats,
 	mStats(argStats),
 	mIniSection(argIniSection),
 	mCSDevice(argCSDevice),
-	mResourceSweeper(this),
-	mIgnoreFileNamePatterns{ DEFAULT_IGNORE_PATTERNS, std::regex_constants::icase }
+	mResourceSweeper(this)
 {
 	NEW_LOG_BLOCK();
 
@@ -35,13 +31,13 @@ bool CSDriver::shouldIgnoreFileName(const std::wstring& arg) const noexcept
 {
 	// desktop.ini などリクエストが増え過ぎるものは無視する
 
-	if (mIgnoreFileNamePatterns.mark_count() == 0)
+	if (mIgnoreFileNamePatterns)
 	{
-		// 正規表現が設定されていない
-		return false;
+		return std::regex_search(arg, *mIgnoreFileNamePatterns);
 	}
 
-	return std::regex_search(arg, mIgnoreFileNamePatterns);
+	// 正規表現が設定されていない
+	return false;
 }
 
 //
@@ -79,7 +75,7 @@ static std::mutex gGuard;
 void CSDriver::ResourceSweeper::add(PTFS_FILE_CONTEXT* FileContext) noexcept
 {
 	THREAD_SAFE();
-	APP_ASSERT(mOpenAddrs.find(FileContext) == mOpenAddrs.end());
+	APP_ASSERT(mOpenAddrs.find(FileContext) == mOpenAddrs.cend());
 
 	mOpenAddrs.insert(FileContext);
 }
@@ -87,7 +83,7 @@ void CSDriver::ResourceSweeper::add(PTFS_FILE_CONTEXT* FileContext) noexcept
 void CSDriver::ResourceSweeper::remove(PTFS_FILE_CONTEXT* FileContext) noexcept
 {
 	THREAD_SAFE();
-	APP_ASSERT(mOpenAddrs.find(FileContext) != mOpenAddrs.end());
+	APP_ASSERT(mOpenAddrs.find(FileContext) != mOpenAddrs.cend());
 
 	mOpenAddrs.erase(FileContext);
 }

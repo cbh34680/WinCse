@@ -61,17 +61,17 @@ struct NotifRemoveBucketTask : public IOnDemandTask
 #endif
 
 
-void QueryBucket::clearListBucketsCache(CALLER_ARG0)
+void QueryBucket::clearCache(CALLER_ARG0) noexcept
 {
     mCacheListBuckets.clear(CONT_CALLER0);
 }
 
-void QueryBucket::reportListBucketsCache(CALLER_ARG FILE* fp)
+void QueryBucket::reportCache(CALLER_ARG FILE* fp) const noexcept
 {
     mCacheListBuckets.report(CONT_CALLER fp);
 }
 
-std::wstring QueryBucket::unsafeGetBucketRegion(CALLER_ARG const std::wstring& argBucketName)
+std::wstring QueryBucket::unsafeGetBucketRegion(CALLER_ARG const std::wstring& argBucketName) noexcept
 {
     //NEW_LOG_BLOCK();
 
@@ -106,7 +106,7 @@ std::wstring QueryBucket::unsafeGetBucketRegion(CALLER_ARG const std::wstring& a
     return bucketRegion;
 }
 
-DirInfoType QueryBucket::unsafeHeadBucket(CALLER_ARG const std::wstring& argBucketName)
+bool QueryBucket::unsafeHeadBucket(CALLER_ARG const std::wstring& argBucketName, DirInfoType* pDirInfo) noexcept
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(!argBucketName.empty());
@@ -115,8 +115,10 @@ DirInfoType QueryBucket::unsafeHeadBucket(CALLER_ARG const std::wstring& argBuck
     //traceW(L"bucket: %s", bucketName.c_str());
 
     const auto bucketRegion{ this->unsafeGetBucketRegion(CONT_CALLER argBucketName) };
-    if (bucketRegion != mRuntimeEnv->Region)
+    if (bucketRegion != mRuntimeEnv->ClientRegion)
     {
+        // バケットのリージョンが異なるときは拒否
+
         traceW(L"%s: no match bucket-region", bucketRegion.c_str());
 
 #if REMOVE_BUCKET_OTHER_REGION
@@ -124,15 +126,28 @@ DirInfoType QueryBucket::unsafeHeadBucket(CALLER_ARG const std::wstring& argBuck
         getWorker(L"delayed")->addTask(START_CALLER new NotifRemoveBucketTask{ mFileSystem, std::wstring(L"\\") + argBucketName });
 #endif
 
-        return nullptr;
+        return false;
     }
 
     // キャッシュから探す
 
-    return mCacheListBuckets.find(CONT_CALLER argBucketName);
+    DirInfoType dirInfo;
+
+    if (!mCacheListBuckets.find(CONT_CALLER argBucketName, &dirInfo))
+    {
+        return false;
+    }
+
+    if (pDirInfo)
+    {
+        *pDirInfo = std::move(dirInfo);
+    }
+
+    return true;
 }
 
-bool QueryBucket::unsafeListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList /* nullable */, const std::vector<std::wstring>& options)
+bool QueryBucket::unsafeListBuckets(CALLER_ARG
+    WCSE::DirInfoListType* pDirInfoList, const std::vector<std::wstring>& options) noexcept
 {
     NEW_LOG_BLOCK();
 
@@ -142,13 +157,14 @@ bool QueryBucket::unsafeListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoLi
     {
         const auto now{ std::chrono::system_clock::now() };
         const auto lastSetTime{ mCacheListBuckets.getLastSetTime(CONT_CALLER0) };
-        const auto elapsed = std::chrono::duration_cast<std::chrono::minutes>(now - lastSetTime);
 
-        if (elapsed.count() < mRuntimeEnv->BucketCacheExpiryMin)
+        const auto elapsedMillis = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastSetTime).count();
+
+        if (elapsedMillis < TIMEMILLIS_1MIN)
         {
-            // バケット一覧が空である状況のキャッシュ有効期限内
+            // バケット一覧が空である状況のキャッシュ有効期限内 (1 分)
 
-            traceW(L"empty buckets, short time cache");
+            traceW(L"empty buckets, short time cache, diff=%lld", TIMEMILLIS_1MIN - elapsedMillis);
             return true;
         }
 
@@ -179,21 +195,35 @@ bool QueryBucket::unsafeListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoLi
 
     if (pDirInfoList)
     {
-        for (auto it=dirInfoList.begin(); it!=dirInfoList.end(); )
+        for (auto it=dirInfoList.cbegin(); it!=dirInfoList.cend(); )
         {
             const std::wstring bucketName{ (*it)->FileNameBuf };
 
-            // リージョン・キャッシュから取得
-
             std::wstring bucketRegion;
 
-            if (mCacheListBuckets.getBucketRegion(CONT_CALLER bucketName, &bucketRegion))
+            if (mRuntimeEnv->StrictBucketRegion)
             {
-                APP_ASSERT(!bucketRegion.empty());
+                // キャッシュに存在しなければ API を実行
 
+                bucketRegion = this->unsafeGetBucketRegion(CONT_CALLER bucketName);
+
+                APP_ASSERT(!bucketRegion.empty());
+            }
+            else
+            {
+                // リージョン・キャッシュからのみ取得
+
+                if (mCacheListBuckets.getBucketRegion(CONT_CALLER bucketName, &bucketRegion))
+                {
+                    APP_ASSERT(!bucketRegion.empty());
+                }
+            }
+
+            if (!bucketRegion.empty())
+            {
                 // 異なるリージョンであるか調べる
 
-                if (bucketRegion != mRuntimeEnv->Region)
+                if (bucketRegion != mRuntimeEnv->ClientRegion)
                 {
                     // リージョンが異なる場合は HIDDEN 属性を付与
                     //
@@ -224,7 +254,7 @@ bool QueryBucket::unsafeListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoLi
     return true;
 }
 
-bool QueryBucket::unsafeReloadListBuckets(CALLER_ARG std::chrono::system_clock::time_point threshold)
+bool QueryBucket::unsafeReload(CALLER_ARG std::chrono::system_clock::time_point threshold) noexcept
 {
     const auto lastSetTime = mCacheListBuckets.getLastSetTime(CONT_CALLER0);
 

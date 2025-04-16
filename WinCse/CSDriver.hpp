@@ -1,6 +1,6 @@
 #pragma once
 
-#include <regex>
+#include "WinCseLib.h"
 #include <set>
 
 class CSDriver : public WCSE::ICSDriver
@@ -10,7 +10,7 @@ private:
 
 	WINCSE_DRIVER_STATS* const mStats;
 	WCSE::ICSDevice* const mCSDevice;
-	bool mReadonlyVolume = false;
+	bool mReadOnly = false;
 
 	struct
 	{
@@ -30,7 +30,7 @@ private:
 	}
 
 	// 無視するファイル名の正規表現
-	std::wregex mIgnoreFileNamePatterns;
+	std::unique_ptr<std::wregex> mIgnoreFileNamePatterns;
 
 	// 作業用ディレクトリ (プログラム引数 "-u" から算出される)
 	//std::wstring mWorkDir;
@@ -68,7 +68,7 @@ private:
 	NTSTATUS getFileInfoByFileName(CALLER_ARG PCWSTR fileName,
 		FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pFileNameType);
 
-	NTSTATUS verifyFileUniqueness(CALLER_ARG
+	NTSTATUS canCreateObject(CALLER_ARG
 		PCWSTR argFileName, bool argIsDir, WCSE::ObjectKey* pObjKey) const noexcept;
 
 protected:

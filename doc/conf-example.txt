@@ -1,0 +1,74 @@
+[default]
+type=aws-s3
+
+; AWS client credentials
+aws_access_key_id={aes256}abcdefg
+aws_secret_access_key={aes256}abcdefg
+region=ap-northeast-1
+
+; Client Identifier
+; default: Not set (Generated at runtime)
+#client_guid=abcd-efg
+
+; You can select the bucket names to display using wildcards as follows.
+; default: Not set
+#bucket_filters=my-bucket-1 my-bucket-2*
+
+; Delete the cache files after the upload is completed.
+; valid value: 0 or non-zero
+; default: 0 (Do not delete)
+#delete_after_upload=0
+
+; Set the file as read-only.
+; valid value: 0 or non-zero
+; default: 0 (Read and write)
+#readonly=0
+
+;!
+;! Changing the following values will affect the response.
+;!
+
+; Bucket cache expiration period.
+; valid range: 1 to 1440 (1 day)
+; default: 20
+#bucket_cache_expiry_min=20
+
+; Cache file retention period.
+; valid range: 1 to 10080 (1 week)
+; default: 60 (1 hours)
+#cache_file_retention_min=60
+
+; Conditions for deleting a directory.
+; valid value: 1 (No Subdirectories) or 2 (Empty Directory)
+; default: 2
+#delete_dir_condition=2
+
+; Maximum number of display buckets.
+; valid range: 0 (No restrictions) to INT_MAX
+; default: 8
+#max_display_buckets=8
+
+; Maximum number of display objects.
+; valid range: 0 to INT_MAX
+; default: 1000
+#max_display_objects=1000
+
+; Object cache expiration period.
+; valid range: 1 to 60 (1 hour)
+; default: 5
+#object_cache_expiry_min=5
+
+; Strictly enforce bucket regions.
+; valid value: 0 or non-zero
+; default: 0 (Not strict)
+#strict_bucket_region=0
+
+; Strictly enforce file timestamps.
+; valid value: 0 or non-zero
+; default: 0 (Not strict)
+#strict_file_timestamp=0
+
+; Files matching the following regex patterns will be ignored.
+; default: Empty (Don't ignore)
+re_ignore_patterns=\b(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif)|\.DS_Store)$
+

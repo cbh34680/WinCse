@@ -185,6 +185,7 @@
     <ClInclude Include="ICSDriver.hpp" />
     <ClInclude Include="IWorker.hpp" />
     <ClInclude Include="Logger.hpp" />
+    <ClInclude Include="ObjectKey.hpp" />
     <ClInclude Include="WinCseLib.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

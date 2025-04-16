@@ -138,14 +138,12 @@ int CacheHeadObject::deleteByKey(CALLER_ARG const WCSE::ObjectKey& argObjKey)
     int delPositiveP = 0;
     int delNegativeP = 0;
 
-    const auto parentDirPtr{ argObjKey.toParentDir() };
-    if (parentDirPtr)
+    const auto parentDir{ argObjKey.toParentDir() };
+    if (parentDir)
     {
-        const auto& parentDir{ *parentDirPtr };
-
         const auto EqualParentDir = [&parentDir](const auto& it)
         {
-            return it->first == parentDir.str();
+            return it->first == parentDir->str();
         };
 
         // 引数の親ディレクトリをキャッシュから削除
@@ -173,7 +171,7 @@ bool CacheHeadObject::get(CALLER_ARG const WCSE::ObjectKey& argObjKey, WCSE::Dir
 
     const auto it{ mPositive.find(argObjKey.str()) };
 
-    if (it == mPositive.end())
+    if (it == mPositive.cend())
     {
         return false;
     }
@@ -200,7 +198,7 @@ void CacheHeadObject::set(CALLER_ARG const WCSE::ObjectKey& argObjKey, const WCS
 
     // キャッシュにコピー
 
-    if (mPositive.find(argObjKey.str()) == mPositive.end())
+    if (mPositive.find(argObjKey.str()) == mPositive.cend())
     {
         mSetPositive++;
     }
@@ -222,9 +220,9 @@ bool CacheHeadObject::isNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey)
     std::lock_guard<std::mutex> lock_{ mGuard };
     APP_ASSERT(argObjKey.valid());
 
-    auto it{ mNegative.find(argObjKey.str()) };
+    const auto it{ mNegative.find(argObjKey.str()) };
 
-    if (it == mNegative.end())
+    if (it == mNegative.cend())
     {
         return false;
     }
@@ -244,7 +242,7 @@ void CacheHeadObject::addNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey)
     NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.valid());
 
-    if (mNegative.find(argObjKey.str()) == mNegative.end())
+    if (mNegative.find(argObjKey.str()) == mNegative.cend())
     {
         mSetNegative++;
     }

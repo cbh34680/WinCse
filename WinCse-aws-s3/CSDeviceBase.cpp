@@ -1,7 +1,7 @@
 #include "CSDeviceBase.hpp"
 
-
 using namespace WCSE;
+
 
 static bool decryptIfNecessaryW(const std::wstring& argSecretKey, std::wstring* pInOut);
 
@@ -154,11 +154,8 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
 
     // ini ファイルから値を取得
 
-    const auto iniSection = mIniSection.c_str();
-    const auto confPathCstr = confPath.c_str();
-
     std::wstring clientGuid;
-    GetIniStringW(confPathCstr, iniSection, L"client_guid", &clientGuid);
+    GetIniStringW(confPath, mIniSection, L"client_guid", &clientGuid);
 
     if (clientGuid.empty())
     {
@@ -201,25 +198,30 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
     // AWS 接続リージョン
 
     std::wstring region;
-    GetIniStringW(confPath, iniSection, L"region", &region);
+    GetIniStringW(confPath, mIniSection, L"region", &region);
 
     // 実行時変数
 
     auto runtimeEnv = std::make_unique<RuntimeEnv>(
-        GetIniIntW(confPathCstr, iniSection, L"bucket_cache_expiry_min",    20,   1,        1440),
+        //         ini-path     section         key                             default   min       max
+        //----------------------------------------------------------------------------------------------------
+        GetIniIntW(confPath,    mIniSection,    L"bucket_cache_expiry_min",         20,   1,        1440),
         bucketFilters,
         cacheDataDir,
         cacheReportDir,
-        GetIniIntW(confPathCstr, iniSection, L"cache_file_retention_min",   60,   1,       10080),
+        GetIniIntW(confPath,    mIniSection,    L"cache_file_retention_min",        60,   1,       10080),
         clientGuid,
         STCTimeToWinFileTimeW(workDir),
         mDefaultFileAttributes,
-        ::GetPrivateProfileIntW(iniSection,  L"delete_after_upload",         0,     confPathCstr),
-        GetIniIntW(confPathCstr, iniSection, L"max_display_buckets",         8,   0, INT_MAX - 1),
-        GetIniIntW(confPathCstr, iniSection, L"max_display_objects",      1000,   0, INT_MAX - 1),
-        GetIniIntW(confPathCstr, iniSection, L"object_cache_expiry_min",     5,   1,          60),
+        GetIniBoolW(confPath,   mIniSection,    L"delete_after_upload",         false),
+        GetIniIntW(confPath,    mIniSection,    L"delete_dir_condition",             2,   1,           2),
+        GetIniIntW(confPath,    mIniSection,    L"max_display_buckets",              8,   0, INT_MAX - 1),
+        GetIniIntW(confPath,    mIniSection,    L"max_display_objects",           1000,   0, INT_MAX - 1),
+        GetIniIntW(confPath,    mIniSection,    L"object_cache_expiry_min",          5,   1,          60),
+        GetIniBoolW(confPath,   mIniSection,    L"readonly",                    false),
         region,
-        ::GetPrivateProfileIntW(iniSection,  L"strict_file_timestamp",       0,     confPathCstr)
+        GetIniBoolW(confPath,   mIniSection,    L"strict_bucket_region",        false),
+        GetIniBoolW(confPath,   mIniSection,    L"strict_file_timestamp",       false)
     );
 
     traceW(L"runtimeEnv=%s", runtimeEnv->str().c_str());
@@ -229,8 +231,8 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
     std::wstring accessKeyId;
     std::wstring secretAccessKey;
 
-    GetIniStringW(confPath, iniSection, L"aws_access_key_id",     &accessKeyId);
-    GetIniStringW(confPath, iniSection, L"aws_secret_access_key", &secretAccessKey);
+    GetIniStringW(confPath, mIniSection, L"aws_access_key_id",     &accessKeyId);
+    GetIniStringW(confPath, mIniSection, L"aws_secret_access_key", &secretAccessKey);
 
     // レジストリ "HKLM:\SOFTWARE\Microsoft\Cryptography" から "MachineGuid" の値を取得
 
@@ -271,6 +273,8 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
     traceW(L"accessKeyId=%s, secretAccessKey=%s", accessKeyId.c_str(), secretAccessKey.c_str());
 #endif
 
+    // API 実行オブジェクト
+
     auto execApi{ std::make_unique<ExecuteApi>(runtimeEnv.get(), region, accessKeyId, secretAccessKey) };
     APP_ASSERT(execApi);
 
@@ -279,6 +283,8 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
         traceW(L"fault: Ping");
         return STATUS_ENCRYPTION_FAILED;
     }
+
+    // (API 実行オブジェクトを使う) クエリ・オブジェクト
 
     auto queryBucket{ std::make_unique<QueryBucket>(runtimeEnv.get(), execApi.get()) };
     APP_ASSERT(queryBucket);

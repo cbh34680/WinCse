@@ -71,29 +71,6 @@ NTSTATUS PathToFileInfo(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo
 	return GetFileInfoInternal(hFile.handle(), pFileInfo);
 }
 
-// ƒpƒX‚©‚ç FILETIME ‚Ì’l‚ðŽæ“¾
-
-bool PathToWinFileTimes(const std::wstring& path, FILETIME* pFtCreate, FILETIME* pFtAccess, FILETIME* pFtWrite)
-{
-	FileHandle hFile = ::CreateFileW
-	(
-		path.c_str(),
-		FILE_READ_ATTRIBUTES,
-		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-		NULL,
-		OPEN_EXISTING,
-		FILE_FLAG_BACKUP_SEMANTICS,
-		NULL
-	);
-
-	if(hFile.invalid())
-	{
-		return false;
-	}
-
-	return ::GetFileTime(hFile.handle(), pFtCreate, pFtAccess, pFtWrite);
-}
-
 bool MkdirIfNotExists(const std::wstring& arg)
 {
 	if (std::filesystem::exists(arg))

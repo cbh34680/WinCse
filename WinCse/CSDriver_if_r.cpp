@@ -1,4 +1,3 @@
-#include "WinCseLib.h"
 #include "CSDriver.hpp"
 
 using namespace WCSE;
@@ -68,13 +67,13 @@ NTSTATUS CSDriver::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern
     APP_ASSERT(FileContext && Buffer && PBytesTransferred);
 	APP_ASSERT(FA_IS_DIRECTORY(FileContext->FileInfo.FileAttributes));
 
-    std::unique_ptr<std::wregex> re;
+    std::optional<std::wregex> re;
 
     if (Pattern)
     {
         // 引数のパターンを正規表現に変換
 
-        re = std::make_unique<std::wregex>(WildcardToRegexW(Pattern));
+        re = WildcardToRegexW(Pattern);
     }
 
     // ディレクトリの中の一覧取得

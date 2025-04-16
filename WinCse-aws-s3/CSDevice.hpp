@@ -27,18 +27,20 @@ private:
 
 	bool putObject(CALLER_ARG const WCSE::ObjectKey& argObjKey,
 		const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath);
+	bool putObjectWithListLock(CALLER_ARG const WCSE::ObjectKey& argObjKey,
+		const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath);
 
 	// ファイル/ディレクトリに特化
 
-	WCSE::DirInfoType makeDirInfoDir(const std::wstring& argFileName)
+	WCSE::DirInfoType makeDirInfoDir1(const std::wstring& argFileName) const
 	{
 		return WCSE::makeDirInfo(argFileName, mRuntimeEnv->DefaultCommonPrefixTime, FILE_ATTRIBUTE_DIRECTORY | mRuntimeEnv->DefaultFileAttributes);
 	}
 
 public:
-	void onTimer(CALLER_ARG0);
-	void onIdle(CALLER_ARG0);
-	void onNotif(CALLER_ARG DWORD argEventId, PCWSTR argEventName);
+	void onTimer(CALLER_ARG0) override;
+	void onIdle(CALLER_ARG0) override;
+	void onNotif(CALLER_ARG DWORD argEventId, PCWSTR argEventName) override;
 
 public:
 	explicit CSDevice(const std::wstring& argTempDir, const std::wstring& argIniSection,
@@ -52,22 +54,19 @@ public:
 
 	NTSTATUS OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
 
-	WCSE::DirInfoType headBucket(CALLER_ARG const std::wstring& argBucket) override;
+	bool headBucket(CALLER_ARG const std::wstring& argBucket, WCSE::DirInfoType* pDirInfo) override;
 
-	bool listBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList /* nullable */) override;
+	bool listBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList) override;
 
-	WCSE::DirInfoType headObject(CALLER_ARG const WCSE::ObjectKey& argObjKey) override;
+	bool headObject(CALLER_ARG const WCSE::ObjectKey& argObjKey, WCSE::DirInfoType* pDirInfo) override;
 
-	bool listObjects(CALLER_ARG const WCSE::ObjectKey& argObjKey,
-		WCSE::DirInfoListType* pDirInfoList /* nullable */) override;
+	bool listObjects(CALLER_ARG const WCSE::ObjectKey& argObjKey, WCSE::DirInfoListType* pDirInfoList) override;
 
-	bool listDisplayObjects(CALLER_ARG const WCSE::ObjectKey& argObjKey,
-		WCSE::DirInfoListType* pDirInfoList) override;
+	bool listDisplayObjects(CALLER_ARG const WCSE::ObjectKey& argObjKey, WCSE::DirInfoListType* pDirInfoList) override;
+
+	NTSTATUS renameObject(CALLER_ARG WCSE::CSDeviceContext* argCSDCtx, const WCSE::ObjectKey& argNewObjKey) override;
 
 	bool deleteObject(CALLER_ARG const WCSE::ObjectKey& argObjKey) override;
-
-	NTSTATUS renameObject(CALLER_ARG WCSE::CSDeviceContext* argCSDCtx,
-		const WCSE::ObjectKey& argNewObjKey) override;
 
 	WCSE::CSDeviceContext* create(CALLER_ARG const WCSE::ObjectKey& argObjKey,
 		UINT32 CreateOptions, UINT32 GrantedAccess, UINT32 FileAttributes) override;
@@ -83,6 +82,8 @@ public:
 	NTSTATUS writeObject(CALLER_ARG WCSE::CSDeviceContext* argCSDCtx,
 		PVOID Buffer, UINT64 Offset, ULONG Length, BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
 		PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO* FileInfo) override;
+
+	NTSTATUS setDelete(CALLER_ARG WCSE::CSDeviceContext* argCSDCtx, BOOLEAN argDeleteFile) override;
 
 	NTSTATUS getHandleFromContext(CALLER_ARG WCSE::CSDeviceContext* argCSDCtx,
 		DWORD argDesiredAccess, DWORD argCreationDisposition, PHANDLE pHandle) override;

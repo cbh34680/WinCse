@@ -5,7 +5,6 @@
 #include "ExecuteApi.hpp"
 #include "QueryBucket.hpp"
 #include "QueryObject.hpp"
-#include <regex>
 
 class CSDeviceBase : public WCSE::ICSDevice
 {
@@ -30,7 +29,7 @@ protected:
 
 private:
 	bool createNotifListener(CALLER_ARG0);
-	void notifListener();
+	void notifListener() noexcept;
 	void deleteNotifListener(CALLER_ARG0);
 
 public:
@@ -40,7 +39,7 @@ public:
 protected:
 	virtual void onNotif(CALLER_ARG [[maybe_unused]] DWORD argEventId, [[maybe_unused]] PCWSTR argEventName) = 0;
 
-	WCSE::IWorker* getWorker(const std::wstring& argName)
+	WCSE::IWorker* getWorker(const std::wstring& argName) const
 	{
 		return mWorkers.at(argName);
 	}

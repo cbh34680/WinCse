@@ -1,7 +1,6 @@
 #pragma once
 
 #include "WinCseLib.h"
-#include <mutex>
 
 //
 // ñºëOÇ≈ÇÃîrëºêßå‰
@@ -32,7 +31,9 @@ class ProtectedShare
 
 	template<typename T> friend class UnprotectedShare;
 
-	ProtectedShare(T* argV) noexcept : mV(argV)
+	ProtectedShare(T* argV) noexcept
+		:
+		mV(argV)
 	{
 		mV->mMutex.lock();
 	}
@@ -53,11 +54,13 @@ public:
 		unlock();
 	}
 
-	T* operator->() noexcept {
+	T* operator->() noexcept
+	{
 		return mV;
 	}
 
-	const T* operator->() const noexcept {
+	const T* operator->() const noexcept
+	{
 		return mV;
 	}
 };
@@ -79,7 +82,7 @@ public:
 		std::lock_guard<std::mutex> lock_{ mShareStore->mMapGuard };
 
 		auto it{ mShareStore->mMap.find(mName) };
-		if (it == mShareStore->mMap.end())
+		if (it == mShareStore->mMap.cend())
 		{
 			it = mShareStore->mMap.emplace(mName, std::make_unique<T>(args...)).first;
 		}

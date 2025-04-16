@@ -1,6 +1,4 @@
 #include "CSDevice.hpp"
-#include <fstream>
-#include <iostream>
 
 using namespace WCSE;
 
@@ -84,12 +82,20 @@ CSDeviceContext* CSDevice::create(CALLER_ARG const ObjectKey& argObjKey,
 
     APP_ASSERT(fileInfo.LastWriteTime);
 
-    OpenContext* ctx = new OpenContext(mRuntimeEnv->CacheDataDir, argObjKey, fileInfo, argCreateOptions, GrantedAccess);
+    auto ctx = std::make_unique<OpenContext>(mRuntimeEnv->CacheDataDir, argObjKey, fileInfo, argCreateOptions, GrantedAccess);
     APP_ASSERT(ctx);
 
     if (isDirectory)
     {
-        // go next
+        // ディレクトリの場合はここでリモートを作成してしまう
+
+        if (!this->putObject(CONT_CALLER argObjKey, fileInfo, nullptr))
+        {
+            traceW(L"fault: putObject");
+            return nullptr;
+        }
+
+        // ディレクトリの場合は hFile は保存せず、このまま閉じる
     }
     else
     {
@@ -111,7 +117,10 @@ CSDeviceContext* CSDevice::create(CALLER_ARG const ObjectKey& argObjKey,
     const auto num = mQueryObject->deleteCache(CONT_CALLER argObjKey);
     traceW(L"cache delete num=%d, argObjKey=%s", num, argObjKey.c_str());
 
-    return ctx;
+    OpenContext* ret = ctx.get();
+    ctx.release();
+
+    return ret;
 }
 
 CSDeviceContext* CSDevice::open(CALLER_ARG const ObjectKey& argObjKey,
@@ -132,53 +141,41 @@ CSDeviceContext* CSDevice::open(CALLER_ARG const ObjectKey& argObjKey,
 bool CSDevice::uploadWhenClosing(CALLER_ARG WCSE::CSDeviceContext* ctx, PCWSTR argSourcePath)
 {
     NEW_LOG_BLOCK();
+    APP_ASSERT(ctx->isFile());
+    APP_ASSERT(ctx->mFile.valid());
+    APP_ASSERT(ctx->mObjKey.meansFile());
 
-    FSP_FSCTL_FILE_INFO fileInfo{};
+    // ファイルの場合は Write の結果を反映するため Flush
 
-    if (ctx->isDir())
+    traceW(L"valid file");
+
+    // 属性情報を取得するため、ファイルを閉じる前に flush する
+
+    if (!::FlushFileBuffers(ctx->mFile.handle()))
     {
-        APP_ASSERT(!argSourcePath);
+        const auto lerr = ::GetLastError();
 
-        // ディレクトリの場合は create のときの情報をそのまま転記
-
-        traceW(L"directory");
-
-        fileInfo = ctx->mFileInfo;
+        traceW(L"fault: FlushFileBuffers, lerr=%lu", lerr);
+        return false;
     }
-    else if (ctx->isFile())
+
+    FSP_FSCTL_FILE_INFO fileInfo;
+    const auto ntstatus = GetFileInfoInternal(ctx->mFile.handle(), &fileInfo);
+    if (!NT_SUCCESS(ntstatus))
     {
-        APP_ASSERT(ctx->mFile.valid());
-        APP_ASSERT(ctx->mObjKey.meansFile());
-
-        traceW(L"valid file");
-
-        // 属性情報を取得するため、ファイルを閉じる前に flush する
-
-        if (!::FlushFileBuffers(ctx->mFile.handle()))
-        {
-            const auto lerr = ::GetLastError();
-
-            traceW(L"fault: FlushFileBuffers, lerr=%lu", lerr);
-            return false;
-        }
-
-        const auto ntstatus = GetFileInfoInternal(ctx->mFile.handle(), &fileInfo);
-        if (!NT_SUCCESS(ntstatus))
-        {
-            traceW(L"fault: GetFileInfoInternal");
-            return false;
-        }
-
-        // 閉じておかないと putObject() にある Aws::FStream が失敗する
-
-        ctx->mFile.close();
+        traceW(L"fault: GetFileInfoInternal");
+        return false;
     }
+
+    // 閉じておかないと putObject() にある Aws::FStream が失敗する
+
+    ctx->mFile.close();
 
     // アップロード
 
     traceW(L"putObject mObjKey=%s, argSourcePath=%s", ctx->mObjKey.c_str(), argSourcePath);
 
-    if (!this->putObject(CONT_CALLER ctx->mObjKey, fileInfo, argSourcePath))
+    if (!this->putObjectWithListLock(CONT_CALLER ctx->mObjKey, fileInfo, argSourcePath))
     {
         traceW(L"fault: putObject");
         return false;
@@ -211,6 +208,12 @@ void CSDevice::close(CALLER_ARG WCSE::CSDeviceContext* ctx)
 
     if (!(ctx->mFlags & CSDCTX_FLAGS_MODIFY))
     {
+        return;
+    }
+
+    if (ctx->isDir())
+    {
+        // ディレクトリの場合は create で作成済
         return;
     }
 

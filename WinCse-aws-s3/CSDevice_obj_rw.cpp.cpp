@@ -1,5 +1,4 @@
 #include "CSDevice.hpp"
-#include <fstream>
 
 using namespace WCSE;
 
@@ -224,6 +223,108 @@ bool CSDevice::deleteObject(CALLER_ARG const ObjectKey& argObjKey)
     return true;
 }
 
+NTSTATUS CSDevice::setDelete(CALLER_ARG CSDeviceContext* argCSDCtx, BOOLEAN argDeleteFile)
+{
+    NEW_LOG_BLOCK();
+
+    OpenContext* ctx = dynamic_cast<OpenContext*>(argCSDCtx);
+    APP_ASSERT(ctx);
+    APP_ASSERT(ctx->mObjKey.isObject());
+
+    if (ctx->isDir())
+    {
+        DirInfoListType dirInfoList;
+
+        if (!this->listObjects(START_CALLER ctx->mObjKey, &dirInfoList))
+        {
+            traceW(L"fault: listObjects");
+            return STATUS_OBJECT_NAME_INVALID;
+        }
+
+        decltype(dirInfoList)::const_iterator it;
+
+        switch (mRuntimeEnv->DeleteDirCondition)
+        {
+            case 1:
+            {
+                // サブディレクトリがある場合は削除不可
+
+                it = std::find_if(dirInfoList.cbegin(), dirInfoList.cend(), [](const auto& dirInfo)
+                {
+                    return wcscmp(dirInfo->FileNameBuf, L".") != 0
+                        && wcscmp(dirInfo->FileNameBuf, L"..") != 0
+                        && FA_IS_DIRECTORY(dirInfo->FileInfo.FileAttributes);
+                });
+
+                break;
+            }
+
+            case 2:
+            {
+                // 空のディレクトリ以外は削除不可
+
+                it = std::find_if(dirInfoList.cbegin(), dirInfoList.cend(), [](const auto& dirInfo)
+                {
+                    return wcscmp(dirInfo->FileNameBuf, L".") != 0
+                        && wcscmp(dirInfo->FileNameBuf, L"..") != 0;
+                });
+
+                break;
+            }
+
+            default:
+            {
+                APP_ASSERT(0);
+            }
+        }
+
+        if (it != dirInfoList.cend())
+        {
+            traceW(L"dir not empty");
+            return STATUS_CANNOT_DELETE;
+            //return STATUS_DIRECTORY_NOT_EMPTY;
+        }
+    }
+    else if (ctx->isFile())
+    {
+        // キャッシュ・ファイルを削除
+        // 
+        // remove() などで直接削除するのではなく、削除フラグを設定したファイルを作成し
+        // 同時に開かれているファイルが存在しなくなったら、自動的に削除されるようにする
+        //
+        // このため、キャッシュ・ファイルが存在しない場合は作成しなければ
+        // ならないので、他とは異なり OPEN_ALWAYS になっている
+
+        HANDLE Handle = INVALID_HANDLE_VALUE;
+        NTSTATUS ntstatus = this->getHandleFromContext(START_CALLER ctx, 0, OPEN_ALWAYS, &Handle);
+        if (!NT_SUCCESS(ntstatus))
+        {
+            traceW(L"fault: getHandleFromContext");
+            return ntstatus;
+        }
+
+        FILE_DISPOSITION_INFO DispositionInfo{};
+        DispositionInfo.DeleteFile = argDeleteFile;
+
+        if (!::SetFileInformationByHandle(Handle,
+            FileDispositionInfo, &DispositionInfo, sizeof DispositionInfo))
+        {
+            const auto lerr = ::GetLastError();
+            traceW(L"fault: SetFileInformationByHandle lerr=%lu", lerr);
+
+            return FspNtStatusFromWin32(lerr);
+        }
+
+        traceW(L"success: SetFileInformationByHandle(DeleteFile=%s)", BOOL_CSTRW(argDeleteFile));
+    }
+    else
+    {
+        APP_ASSERT(0);
+    }
+
+    return STATUS_SUCCESS;
+}
+
 bool CSDevice::putObject(CALLER_ARG const ObjectKey& argObjKey,
     const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath)
 {
@@ -248,7 +349,7 @@ bool CSDevice::putObject(CALLER_ARG const ObjectKey& argObjKey,
 
     // headObject() は必須ではないが、作成直後に属性が参照されることに対応
 
-    if (!this->headObject(CONT_CALLER argObjKey))
+    if (!this->headObject(CONT_CALLER argObjKey, nullptr))
     {
         traceW(L"fault: headObject");
         return false;

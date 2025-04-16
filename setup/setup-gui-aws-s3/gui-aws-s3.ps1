@@ -575,7 +575,8 @@ aws_secret_access_key=${secret}
 region=${region}
 
 ; Client Identifier
-client_guid=${cguid}
+; default: Not set (Generated at runtime)
+#client_guid=${cguid}
 
 ; You can select the bucket names to display using wildcards as follows.
 ; default: Not set
@@ -586,7 +587,7 @@ client_guid=${cguid}
 ; default: 0 (Do not delete)
 #delete_after_upload=0
 
-; Assign the read-only attribute to the file.
+; Set the file as read-only.
 ; valid value: 0 or non-zero
 ; default: 0 (Read and write)
 #readonly=0
@@ -594,6 +595,22 @@ client_guid=${cguid}
 ;!
 ;! Changing the following values will affect the response.
 ;!
+
+; Bucket cache expiration period.
+; valid range: 1 to 1440 (1 day)
+; default: 20
+#bucket_cache_expiry_min=20
+
+; Cache file retention period.
+; valid range: 1 to 10080 (1 week)
+; default: 60 (1 hours)
+#cache_file_retention_min=60
+
+; Conditions for deleting a directory.
+; valid value: 1 (No Subdirectories) or 2 (Empty Directory)
+; default: 2
+#delete_dir_condition=2
+
 ; Maximum number of display buckets.
 ; valid range: 0 (No restrictions) to INT_MAX
 ; default: 8
@@ -604,29 +621,24 @@ client_guid=${cguid}
 ; default: 1000
 #max_display_objects=1000
 
-; Bucket cache expiration period.
-; valid range: 1 to 1440 (1 day)
-; default: 20
-#bucket_cache_expiry_min=20
-
 ; Object cache expiration period.
 ; valid range: 1 to 60 (1 hour)
 ; default: 5
 #object_cache_expiry_min=5
 
-; The duration for retaining cache files.
-; valid range: 1 to 10080 (1 week)
-; default: 60 (1 hours)
-#cache_file_retention_min=60
+; Strictly enforce bucket regions.
+; valid value: 0 or non-zero
+; default: 0 (Not strict)
+#strict_bucket_region=0
 
-; Handle file timestamps strictly
+; Strictly enforce file timestamps.
 ; valid value: 0 or non-zero
 ; default: 0 (Not strict)
 #strict_file_timestamp=0
 
-; File names matching the following regular expression patterns will be ignored.
-; default: \b(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif)|\.DS_Store)$
-#re_ignore_patterns=\b(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif)|\.DS_Store)$
+; Files matching the following regex patterns will be ignored.
+; default: Empty (Don't ignore)
+re_ignore_patterns=\b(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif)|\.DS_Store)$
 
 ; ----------
 ; INFO

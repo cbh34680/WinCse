@@ -1,9 +1,197 @@
-#include "WinCseLib.h"
 #include "CSDriver.hpp"
 #include <filesystem>
 
 
 using namespace WCSE;
+
+
+NTSTATUS CSDriver::canCreateObject(CALLER_ARG
+	PCWSTR argFileName, bool argIsDir, ObjectKey* pObjKey) const noexcept
+{
+	NEW_LOG_BLOCK();
+
+	// 変更後の名前が無視対象かどうか確認
+
+	if (this->shouldIgnoreFileName(argFileName))
+	{
+		traceW(L"ignore pattern");
+		return STATUS_OBJECT_NAME_INVALID;
+	}
+
+	auto fileObjKey{ ObjectKey::fromWinPath(argFileName) };
+	traceW(L"fileObjKey=%s", fileObjKey.c_str());
+
+	if (fileObjKey.invalid())
+	{
+		return STATUS_OBJECT_NAME_INVALID;
+	}
+
+	if (fileObjKey.isBucket())
+	{
+		// バケットに対する操作
+		// 
+		// "md \bucket\not\exist\yet\dir" を実行するとバケットに対して create が
+		// 呼び出されるが、これに対し STATUS_OBJECT_NAME_COLLISION 以外を返却すると
+		// md コマンドが失敗する
+
+		traceW(L"not object: fileObjKey=%s", fileObjKey.c_str());
+
+		if (mCSDevice->headBucket(CONT_CALLER fileObjKey.bucket(), nullptr))
+		{
+			//return STATUS_ACCESS_DENIED;
+			//return FspNtStatusFromWin32(ERROR_ACCESS_DENIED);
+			//return FspNtStatusFromWin32(ERROR_WRITE_PROTECT);
+			//return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
+
+			return STATUS_OBJECT_NAME_COLLISION;				// https://github.com/winfsp/winfsp/issues/601
+		}
+		else
+		{
+			return STATUS_ACCESS_DENIED;
+		}
+	}
+
+	APP_ASSERT(fileObjKey.isObject());
+
+	// 変更先の名前が存在するか確認
+
+	auto objKey{ argIsDir ? fileObjKey.toDir() : std::move(fileObjKey) };
+	APP_ASSERT(objKey.isObject());
+
+	traceW(L"objKey=%s", objKey.c_str());
+
+	if (mCSDevice->headObject(START_CALLER objKey, nullptr))
+	{
+		traceW(L"already exists: objKey=%s", objKey.c_str());
+
+		//return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
+		return STATUS_OBJECT_NAME_COLLISION;				// https://github.com/winfsp/winfsp/issues/601
+	}
+
+	// ファイル名、ディレクトリ名を反転させ名前が存在するか確認
+
+	const auto chkObjKey{ argIsDir ? objKey.toFile() : objKey.toDir() };
+	APP_ASSERT(chkObjKey.isObject());
+
+	traceW(L"chkObjKey=%s", chkObjKey.c_str());
+
+	if (mCSDevice->headObject(START_CALLER chkObjKey, nullptr))
+	{
+		traceW(L"already exists: chkObjKey=%s", chkObjKey.c_str());
+
+		//return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
+		return STATUS_OBJECT_NAME_COLLISION;				// https://github.com/winfsp/winfsp/issues/601
+	}
+
+	*pObjKey = std::move(objKey);
+
+	return STATUS_SUCCESS;
+}
+
+
+#define RETURN_ERROR_IF_READONLY()		if (mReadOnly) { return STATUS_ACCESS_DENIED; }
+
+NTSTATUS CSDriver::DoCreate(PCWSTR FileName,
+	UINT32 CreateOptions, UINT32 GrantedAccess, UINT32 FileAttributes,
+	PSECURITY_DESCRIPTOR SecurityDescriptor, UINT64 AllocationSize,
+	PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo)
+{
+	StatsIncr(DoCreate);
+	NEW_LOG_BLOCK();
+	APP_ASSERT(FileName);
+	APP_ASSERT(FileName[0] == L'\\');
+
+	// CMD で "echo word > file.txt" として新規作成する場合
+	RETURN_ERROR_IF_READONLY();
+
+	traceW(L"FileName=%s, CreateOptions=%u, GrantedAccess=%u, FileAttributes=%u, SecurityDescriptor=%p, AllocationSize=%llu, PFileContext=%p, FileInfo=%p",
+		FileName, CreateOptions, GrantedAccess, FileAttributes, SecurityDescriptor, AllocationSize, PFileContext, FileInfo);
+
+	// 一時ファイルのときは拒否
+	// --> MS Office などが中間ファイルを作ることに対応
+
+	if (FA_MEANS_TEMPORARY(FileAttributes))
+	{
+		traceW(L"Deny opening temporary files");
+
+		//return FspNtStatusFromWin32(ERROR_WRITE_PROTECT);
+		return STATUS_ACCESS_DENIED;
+	}
+
+	// 作成対象と同じファイル名が存在するかチェック
+
+	const bool isDIr = CreateOptions & FILE_DIRECTORY_FILE;
+
+	ObjectKey newObjKey;
+	const auto ntstatus = this->canCreateObject(START_CALLER FileName, isDIr, &newObjKey);
+	if (!NT_SUCCESS(ntstatus))
+	{
+		traceW(L"fault: canCreateObject");
+
+		return ntstatus;
+	}
+
+	// create 処理開始
+
+	auto fc{ std::unique_ptr<PTFS_FILE_CONTEXT, void(*)(void*)>((PTFS_FILE_CONTEXT*)calloc(1, sizeof(PTFS_FILE_CONTEXT)), free) };
+	if (!fc)
+	{
+		traceW(L"fault: calloc");
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	auto fn{ std::unique_ptr<wchar_t, void(*)(void*)>(_wcsdup(FileName), free) };
+	if (!fn)
+	{
+		traceW(L"fault: _wcsdup");
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	PTFS_FILE_CONTEXT* FileContext = fc.get();
+	FileContext->FileName = fn.get();
+
+	// リソースを作成し UParam に保存
+
+	StatsIncr(_CallCreate);
+
+	CSDeviceContext* ctx = mCSDevice->create(START_CALLER newObjKey,
+		CreateOptions, GrantedAccess, FileAttributes);
+
+	if (!ctx)
+	{
+		traceW(L"fault: create");
+
+		//return STATUS_DEVICE_NOT_READY;
+		return FspNtStatusFromWin32(ERROR_IO_DEVICE);
+	}
+
+	FileContext->FileInfo = ctx->mFileInfo;
+
+	{
+		// 新規作成時はメモリ操作のみで DoClose まで行く
+
+		std::lock_guard lock_{ CreateNew.mGuard };
+
+		traceW(L"add CreateNew=%s", FileName);
+
+		CreateNew.mFileInfos[FileName] = ctx->mFileInfo;
+	}
+
+	ctx->mFlags |= CSDCTX_FLAGS_CREATE;
+
+	FileContext->UParam = ctx;
+
+	// ゴミ回収対象に登録
+	mResourceSweeper.add(FileContext);
+
+	*PFileContext = FileContext;
+	*FileInfo = ctx->mFileInfo;
+
+	fn.release();
+	fc.release();
+
+	return STATUS_SUCCESS;
+}
 
 // ---------------------------------------------------------------------------
 //
@@ -17,6 +205,9 @@ NTSTATUS CSDriver::DoSetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize,
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext && FileInfo);
 	APP_ASSERT(!FA_IS_DIRECTORY(FileContext->FileInfo.FileAttributes));		// ファイルのみ
+
+	// おそらくシェルで削除操作が止められている
+	RETURN_ERROR_IF_READONLY();
 
 	traceW(L"FileName=%s, NewSize=%llu, SetAllocationSize=%s", FileContext->FileName, NewSize, BOOL_CSTRW(SetAllocationSize));
 
@@ -93,6 +284,7 @@ NTSTATUS CSDriver::DoFlush(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO* 
 
 	if (!::FlushFileBuffers(Handle))
 	{
+		traceW(L"fault: FlushFileBuffers");
 		return FspNtStatusFromWin32(::GetLastError());
 	}
 
@@ -111,6 +303,9 @@ NTSTATUS CSDriver::DoOverwrite(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttrib
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext && FileInfo);
 	APP_ASSERT(!FA_IS_DIRECTORY(FileContext->FileInfo.FileAttributes));		// ファイルのみ
+
+	// 合致条件不明
+	RETURN_ERROR_IF_READONLY();
 
 	traceW(L"FileName=%s, FileAttributes=%u, ReplaceFileAttributes=%s, AllocationSize=%llu",
 		FileContext->FileName, FileAttributes, BOOL_CSTRW(ReplaceFileAttributes), AllocationSize);
@@ -190,6 +385,9 @@ NTSTATUS CSDriver::DoWrite(PTFS_FILE_CONTEXT* FileContext, PVOID Buffer, UINT64 
 	APP_ASSERT(FileContext && Buffer && PBytesTransferred && FileInfo);
 	APP_ASSERT(!FA_IS_DIRECTORY(FileContext->FileInfo.FileAttributes));		// ファイルのみ
 
+	// 合致条件不明
+	RETURN_ERROR_IF_READONLY();
+
 	traceW(L"FileName=%s, FileAttributes=%u, FileSize=%llu, Offset=%llu, Length=%lu, WriteToEndOfFile=%s, ConstrainedIo=%s",
 		FileContext->FileName, FileContext->FileInfo.FileAttributes, FileContext->FileInfo.FileSize,
 		Offset, Length, BOOL_CSTRW(WriteToEndOfFile), BOOL_CSTRW(ConstrainedIo));
@@ -208,78 +406,23 @@ NTSTATUS CSDriver::DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, B
 	StatsIncr(DoSetDelete);
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext);
-	APP_ASSERT(!mReadonlyVolume);			// おそらくシェルで削除操作が止められている
+
+	// おそらくシェルで削除操作が止められている
+	RETURN_ERROR_IF_READONLY();
 
 	traceW(L"FileName=%s, argDeleteFile=%s", FileName, BOOL_CSTRW(argDeleteFile));
 
 	CSDeviceContext* ctx = (CSDeviceContext*)FileContext->UParam;
 	APP_ASSERT(ctx);
-	APP_ASSERT(ctx->mObjKey.isObject());
+	APP_ASSERT(ctx->mObjKey.valid());
 
-	if (ctx->isDir())
+	if (ctx->mObjKey.isBucket())
 	{
-		DirInfoListType dirInfoList;
-
-		if (!mCSDevice->listObjects(START_CALLER ctx->mObjKey, &dirInfoList))
-		{
-			traceW(L"fault: listObjects");
-			return STATUS_OBJECT_NAME_INVALID;
-		}
-
-		const auto it = std::find_if(dirInfoList.cbegin(), dirInfoList.cend(), [](const auto& dirInfo)
-		{
-			return wcscmp(dirInfo->FileNameBuf, L".") != 0
-				&& wcscmp(dirInfo->FileNameBuf, L"..") != 0
-				&& FA_IS_DIRECTORY(dirInfo->FileInfo.FileAttributes);
-		});
-
-		if (it != dirInfoList.cend())
-		{
-			// サブディレクトリがある場合は削除不可
-
-			traceW(L"dir not empty");
-			return STATUS_CANNOT_DELETE;
-			//return STATUS_DIRECTORY_NOT_EMPTY;
-		}
-	}
-	else if (ctx->isFile())
-	{
-		// キャッシュ・ファイルを削除
-		// 
-		// remove() などで直接削除するのではなく、削除フラグを設定したファイルを作成し
-		// 同時に開かれているファイルが存在しなくなったら、自動的に削除されるようにする
-		//
-		// このため、キャッシュ・ファイルが存在しない場合は作成しなければ
-		// ならないので、他とは異なり OPEN_ALWAYS になっている
-
-		HANDLE Handle = INVALID_HANDLE_VALUE;
-		NTSTATUS ntstatus = mCSDevice->getHandleFromContext(START_CALLER ctx, 0, OPEN_ALWAYS, &Handle);
-		if (!NT_SUCCESS(ntstatus))
-		{
-			traceW(L"fault: getHandleFromContext");
-			return ntstatus;
-		}
-
-		FILE_DISPOSITION_INFO DispositionInfo{};
-		DispositionInfo.DeleteFile = argDeleteFile;
-
-		if (!::SetFileInformationByHandle(Handle,
-			FileDispositionInfo, &DispositionInfo, sizeof DispositionInfo))
-		{
-			const auto lerr = ::GetLastError();
-			traceW(L"fault: SetFileInformationByHandle lerr=%lu", lerr);
-
-			return FspNtStatusFromWin32(lerr);
-		}
-
-		traceW(L"success: SetFileInformationByHandle(DeleteFile=%s)", BOOL_CSTRW(argDeleteFile));
-	}
-	else
-	{
-		APP_ASSERT(0);
+		traceW(L"fault: delete bucket");
+		return STATUS_ACCESS_DENIED;
 	}
 
-	return STATUS_SUCCESS;
+	return mCSDevice->setDelete(START_CALLER ctx, argDeleteFile);
 }
 
 NTSTATUS CSDriver::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, UINT32 argFileAttributes,
@@ -290,12 +433,21 @@ NTSTATUS CSDriver::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, UINT32 argFile
 	NEW_LOG_BLOCK();
 	APP_ASSERT(FileContext && FileInfo);
 
+	// プロパティで属性を変更した場合
+	RETURN_ERROR_IF_READONLY();
+
 	traceW(L"FileName=%s, FileAttributes=%u, CreationTime=%llu, LastAccessTime=%llu, LastWriteTime=%llu",
 		FileContext->FileName, argFileAttributes, argCreationTime, argLastAccessTime, argLastWriteTime);
 
 	CSDeviceContext* ctx = (CSDeviceContext*)FileContext->UParam;
 	APP_ASSERT(ctx);
 	APP_ASSERT(ctx->mObjKey.valid());
+
+	if (ctx->mObjKey.isBucket())
+	{
+		traceW(L"fault: setattr bucket");
+		return STATUS_ACCESS_DENIED;
+	}
 
 	if (ctx->isFile())
 	{
@@ -367,79 +519,6 @@ NTSTATUS CSDriver::DoSetSecurity(PTFS_FILE_CONTEXT* FileContext,
 	traceW(L"FileName=%s", FileContext->FileName);
 
 	return STATUS_ACCESS_DENIED;
-	//return STATUS_INVALID_DEVICE_REQUEST;
-	//return STATUS_SUCCESS;
-}
-
-NTSTATUS CSDriver::verifyFileUniqueness(CALLER_ARG
-	PCWSTR argFileName, bool argIsDir, ObjectKey* pObjKey) const noexcept
-{
-	NEW_LOG_BLOCK();
-
-	// 変更後の名前が無視対象かどうか確認
-
-	if (this->shouldIgnoreFileName(argFileName))
-	{
-		traceW(L"ignore pattern");
-		return STATUS_OBJECT_NAME_INVALID;
-	}
-
-	auto fileObjKey{ ObjectKey::fromWinPath(argFileName) };
-	traceW(L"fileObjKey=%s", fileObjKey.c_str());
-
-	if (fileObjKey.invalid())
-	{
-		return STATUS_OBJECT_NAME_INVALID;
-	}
-
-	if (fileObjKey.isBucket())
-	{
-		// バケットに対する create の実行
-
-		traceW(L"not object: fileObjKey=%s", fileObjKey.c_str());
-
-		//return STATUS_ACCESS_DENIED;
-		//return FspNtStatusFromWin32(ERROR_ACCESS_DENIED);
-		//return FspNtStatusFromWin32(ERROR_WRITE_PROTECT);
-		//return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
-		return STATUS_OBJECT_NAME_COLLISION;				// https://github.com/winfsp/winfsp/issues/601
-	}
-
-	APP_ASSERT(fileObjKey.isObject());
-
-	// 変更先の名前が存在するか確認
-
-	auto objKey{ argIsDir ? fileObjKey.toDir() : std::move(fileObjKey) };
-	APP_ASSERT(objKey.isObject());
-
-	traceW(L"objKey=%s", objKey.c_str());
-
-	if (mCSDevice->headObject(START_CALLER objKey))
-	{
-		traceW(L"already exists: objKey=%s", objKey.c_str());
-
-		//return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
-		return STATUS_OBJECT_NAME_COLLISION;				// https://github.com/winfsp/winfsp/issues/601
-	}
-
-	// ファイル名、ディレクトリ名を反転させ名前が存在するか確認
-
-	const auto chkObjKey{ argIsDir ? objKey.toFile() : objKey.toDir() };
-	APP_ASSERT(chkObjKey.isObject());
-
-	traceW(L"chkObjKey=%s", chkObjKey.c_str());
-
-	if (mCSDevice->headObject(START_CALLER chkObjKey))
-	{
-		traceW(L"already exists: chkObjKey=%s", chkObjKey.c_str());
-
-		//return FspNtStatusFromWin32(ERROR_FILE_EXISTS);
-		return STATUS_OBJECT_NAME_COLLISION;				// https://github.com/winfsp/winfsp/issues/601
-	}
-
-	*pObjKey = std::move(objKey);
-
-	return STATUS_SUCCESS;
 }
 
 NTSTATUS CSDriver::DoRename(PTFS_FILE_CONTEXT* FileContext,
@@ -447,6 +526,9 @@ NTSTATUS CSDriver::DoRename(PTFS_FILE_CONTEXT* FileContext,
 {
 	StatsIncr(DoRename);
 	NEW_LOG_BLOCK();
+
+	// CMD で "ren old.txt new.txt" を実行すると通過する
+	RETURN_ERROR_IF_READONLY();
 
 	traceW(L"FileName=%s, NewFileName=%s, ReplaceIfExists=%s",
 		FileName, NewFileName, BOOL_CSTRW(ReplaceIfExists));
@@ -457,13 +539,16 @@ NTSTATUS CSDriver::DoRename(PTFS_FILE_CONTEXT* FileContext,
 	// 作成対象と同じファイル名が存在するかチェック
 
 	ObjectKey newObjKey;
-	auto ntstatus = this->verifyFileUniqueness(START_CALLER NewFileName, ctx->isDir(), &newObjKey);
+	auto ntstatus = this->canCreateObject(START_CALLER NewFileName, ctx->isDir(), &newObjKey);
 	if (!NT_SUCCESS(ntstatus))
 	{
-		traceW(L"fault: verifyFileUniqueness");
+		traceW(L"fault: canCreateObject");
 
 		return ntstatus;
 	}
+
+	// TODO: 後で消す ... abort() テスト用
+	//APP_ASSERT(newObjKey.key() != L"abort.wcse");
 
 	// rename 処理開始
 

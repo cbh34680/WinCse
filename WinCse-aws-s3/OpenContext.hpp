@@ -24,7 +24,7 @@ struct OpenContext : public WCSE::CSDeviceContext
 	{
 	}
 
-	NTSTATUS openFileHandle(CALLER_ARG DWORD argDesiredAccess, DWORD argCreationDisposition);
+	NTSTATUS openFileHandle(CALLER_ARG DWORD argDesiredAccess, DWORD argCreationDisposition) noexcept;
 };
 
 // EOF

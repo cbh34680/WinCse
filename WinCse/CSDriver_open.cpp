@@ -1,105 +1,8 @@
-#include "WinCseLib.h"
 #include "CSDriver.hpp"
 #include <filesystem>
 
 using namespace WCSE;
 
-
-NTSTATUS CSDriver::DoCreate(PCWSTR FileName,
-	UINT32 CreateOptions, UINT32 GrantedAccess, UINT32 FileAttributes,
-	PSECURITY_DESCRIPTOR SecurityDescriptor, UINT64 AllocationSize,
-	PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo)
-{
-	StatsIncr(DoCreate);
-	NEW_LOG_BLOCK();
-	APP_ASSERT(FileName);
-	APP_ASSERT(FileName[0] == L'\\');
-	APP_ASSERT(!mReadonlyVolume);		// おそらくシェルで削除操作が止められている
-
-	traceW(L"FileName=%s, CreateOptions=%u, GrantedAccess=%u, FileAttributes=%u, SecurityDescriptor=%p, AllocationSize=%llu, PFileContext=%p, FileInfo=%p",
-		FileName, CreateOptions, GrantedAccess, FileAttributes, SecurityDescriptor, AllocationSize, PFileContext, FileInfo);
-
-	// 一時ファイルのときは拒否
-	// --> MS Office などが中間ファイルを作ることに対応
-
-	if (FA_MEANS_TEMPORARY(FileAttributes))
-	{
-		traceW(L"Deny opening temporary files");
-		return FspNtStatusFromWin32(ERROR_WRITE_PROTECT);
-	}
-
-	// 作成対象と同じファイル名が存在するかチェック
-
-	const bool isDIr = CreateOptions & FILE_DIRECTORY_FILE;
-
-	ObjectKey newObjKey;
-	const auto ntstatus = this->verifyFileUniqueness(START_CALLER FileName, isDIr, &newObjKey);
-	if (!NT_SUCCESS(ntstatus))
-	{
-		traceW(L"fault: verifyFileUniqueness");
-
-		return ntstatus;
-	}
-
-	// create 処理開始
-
-	auto fc{ std::unique_ptr<PTFS_FILE_CONTEXT, void(*)(void*)>((PTFS_FILE_CONTEXT*)calloc(1, sizeof(PTFS_FILE_CONTEXT)), free) };
-	if (!fc)
-	{
-		traceW(L"fault: calloc");
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
-
-	auto fn{ std::unique_ptr<wchar_t, void(*)(void*)>(_wcsdup(FileName), free) };
-	if (!fn)
-	{
-		traceW(L"fault: _wcsdup");
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
-
-	PTFS_FILE_CONTEXT* FileContext = fc.get();
-	FileContext->FileName = fn.get();
-
-	// リソースを作成し UParam に保存
-
-	StatsIncr(_CallCreate);
-
-	CSDeviceContext* ctx = mCSDevice->create(START_CALLER newObjKey,
-		CreateOptions, GrantedAccess, FileAttributes);
-
-	if (!ctx)
-	{
-		traceW(L"fault: create");
-
-		//return STATUS_DEVICE_NOT_READY;
-		return FspNtStatusFromWin32(ERROR_IO_DEVICE);
-	}
-
-	FileContext->FileInfo = ctx->mFileInfo;
-
-	{
-		std::lock_guard lock_{ CreateNew.mGuard };
-
-		traceW(L"add CreateNew=%s", FileName);
-
-		CreateNew.mFileInfos[FileName] = ctx->mFileInfo;
-	}
-
-	ctx->mFlags |= CSDCTX_FLAGS_CREATE;
-
-	FileContext->UParam = ctx;
-
-	// ゴミ回収対象に登録
-	mResourceSweeper.add(FileContext);
-
-	*PFileContext = FileContext;
-	*FileInfo = ctx->mFileInfo;
-
-	fn.release();
-	fc.release();
-
-	return STATUS_SUCCESS;
-}
 
 NTSTATUS CSDriver::DoOpen(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
 	PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo)
@@ -255,10 +158,12 @@ VOID CSDriver::DoClose(PTFS_FILE_CONTEXT* FileContext)
 		mCSDevice->close(START_CALLER ctx);
 
 		{
+			// 新規作成時に作成した一時メモリを解放
+
 			std::lock_guard lock_(CreateNew.mGuard);
 
 			const auto it = CreateNew.mFileInfos.find(FileContext->FileName);
-			if (it != CreateNew.mFileInfos.end())
+			if (it != CreateNew.mFileInfos.cend())
 			{
 				traceW(L"erase CreateNew=%s", FileContext->FileName);
 				CreateNew.mFileInfos.erase(it);

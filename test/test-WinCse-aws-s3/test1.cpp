@@ -56,8 +56,8 @@ static void test1_1(ICSDevice* cs)
                     continue;
                 }
 
-                const auto dirInfo{ cs->headObject(START_CALLER ObjectKey{ bucketName, obj->FileNameBuf }) };
-                if (!dirInfo)
+                DirInfoType dirInfo;
+                if (!cs->headObject(START_CALLER ObjectKey{ bucketName, obj->FileNameBuf }, &dirInfo))
                 {
                     continue;
                 }

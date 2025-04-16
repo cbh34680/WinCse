@@ -1,7 +1,4 @@
-#include "WinCseLib.h"
 #include "CacheListBuckets.hpp"
-#include <algorithm>
-#include <iterator>
 
 using namespace WCSE;
 
@@ -42,7 +39,7 @@ void CacheListBuckets::set(CALLER_ARG const DirInfoListType& argDirInfoList) noe
     mList = argDirInfoList;
 }
 
-void CacheListBuckets::get(CALLER_ARG WCSE::DirInfoListType* pDirInfoList) noexcept
+void CacheListBuckets::get(CALLER_ARG WCSE::DirInfoListType* pDirInfoList) const noexcept
 {
     THREAD_SAFE();
     APP_ASSERT(pDirInfoList);
@@ -75,9 +72,10 @@ void CacheListBuckets::clear(CALLER_ARG0) noexcept
     mCountClear++;
 }
 
-DirInfoType CacheListBuckets::find(CALLER_ARG const std::wstring& argBucketName) noexcept
+bool CacheListBuckets::find(CALLER_ARG const std::wstring& argBucketName, DirInfoType* pDirInfo) const noexcept
 {
     THREAD_SAFE();
+    APP_ASSERT(pDirInfo);
     APP_ASSERT(!argBucketName.empty());
 
     const auto it = std::find_if(mList.cbegin(), mList.cend(), [&argBucketName](const auto& dirInfo)
@@ -87,16 +85,19 @@ DirInfoType CacheListBuckets::find(CALLER_ARG const std::wstring& argBucketName)
 
     if (it == mList.cend())
     {
-        return nullptr;
+        return false;
     }
 
     mLastGetTime = std::chrono::system_clock::now();
     mLastGetCallChain = CALL_CHAIN();
     mCountGet++;
 
-    const auto copy{ *it };
+    if (pDirInfo)
+    {
+        *pDirInfo = *it;
+    }
 
-    return copy;
+    return true;
 }
 
 bool CacheListBuckets::getBucketRegion(CALLER_ARG
@@ -106,12 +107,15 @@ bool CacheListBuckets::getBucketRegion(CALLER_ARG
     APP_ASSERT(!argBucketName.empty());
 
     const auto it{ mBucketRegions.find(argBucketName) };
-    if (it == mBucketRegions.end())
+    if (it == mBucketRegions.cend())
     {
         return false;
     }
 
-    *pBucketRegion = it->second;
+    if (pBucketRegion)
+    {
+        *pBucketRegion = it->second;
+    }
 
     return true;
 }

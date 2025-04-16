@@ -1,10 +1,9 @@
 #pragma once
 
 #include "WinCseLib.h"
-#include "aws_sdk_s3_client.h"
 #include "RuntimeEnv.hpp"
 #include "FileOutputParams.hpp"
-#include <regex>
+#include "aws_sdk_s3_client.h"
 
 class ExecuteApi
 {
@@ -49,10 +48,10 @@ private:
 			return std::regex_match(arg, re);
 		});
 
-		return it != mRuntimeEnv->BucketFilters.end();
+		return it != mRuntimeEnv->BucketFilters.cend();
 	}
 
-	WCSE::DirInfoType makeDirInfoDir(const std::wstring& argFileName, UINT64 argFileTime)
+	WCSE::DirInfoType makeDirInfoDir2(const std::wstring& argFileName, UINT64 argFileTime) const noexcept
 	{
 		return WCSE::makeDirInfo(argFileName, argFileTime, FILE_ATTRIBUTE_DIRECTORY | mRuntimeEnv->DefaultFileAttributes);
 	}
@@ -60,29 +59,29 @@ private:
 public:
 	// AWS SDK API Çé¿çs
 
-	bool Ping(CALLER_ARG0);
+	bool Ping(CALLER_ARG0) const;
 
-	bool ListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList);
+	bool ListBuckets(CALLER_ARG WCSE::DirInfoListType* pDirInfoList) const noexcept;
 
 	bool GetBucketRegion(CALLER_ARG
-		const std::wstring& argBucketName, std::wstring* pBucketRegion);
+		const std::wstring& argBucketName, std::wstring* pBucketRegion) const noexcept;
 
 	bool HeadObject(CALLER_ARG
-		const WCSE::ObjectKey& argObjKey, WCSE::DirInfoType* pDirInfo);
+		const WCSE::ObjectKey& argObjKey, WCSE::DirInfoType* pDirInfo) const noexcept;
 
 	bool ListObjectsV2(CALLER_ARG const WCSE::ObjectKey& argObjKey,
-		bool argDelimiter, int argLimit, WCSE::DirInfoListType* pDirInfoList);
+		bool argDelimiter, int argLimit, WCSE::DirInfoListType* pDirInfoList) const noexcept;
 
 	bool DeleteObjects(CALLER_ARG
-		const std::wstring& argBucket, const std::list<std::wstring>& argKeys);
+		const std::wstring& argBucket, const std::list<std::wstring>& argKeys) const noexcept;
 
-	bool DeleteObject(CALLER_ARG const WCSE::ObjectKey& argObjKey);
+	bool DeleteObject(CALLER_ARG const WCSE::ObjectKey& argObjKey) const noexcept;
 
 	bool PutObject(CALLER_ARG const WCSE::ObjectKey& argObjKey,
-		const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath);
+		const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath) const noexcept;
 
 	INT64 GetObjectAndWriteToFile(CALLER_ARG const WCSE::ObjectKey& argObjKey,
-		const FileOutputParams& argFOParams);
+		const FileOutputParams& argFOParams) const noexcept;
 
 public:
 	ExecuteApi(const RuntimeEnv* argRuntimeEnv,

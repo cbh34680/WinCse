@@ -54,16 +54,6 @@ long long int TimePointToUtcMillis(const std::chrono::system_clock::time_point& 
 	return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
 }
 
-// time_point を UTC の秒に変換
-long long int TimePointToUtcSecs(const std::chrono::system_clock::time_point& tp)
-{
-	// エポックからの経過時間をミリ秒単位で取得
-	const auto duration{ tp.time_since_epoch() };
-
-	// 秒単位のUnix時間に変換
-	return std::chrono::duration_cast<std::chrono::seconds>(duration).count();
-}
-
 // time_point を文字列に変換
 std::wstring TimePointToLocalTimeStringW(const std::chrono::system_clock::time_point& tp)
 {
@@ -109,11 +99,6 @@ UINT64 STCTimeToUTCMilliSecA(const std::string& path)
 UINT64 STCTimeToWinFileTimeW(const std::wstring& path)
 {
 	return UtcMillisToWinFileTime100ns(STCTimeToUTCMilliSecW(path));
-}
-
-UINT64 STCTimeToWinFileTimeA(const std::string& path)
-{
-	return UtcMillisToWinFileTime100ns(STCTimeToUTCMilliSecA(path));
 }
 
 // UTC のミリ秒を FILETIME 構造体に変換

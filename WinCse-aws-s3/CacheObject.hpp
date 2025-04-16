@@ -19,8 +19,6 @@
 //      ObjectKey DirInfoListType
 
 #include <set>
-#include <chrono>
-#include <functional>
 
 #pragma warning(push)
 #pragma warning(disable : 4100)
@@ -41,13 +39,13 @@ public:
 
 	struct CacheValue
 	{
-		std::wstring mCreateCallChain;
-		std::wstring mLastAccessCallChain;
-		std::chrono::system_clock::time_point mCreateTime;
-		std::chrono::system_clock::time_point mLastAccessTime;
-		int mRefCount = 0;
+		mutable std::wstring mCreateCallChain;
+        mutable std::wstring mLastAccessCallChain;
+        mutable std::chrono::system_clock::time_point mCreateTime;
+        mutable std::chrono::system_clock::time_point mLastAccessTime;
+        mutable int mRefCount = 0;
 
-        CacheValue(CALLER_ARG0)
+        CacheValue(CALLER_ARG0) noexcept
 		{
 			mCreateCallChain = mLastAccessCallChain = CALL_CHAIN();
 			mCreateTime = mLastAccessTime = std::chrono::system_clock::now();
@@ -59,26 +57,27 @@ public:
 	{
 		T mV;
 
-        explicit PositiveValue(CALLER_ARG const T& argV)
+        explicit PositiveValue(CALLER_ARG const T& argV) noexcept
             :
-            CacheValue(CONT_CALLER0), mV(argV)
+            CacheValue(CONT_CALLER0),
+            mV(argV)
         {
         }
 	};
 
 protected:
-	std::mutex mGuard;
+    std::unordered_map<WCSE::ObjectKey, PositiveValue> mPositive;
+    std::unordered_map<WCSE::ObjectKey, NegativeValue> mNegative;
 
-	std::unordered_map<WCSE::ObjectKey, PositiveValue> mPositive;
-	std::unordered_map<WCSE::ObjectKey, NegativeValue> mNegative;
+    mutable std::mutex mGuard;
 
-	int mGetPositive = 0;
-	int mSetPositive = 0;
-	int mUpdPositive = 0;
+    mutable int mGetPositive = 0;
+    mutable int mSetPositive = 0;
+    mutable int mUpdPositive = 0;
 
-	int mGetNegative = 0;
-	int mSetNegative = 0;
-	int mUpdNegative = 0;
+    mutable int mGetNegative = 0;
+    mutable int mSetNegative = 0;
+    mutable int mUpdNegative = 0;
 
     template <typename CacheDataT>
     int deleteBy(
@@ -107,7 +106,7 @@ public:
     // 以降は THREAD_SAFE() マクロによる修飾が必要
     // --> report() の実装時には同様のマクロを定義するか、std::lock_guard を使用する
 
-    virtual void report(CALLER_ARG FILE* fp) = 0;
+    virtual void report(CALLER_ARG FILE* fp) const noexcept = 0;
 
     int deleteByTime(CALLER_ARG std::chrono::system_clock::time_point threshold) noexcept
     {
@@ -152,14 +151,12 @@ public:
         int delPositiveP = 0;
         int delNegativeP = 0;
 
-        const auto parentDirPtr{ argObjKey.toParentDir() };
-        if (parentDirPtr)
+        const auto parentDir{ argObjKey.toParentDir() };
+        if (parentDir)
         {
-            const auto& parentDir{ *parentDirPtr };
-
             const auto EqualParentDir = [&parentDir](const auto& it)
             {
-                return it->first == parentDir;
+                return it->first == *parentDir;
             };
 
             // 引数の親ディレクトリをキャッシュから削除
@@ -198,14 +195,14 @@ public:
 
     // ----------------------- Positive
 
-    bool get(CALLER_ARG const WCSE::ObjectKey& argObjKey, T* pV) noexcept
+    bool get(CALLER_ARG const WCSE::ObjectKey& argObjKey, T* pV) const noexcept
     {
         THREAD_SAFE();
         APP_ASSERT(argObjKey.valid());
 
         const auto it{ mPositive.find(argObjKey) };
 
-        if (it == mPositive.end())
+        if (it == mPositive.cend())
         {
             return false;
         }
@@ -232,7 +229,7 @@ public:
 
         // キャッシュにコピー
 
-        if (mPositive.find(argObjKey) == mPositive.end())
+        if (mPositive.find(argObjKey) == mPositive.cend())
         {
             mSetPositive++;
         }
@@ -248,14 +245,14 @@ public:
 
     // ----------------------- Negative
 
-    bool isNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey) noexcept
+    bool isNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey) const noexcept
     {
         THREAD_SAFE();
         APP_ASSERT(argObjKey.valid());
 
-        auto it{ mNegative.find(argObjKey) };
+        const auto it{ mNegative.find(argObjKey) };
 
-        if (it == mNegative.end())
+        if (it == mNegative.cend())
         {
             return false;
         }
@@ -275,7 +272,7 @@ public:
         NEW_LOG_BLOCK();
         APP_ASSERT(argObjKey.valid());
 
-        if (mNegative.find(argObjKey) == mNegative.end())
+        if (mNegative.find(argObjKey) == mNegative.cend())
         {
             mSetNegative++;
         }
@@ -297,13 +294,13 @@ public:
 class CacheHeadObject : public ObjectCacheTmpl<WCSE::DirInfoType>
 {
 public:
-    void report(CALLER_ARG FILE* fp);
+    void report(CALLER_ARG FILE* fp) const noexcept override;
 };
 
 class CacheListObjects : public ObjectCacheTmpl<WCSE::DirInfoListType>
 {
 public:
-    void report(CALLER_ARG FILE* fp);
+    void report(CALLER_ARG FILE* fp) const noexcept override;
 };
 
 // EOF

@@ -148,7 +148,7 @@ void CSDevice::onNotif(CALLER_ARG DWORD argEventId, PCWSTR argEventName)
                 }
 
                 fwprintf(fp, L"[ListBucketsCache]\n");
-                mQueryBucket->reportListBucketsCache(START_CALLER fp);
+                mQueryBucket->reportCache(START_CALLER fp);
 
                 fwprintf(fp, L"[ObjectCache]\n");
                 mQueryObject->reportCache(START_CALLER fp);
@@ -164,7 +164,7 @@ void CSDevice::onNotif(CALLER_ARG DWORD argEventId, PCWSTR argEventName)
 
         case 1:
         {
-            mQueryBucket->clearListBucketsCache(START_CALLER0);
+            mQueryBucket->clearCache(START_CALLER0);
             mQueryObject->clearCache(START_CALLER0);
 
             this->onTimer(START_CALLER0);

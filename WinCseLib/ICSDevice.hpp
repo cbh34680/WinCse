@@ -4,90 +4,6 @@
 
 namespace WCSE {
 
-// 文字列をバケット名とキーに分割
-class ObjectKey
-{
-private:
-	std::wstring mBucket;
-	std::wstring mKey;
-
-	std::wstring mBucketKey;
-	bool mHasBucket = false;
-	bool mHasKey = false;
-	bool mMeansDir = false;
-	bool mMeansFile = false;
-
-	WINCSELIB_API void reset() noexcept;
-
-public:
-	ObjectKey() = default;
-
-	explicit ObjectKey(const std::wstring& argBucket, const std::wstring& argKey) noexcept
-		:
-		mBucket(argBucket),
-		mKey(argKey)
-	{
-		reset();
-	}
-
-	// unorderd_map のキーになるために必要
-	bool operator==(const ObjectKey& other) const noexcept
-	{
-		return mBucket == other.mBucket && mKey == other.mKey;
-	}
-
-	// map のキーになるために必要
-	WINCSELIB_API bool operator<(const ObjectKey& other) const noexcept;
-
-	// ObjectCacheKey で必要になった
-	WINCSELIB_API bool operator>(const ObjectKey& other) const noexcept;
-
-	// 長いので cpp
-	WINCSELIB_API ObjectKey toFile() const noexcept;
-	WINCSELIB_API ObjectKey toDir() const noexcept;
-	WINCSELIB_API ObjectKey append(const std::wstring& arg) const noexcept;
-	WINCSELIB_API std::unique_ptr<ObjectKey> toParentDir() const;
-
-	// WC2MB() を使っているので cpp
-	WINCSELIB_API std::string bucketA() const;
-	WINCSELIB_API std::string keyA() const;
-	WINCSELIB_API std::string strA() const;
-
-	// inline
-	const std::wstring& bucket() const noexcept { return mBucket; }
-	const std::wstring& key() const noexcept { return mKey; }
-
-	bool valid() const noexcept { return mHasBucket; }
-	bool invalid() const noexcept { return !mHasBucket; }
-
-	bool isBucket() const noexcept { return mHasBucket && !mHasKey; }
-	bool isObject() const noexcept { return mHasBucket && mHasKey; }
-
-	const std::wstring& str() const noexcept { return mBucketKey; }
-	PCWSTR c_str() const noexcept { return mBucketKey.c_str(); }
-
-	bool meansDir() const noexcept { return mMeansDir; }
-	bool meansFile() const noexcept { return mMeansFile; }
-
-	bool meansHidden() const noexcept
-	{
-		if (mHasKey)
-		{
-			// ".", ".." 以外で先頭が "." で始まっているものは隠しファイルの扱い
-
-			if (mKey != L"." && mKey != L".." && mKey.at(0) == L'.')
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	WINCSELIB_API static ObjectKey fromPath(const std::wstring& argPath);
-	WINCSELIB_API static ObjectKey fromWinPath(const std::wstring& argWinPath);
-};
-
 struct CSDeviceContext
 {
 	const std::wstring mCacheDataDir;
@@ -127,17 +43,15 @@ struct ICSDevice : public ICSService
 {
 	virtual ~ICSDevice() = default;
 
-	virtual DirInfoType headBucket(CALLER_ARG const std::wstring& argBucket) = 0;
+	virtual bool headBucket(CALLER_ARG const std::wstring& argBucket, DirInfoType* pDirInfo) = 0;
 
 	virtual bool listBuckets(CALLER_ARG DirInfoListType* pDirInfoList) = 0;
 
-	virtual DirInfoType headObject(CALLER_ARG const ObjectKey& argObjKey) = 0;
+	virtual bool headObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoType* pDirInfo) = 0;
 
-	virtual bool listObjects(CALLER_ARG const ObjectKey& argObjKey,
-		DirInfoListType* pDirInfoList /* nullable */) = 0;
+	virtual bool listObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* pDirInfoList) = 0;
 
-	virtual bool listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey,
-		DirInfoListType* pDirInfoList)
+	virtual bool listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* pDirInfoList)
 	{
 		_ASSERT(pDirInfoList);
 
@@ -148,8 +62,7 @@ struct ICSDevice : public ICSService
 		const UINT32 CreateOptions, const UINT32 GrantedAccess, const UINT32 FileAttributes) = 0;
 
 	virtual CSDeviceContext* open(CALLER_ARG const ObjectKey& argObjKey,
-		const UINT32 CreateOptions, const UINT32 GrantedAccess,
-		const FSP_FSCTL_FILE_INFO& FileInfo) = 0;
+		const UINT32 CreateOptions, const UINT32 GrantedAccess, const FSP_FSCTL_FILE_INFO& FileInfo) = 0;
 
 	virtual void close(CALLER_ARG CSDeviceContext* argCSDCtx) = 0;
 
@@ -160,10 +73,12 @@ struct ICSDevice : public ICSService
 		PVOID Buffer, UINT64 Offset, ULONG Length, BOOLEAN WriteToEndOfFile,
 		BOOLEAN ConstrainedIo, PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO* FileInfo) = 0;
 
-	virtual bool deleteObject(CALLER_ARG const ObjectKey& argObjKey) = 0;
+	virtual NTSTATUS setDelete(CALLER_ARG CSDeviceContext* argCSDCtx, BOOLEAN argDeleteFile) = 0;
 
 	virtual NTSTATUS renameObject(CALLER_ARG CSDeviceContext* argCSDCtx,
 		const ObjectKey& argNewObjKey) = 0;
+
+	virtual bool deleteObject(CALLER_ARG const ObjectKey& argObjKey) = 0;
 
 	virtual NTSTATUS getHandleFromContext(CALLER_ARG CSDeviceContext* argCSDCtx,
 		const DWORD argDesiredAccess, const DWORD argCreationDisposition, PHANDLE pHandle) = 0;

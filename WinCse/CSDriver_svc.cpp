@@ -1,4 +1,3 @@
-#include "WinCseLib.h"
 #include "CSDriver.hpp"
 #include <filesystem>
 #include <iostream>
@@ -57,12 +56,13 @@ NTSTATUS CSDriver::PreCreateFilesystem(FSP_SERVICE* Service, PCWSTR argWorkDir, 
 
 	// 読み取り専用
 
-	const bool readonly = ::GetPrivateProfileIntW(mIniSection.c_str(), L"readonly", 0, confPath.c_str()) != 0;
+	const bool readonly = GetIniBoolW(confPath, mIniSection, L"readonly", false);
 	if (readonly)
 	{
 		// ボリュームの設定
 
 		VolumeParams->ReadOnlyVolume = 1;
+		this->mReadOnly = true;
 	}
 
 	// PreCreateFilesystem() の伝播
@@ -119,28 +119,30 @@ NTSTATUS CSDriver::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 
 	traceW(L"confPath=%s", confPath.c_str());
 
-
 	// 無視するファイル名のパターン
 
 	std::wstring re_ignore_patterns;
-	GetIniStringW(confPath.c_str(), mIniSection.c_str(), L"re_ignore_patterns", &re_ignore_patterns);
 
-	if (!re_ignore_patterns.empty())
+	if (GetIniStringW(confPath.c_str(), mIniSection, L"re_ignore_patterns", &re_ignore_patterns))
 	{
-		try
+		if (!re_ignore_patterns.empty())
 		{
-			// conf で指定された正規表現パターンの整合性テスト
-			// 不正なパターンの場合は例外で catch されるので反映されない
+			try
+			{
+				// conf で指定された正規表現パターンの整合性テスト
+				// 不正なパターンの場合は例外で catch されるので反映されない
 
-			std::wregex reTest{ re_ignore_patterns, std::regex_constants::icase };
+				auto re{ std::make_unique<std::wregex>(re_ignore_patterns, std::regex_constants::icase) };
 
-			// OK
-			mIgnoreFileNamePatterns = std::move(reTest);
-		}
-		catch (const std::regex_error& ex)
-		{
-			traceA("regex_error: %s", ex.what());
-			traceW(L"%s: ignored, set default patterns", re_ignore_patterns.c_str());
+				// OK
+
+				mIgnoreFileNamePatterns = std::move(re);
+			}
+			catch (const std::regex_error& ex)
+			{
+				traceA("regex_error: %s", ex.what());
+				traceW(L"%s: ignored, set default patterns", re_ignore_patterns.c_str());
+			}
 		}
 	}
 

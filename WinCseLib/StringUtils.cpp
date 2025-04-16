@@ -81,35 +81,6 @@ size_t HashString(const std::wstring& arg)
 	return f(arg);
 }
 
-bool Base64EncodeA(const std::string& src, std::string* pDst)
-{
-	DWORD dstSize = 0;
-
-	BOOL b = ::CryptBinaryToStringA(
-		reinterpret_cast<const BYTE*>(src.c_str()), (DWORD)src.size(),
-		CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, NULL, &dstSize);
-
-	if (!b)
-	{
-		return false;
-	}
-
-	std::vector<char> dst(dstSize);
-
-	b = ::CryptBinaryToStringA(
-		reinterpret_cast<const BYTE*>(src.c_str()), (DWORD)src.size(),
-		CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, dst.data(), &dstSize);
-
-	if (!b)
-	{
-		return false;
-	}
-
-	*pDst = std::string(dst.cbegin(), dst.cend() - 1);
-
-	return true;
-}
-
 bool Base64DecodeA(const std::string& src, std::string* pDst)
 {
 	DWORD dstSize = 0;
@@ -160,11 +131,6 @@ std::wstring TrimW(const std::wstring& str)
 	return trimmedStr;
 }
 
-std::string TrimA(const std::string& str)
-{
-	return WC2MB(TrimW(MB2WC(str)));
-}
-
 std::wstring WildcardToRegexW(const std::wstring& wildcard)
 {
 	std::wostringstream ss;
@@ -203,11 +169,6 @@ std::wstring WildcardToRegexW(const std::wstring& wildcard)
 	return ss.str();
 }
 
-std::string WildcardToRegexA(const std::string& arg)
-{
-	return WC2MB(WildcardToRegexW(MB2WC(arg)));
-}
-
 std::vector<std::wstring> SplitString(const std::wstring& input, wchar_t sep, bool ignoreEmpty)
 {
     std::wistringstream ss{ input };
@@ -228,16 +189,6 @@ std::vector<std::wstring> SplitString(const std::wstring& input, wchar_t sep, bo
     }
 
 	return strs;
-}
-
-std::wstring ToUpper(const std::wstring& input)
-{
-	std::wstring result{ input };
-
-	std::transform(result.cbegin(), result.cend(), result.begin(), 
-		[](wchar_t c) { return std::towupper(c); });
-
-	return result;
 }
 
 } // WCSE
