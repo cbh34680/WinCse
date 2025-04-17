@@ -3,6 +3,8 @@
 using namespace WCSE;
 
 
+
+
 CSDeviceContext* CSDevice::create(CALLER_ARG const ObjectKey& argObjKey,
     UINT32 argCreateOptions, UINT32 argGrantedAccess, UINT32 argFileAttributes)
 {
@@ -14,58 +16,51 @@ CSDeviceContext* CSDevice::create(CALLER_ARG const ObjectKey& argObjKey,
     UINT32 FileAttributes = argFileAttributes;
     const bool isDirectory = argCreateOptions & FILE_DIRECTORY_FILE;
 
-    const auto remotePath{ argObjKey.str() };
     FileHandle hFile;
     HANDLE Handle = INVALID_HANDLE_VALUE;
 
-    UnprotectedShare<PrepareLocalFileShare> unsafeShare{ &mPrepareLocalFileShare, remotePath };   // 名前への参照を登録
+    const auto localPath{ GetCacheFilePath(mRuntimeEnv->CacheDataDir, argObjKey.str()) };
+
+    traceW(L"localPath=%s", localPath.c_str());
+
+    ULONG CreateFlags = FILE_FLAG_BACKUP_SEMANTICS;
+
+    if (argCreateOptions & FILE_DELETE_ON_CLOSE)
     {
-        const auto safeShare{ unsafeShare.lock() }; // 名前のロック
+        CreateFlags |= FILE_FLAG_DELETE_ON_CLOSE;
+    }
 
-        const auto localPath{ GetCacheFilePath(mRuntimeEnv->CacheDataDir, argObjKey.str()) };
+    if (isDirectory)
+    {
+        Handle = mRefDir.handle();
+    }
+    else
+    {
+        FileAttributes &= ~FILE_ATTRIBUTE_DIRECTORY;
 
-        traceW(L"localPath=%s", localPath.c_str());
-
-        ULONG CreateFlags = FILE_FLAG_BACKUP_SEMANTICS;
-
-        if (argCreateOptions & FILE_DELETE_ON_CLOSE)
+        if (0 == FileAttributes)
         {
-            CreateFlags |= FILE_FLAG_DELETE_ON_CLOSE;
+            FileAttributes = FILE_ATTRIBUTE_NORMAL;
         }
 
-        if (isDirectory)
+        hFile = ::CreateFileW(localPath.c_str(),
+            GrantedAccess,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            NULL,
+            isDirectory ? CREATE_NEW : CREATE_ALWAYS,
+            CreateFlags | FileAttributes,
+            NULL);
+
+        if (hFile.invalid())
         {
-            Handle = mRefDir.handle();
-        }
-        else
-        {
-            FileAttributes &= ~FILE_ATTRIBUTE_DIRECTORY;
+            const auto lerr = ::GetLastError();
+            traceW(L"fault: CreateFileW lerr=%lu", lerr);
 
-            if (0 == FileAttributes)
-            {
-                FileAttributes = FILE_ATTRIBUTE_NORMAL;
-            }
-
-            hFile = ::CreateFileW(localPath.c_str(),
-                GrantedAccess,
-                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                NULL,
-                isDirectory ? CREATE_NEW : CREATE_ALWAYS,
-                CreateFlags | FileAttributes,
-                NULL);
-
-            if (hFile.invalid())
-            {
-                const auto lerr = ::GetLastError();
-                traceW(L"fault: CreateFileW lerr=%lu", lerr);
-
-                return nullptr;
-            }
-
-            Handle = hFile.handle();
+            return nullptr;
         }
 
-    }   // 名前のロックを解除 (safeShare の生存期間)
+        Handle = hFile.handle();
+    }
 
     APP_ASSERT(Handle != INVALID_HANDLE_VALUE);
 
@@ -87,14 +82,15 @@ CSDeviceContext* CSDevice::create(CALLER_ARG const ObjectKey& argObjKey,
 
     if (isDirectory)
     {
-        // ディレクトリの場合はここでリモートを作成してしまう
+#if XCOPY_DIR
+        // ここで作成してしまう
 
         if (!this->putObject(CONT_CALLER argObjKey, fileInfo, nullptr))
         {
             traceW(L"fault: putObject");
             return nullptr;
         }
-
+#endif
         // ディレクトリの場合は hFile は保存せず、このまま閉じる
     }
     else
@@ -141,41 +137,55 @@ CSDeviceContext* CSDevice::open(CALLER_ARG const ObjectKey& argObjKey,
 bool CSDevice::uploadWhenClosing(CALLER_ARG WCSE::CSDeviceContext* ctx, PCWSTR argSourcePath)
 {
     NEW_LOG_BLOCK();
-    APP_ASSERT(ctx->isFile());
-    APP_ASSERT(ctx->mFile.valid());
-    APP_ASSERT(ctx->mObjKey.meansFile());
 
-    // ファイルの場合は Write の結果を反映するため Flush
+    FSP_FSCTL_FILE_INFO fileInfo{};
 
-    traceW(L"valid file");
-
-    // 属性情報を取得するため、ファイルを閉じる前に flush する
-
-    if (!::FlushFileBuffers(ctx->mFile.handle()))
+    if (ctx->isDir())
     {
-        const auto lerr = ::GetLastError();
+        // create の情報を転記
 
-        traceW(L"fault: FlushFileBuffers, lerr=%lu", lerr);
-        return false;
+        fileInfo = ctx->mFileInfo;
     }
-
-    FSP_FSCTL_FILE_INFO fileInfo;
-    const auto ntstatus = GetFileInfoInternal(ctx->mFile.handle(), &fileInfo);
-    if (!NT_SUCCESS(ntstatus))
+    else if (ctx->isFile())
     {
-        traceW(L"fault: GetFileInfoInternal");
-        return false;
+        APP_ASSERT(ctx->mFile.valid());
+        APP_ASSERT(ctx->mObjKey.meansFile());
+
+        // ファイルの場合は Write の結果を反映するため Flush
+
+        traceW(L"valid file");
+
+        // 属性情報を取得するため、ファイルを閉じる前に flush する
+
+        if (!::FlushFileBuffers(ctx->mFile.handle()))
+        {
+            const auto lerr = ::GetLastError();
+
+            traceW(L"fault: FlushFileBuffers, lerr=%lu", lerr);
+            return false;
+        }
+
+        const auto ntstatus = GetFileInfoInternal(ctx->mFile.handle(), &fileInfo);
+        if (!NT_SUCCESS(ntstatus))
+        {
+            traceW(L"fault: GetFileInfoInternal");
+            return false;
+        }
+
+        // 閉じておかないと putObject() にある Aws::FStream が失敗する
+
+        ctx->mFile.close();
     }
-
-    // 閉じておかないと putObject() にある Aws::FStream が失敗する
-
-    ctx->mFile.close();
 
     // アップロード
 
     traceW(L"putObject mObjKey=%s, argSourcePath=%s", ctx->mObjKey.c_str(), argSourcePath);
 
-    if (!this->putObjectWithListLock(CONT_CALLER ctx->mObjKey, fileInfo, argSourcePath))
+#if XCOPY_V
+    if (!this->putObjectViaListLock(CONT_CALLER ctx->mObjKey, fileInfo, argSourcePath))
+#else
+    if (!this->putObject(CONT_CALLER ctx->mObjKey, fileInfo, argSourcePath))
+#endif
     {
         traceW(L"fault: putObject");
         return false;
@@ -211,11 +221,12 @@ void CSDevice::close(CALLER_ARG WCSE::CSDeviceContext* ctx)
         return;
     }
 
+#if XCOPY_DIR
     if (ctx->isDir())
     {
-        // ディレクトリの場合は create で作成済
         return;
     }
+#endif
 
     traceW(L"mFlage=%s", CsdCtxFlagsStr(ctx->mFlags).c_str());
 

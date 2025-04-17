@@ -71,5 +71,8 @@
     <ClInclude Include="ObjectKey.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
+    <ClInclude Include="Protect.hpp">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

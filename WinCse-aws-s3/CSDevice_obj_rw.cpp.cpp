@@ -223,7 +223,7 @@ bool CSDevice::deleteObject(CALLER_ARG const ObjectKey& argObjKey)
     return true;
 }
 
-NTSTATUS CSDevice::setDelete(CALLER_ARG CSDeviceContext* argCSDCtx, BOOLEAN argDeleteFile)
+NTSTATUS CSDevice::setDelete(CALLER_ARG WCSE::CSDeviceContext* argCSDCtx, BOOLEAN argDeleteFile)
 {
     NEW_LOG_BLOCK();
 

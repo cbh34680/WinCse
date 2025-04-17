@@ -21,10 +21,8 @@ NTSTATUS CSDriver::PreCreateFilesystem(FSP_SERVICE* Service, PCWSTR argWorkDir, 
 
 	traceW(L"argWorkDir=%s", argWorkDir);
 
-	namespace fs = std::filesystem;
-
-	APP_ASSERT(fs::exists(argWorkDir));
-	APP_ASSERT(fs::is_directory(argWorkDir));
+	APP_ASSERT(std::filesystem::exists(argWorkDir));
+	APP_ASSERT(std::filesystem::is_directory(argWorkDir));
 
 	// VolumeParams の設定
 
@@ -49,8 +47,8 @@ NTSTATUS CSDriver::PreCreateFilesystem(FSP_SERVICE* Service, PCWSTR argWorkDir, 
 	//
 	// ini ファイルから値を取得
 	//
-	const auto workDir{ fs::path(argWorkDir).wstring() };
-	const auto confPath{ workDir + L'\\' + CONFIGFILE_FNAME };
+
+	const auto confPath{ std::wstring{ argWorkDir } + L'\\' + CONFIGFILE_FNAME };
 
 	traceW(L"confPath=%s", confPath.c_str());
 
@@ -110,12 +108,9 @@ NTSTATUS CSDriver::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 	APP_ASSERT(argWorkDir);
 	APP_ASSERT(FileSystem);
 
-	namespace fs = std::filesystem;
-
 	traceW(L"argWorkDir=%s", argWorkDir);
 
-	const auto workDir{ fs::path(argWorkDir).wstring() };
-	const auto confPath{ workDir + L'\\' + CONFIGFILE_FNAME };
+	const auto confPath{ std::wstring{ argWorkDir } + L'\\' + CONFIGFILE_FNAME };
 
 	traceW(L"confPath=%s", confPath.c_str());
 
@@ -132,7 +127,7 @@ NTSTATUS CSDriver::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 				// conf で指定された正規表現パターンの整合性テスト
 				// 不正なパターンの場合は例外で catch されるので反映されない
 
-				auto re{ std::make_unique<std::wregex>(re_ignore_patterns, std::regex_constants::icase) };
+				auto re{ std::wregex{ re_ignore_patterns, std::regex_constants::icase } };
 
 				// OK
 

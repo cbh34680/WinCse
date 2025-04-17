@@ -51,7 +51,6 @@
     <ClInclude Include="aws_sdk_s3.h" />
     <ClInclude Include="CacheListBuckets.hpp" />
     <ClInclude Include="CacheObject.hpp" />
-    <ClInclude Include="Protect.hpp" />
     <ClInclude Include="QueryObject.hpp" />
     <ClInclude Include="RuntimeEnv.hpp" />
   </ItemGroup>

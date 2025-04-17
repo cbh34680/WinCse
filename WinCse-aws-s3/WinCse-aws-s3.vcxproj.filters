@@ -86,9 +86,6 @@
     <ClInclude Include="aws_sdk_s3.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="Protect.hpp">
-      <Filter>ヘッダー ファイル</Filter>
-    </ClInclude>
     <ClInclude Include="FilePart.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>

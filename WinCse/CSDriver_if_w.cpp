@@ -91,7 +91,7 @@ NTSTATUS CSDriver::canCreateObject(CALLER_ARG
 
 #define RETURN_ERROR_IF_READONLY()		if (mReadOnly) { return STATUS_ACCESS_DENIED; }
 
-NTSTATUS CSDriver::DoCreate(PCWSTR FileName,
+NTSTATUS CSDriver::Create(PCWSTR FileName,
 	UINT32 CreateOptions, UINT32 GrantedAccess, UINT32 FileAttributes,
 	PSECURITY_DESCRIPTOR SecurityDescriptor, UINT64 AllocationSize,
 	PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo)
@@ -120,10 +120,21 @@ NTSTATUS CSDriver::DoCreate(PCWSTR FileName,
 
 	// 作成対象と同じファイル名が存在するかチェック
 
-	const bool isDIr = CreateOptions & FILE_DIRECTORY_FILE;
+	std::lock_guard lock_{ CreateNew.mGuard };
+
+	traceW(L"check CreateNew=%s", FileName);
+
+	const auto it = CreateNew.mFileInfos.find(FileName);
+	if (it != CreateNew.mFileInfos.cend())
+	{
+		traceW(L"already exist: CreateNew=%s", FileName);
+		return STATUS_OBJECT_NAME_COLLISION;
+	}
+
+	const bool isDir = CreateOptions & FILE_DIRECTORY_FILE;
 
 	ObjectKey newObjKey;
-	const auto ntstatus = this->canCreateObject(START_CALLER FileName, isDIr, &newObjKey);
+	const auto ntstatus = this->canCreateObject(START_CALLER FileName, isDir, &newObjKey);
 	if (!NT_SUCCESS(ntstatus))
 	{
 		traceW(L"fault: canCreateObject");
@@ -132,6 +143,8 @@ NTSTATUS CSDriver::DoCreate(PCWSTR FileName,
 	}
 
 	// create 処理開始
+
+	// 新規作成時はメモリ操作のみで DoClose まで行く
 
 	auto fc{ std::unique_ptr<PTFS_FILE_CONTEXT, void(*)(void*)>((PTFS_FILE_CONTEXT*)calloc(1, sizeof(PTFS_FILE_CONTEXT)), free) };
 	if (!fc)
@@ -154,9 +167,7 @@ NTSTATUS CSDriver::DoCreate(PCWSTR FileName,
 
 	StatsIncr(_CallCreate);
 
-	CSDeviceContext* ctx = mCSDevice->create(START_CALLER newObjKey,
-		CreateOptions, GrantedAccess, FileAttributes);
-
+	auto ctx{ std::unique_ptr<CSDeviceContext>{ mCSDevice->create(START_CALLER newObjKey, CreateOptions, GrantedAccess, FileAttributes) } };
 	if (!ctx)
 	{
 		traceW(L"fault: create");
@@ -166,26 +177,20 @@ NTSTATUS CSDriver::DoCreate(PCWSTR FileName,
 	}
 
 	FileContext->FileInfo = ctx->mFileInfo;
+	*FileInfo = ctx->mFileInfo;
 
-	{
-		// 新規作成時はメモリ操作のみで DoClose まで行く
-
-		std::lock_guard lock_{ CreateNew.mGuard };
-
-		traceW(L"add CreateNew=%s", FileName);
-
-		CreateNew.mFileInfos[FileName] = ctx->mFileInfo;
-	}
+	traceW(L"add CreateNew=%s", FileName);
+	CreateNew.mFileInfos[FileName] = ctx->mFileInfo;
 
 	ctx->mFlags |= CSDCTX_FLAGS_CREATE;
 
-	FileContext->UParam = ctx;
+	FileContext->UParam = ctx.get();
+	ctx.release();
 
 	// ゴミ回収対象に登録
-	mResourceSweeper.add(FileContext);
 
+	mResourceSweeper.add(FileContext);
 	*PFileContext = FileContext;
-	*FileInfo = ctx->mFileInfo;
 
 	fn.release();
 	fc.release();
@@ -198,7 +203,7 @@ NTSTATUS CSDriver::DoCreate(PCWSTR FileName,
 // 既にファイルが開いている状態のもの
 //
 
-NTSTATUS CSDriver::DoSetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize, BOOLEAN SetAllocationSize,
+NTSTATUS CSDriver::SetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize, BOOLEAN SetAllocationSize,
 	FSP_FSCTL_FILE_INFO* FileInfo)
 {
 	StatsIncr(DoSetFileSize);
@@ -259,7 +264,7 @@ NTSTATUS CSDriver::DoSetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize,
 	return GetFileInfoInternal(Handle, FileInfo);
 }
 
-NTSTATUS CSDriver::DoFlush(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO* FileInfo)
+NTSTATUS CSDriver::Flush(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO* FileInfo)
 {
 	StatsIncr(DoFlush);
 	NEW_LOG_BLOCK();
@@ -296,7 +301,7 @@ NTSTATUS CSDriver::DoFlush(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO* 
 // CreateFile() が必要なもの
 //
 
-NTSTATUS CSDriver::DoOverwrite(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttributes,
+NTSTATUS CSDriver::Overwrite(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttributes,
 	BOOLEAN ReplaceFileAttributes, UINT64 AllocationSize, FSP_FSCTL_FILE_INFO* FileInfo)
 {
 	StatsIncr(DoOverwrite);
@@ -376,7 +381,7 @@ NTSTATUS CSDriver::DoOverwrite(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttrib
 	return GetFileInfoInternal(Handle, FileInfo);
 }
 
-NTSTATUS CSDriver::DoWrite(PTFS_FILE_CONTEXT* FileContext, PVOID Buffer, UINT64 Offset, ULONG Length,
+NTSTATUS CSDriver::Write(PTFS_FILE_CONTEXT* FileContext, PVOID Buffer, UINT64 Offset, ULONG Length,
 	BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo,
 	PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO* FileInfo)
 {
@@ -401,7 +406,7 @@ NTSTATUS CSDriver::DoWrite(PTFS_FILE_CONTEXT* FileContext, PVOID Buffer, UINT64 
 // 以降はファイルとディレクトリの両方が対象
 //
 
-NTSTATUS CSDriver::DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOOLEAN argDeleteFile)
+NTSTATUS CSDriver::SetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOOLEAN argDeleteFile)
 {
 	StatsIncr(DoSetDelete);
 	NEW_LOG_BLOCK();
@@ -425,7 +430,7 @@ NTSTATUS CSDriver::DoSetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, B
 	return mCSDevice->setDelete(START_CALLER ctx, argDeleteFile);
 }
 
-NTSTATUS CSDriver::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, UINT32 argFileAttributes,
+NTSTATUS CSDriver::SetBasicInfo(PTFS_FILE_CONTEXT* FileContext, UINT32 argFileAttributes,
 	UINT64 argCreationTime, UINT64 argLastAccessTime, UINT64 argLastWriteTime,
 	UINT64 argChangeTime, FSP_FSCTL_FILE_INFO* FileInfo)
 {
@@ -509,7 +514,7 @@ NTSTATUS CSDriver::DoSetBasicInfo(PTFS_FILE_CONTEXT* FileContext, UINT32 argFile
 	return GetFileInfoInternal(Handle, FileInfo);
 }
 
-NTSTATUS CSDriver::DoSetSecurity(PTFS_FILE_CONTEXT* FileContext,
+NTSTATUS CSDriver::SetSecurity(PTFS_FILE_CONTEXT* FileContext,
 	SECURITY_INFORMATION SecurityInformation, PSECURITY_DESCRIPTOR ModificationDescriptor)
 {
 	StatsIncr(DoSetSecurity);
@@ -521,7 +526,7 @@ NTSTATUS CSDriver::DoSetSecurity(PTFS_FILE_CONTEXT* FileContext,
 	return STATUS_ACCESS_DENIED;
 }
 
-NTSTATUS CSDriver::DoRename(PTFS_FILE_CONTEXT* FileContext,
+NTSTATUS CSDriver::Rename(PTFS_FILE_CONTEXT* FileContext,
 	PWSTR FileName, PWSTR NewFileName, BOOLEAN ReplaceIfExists)
 {
 	StatsIncr(DoRename);

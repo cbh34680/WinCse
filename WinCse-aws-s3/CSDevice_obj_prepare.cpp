@@ -16,149 +16,144 @@ NTSTATUS CSDevice::prepareLocalFile_simple(CALLER_ARG OpenContext* ctx, UINT64 a
 
     // ファイル名への参照を登録
 
-    UnprotectedShare<PrepareLocalFileShare> unsafeShare{ &mPrepareLocalFileShare, remotePath };    // 名前への参照を登録
+    if (ctx->mFile.invalid())
     {
-        const auto safeShare{ unsafeShare.lock() }; // 名前のロック
+        // AwsS3::open() 後の初回の呼び出し
 
-        if (ctx->mFile.invalid())
+        const auto localPath{ ctx->getCacheFilePath() };
+
+        // ダウンロードが必要か判断
+
+        bool needDownload = false;
+
+        auto ntstatus = syncFileAttributes(CONT_CALLER ctx->mFileInfo, localPath, &needDownload);
+        if (!NT_SUCCESS(ntstatus))
         {
-            // AwsS3::open() 後の初回の呼び出し
+            traceW(L"fault: syncFileAttributes");
+            return ntstatus;
+        }
 
-            const auto localPath{ ctx->getCacheFilePath() };
+        traceW(L"needDownload: %s", BOOL_CSTRW(needDownload));
 
-            // ダウンロードが必要か判断
-
-            bool needDownload = false;
-
-            auto ntstatus = syncFileAttributes(CONT_CALLER ctx->mFileInfo, localPath, &needDownload);
-            if (!NT_SUCCESS(ntstatus))
+        if (!needDownload)
+        {
+            if (ctx->mFileInfo.FileSize == 0)
             {
-                traceW(L"fault: syncFileAttributes");
-                return ntstatus;
+                // syncFileAttributes() でトランケート済
+
+                //return STATUS_END_OF_FILE;
+                return FspNtStatusFromWin32(ERROR_HANDLE_EOF);
             }
+        }
 
-            traceW(L"needDownload: %s", BOOL_CSTRW(needDownload));
-
-            if (!needDownload)
-            {
-                if (ctx->mFileInfo.FileSize == 0)
-                {
-                    // syncFileAttributes() でトランケート済
-
-                    //return STATUS_END_OF_FILE;
-                    return FspNtStatusFromWin32(ERROR_HANDLE_EOF);
-                }
-            }
-
-            if (ctx->mFileInfo.FileSize <= PART_SIZE_BYTE)
-            {
-                // 一度で全てをダウンロード
-
-                if (needDownload)
-                {
-                    // キャッシュ・ファイルの準備
-
-                    const FileOutputParams outputParams{ localPath, CREATE_ALWAYS };
-
-                    const auto bytesWritten = mExecuteApi->GetObjectAndWriteToFile(CONT_CALLER ctx->mObjKey, outputParams);
-
-                    if (bytesWritten < 0)
-                    {
-                        traceW(L"fault: GetObjectAndWriteToFile bytesWritten=%lld", bytesWritten);
-
-                        return FspNtStatusFromWin32(ERROR_IO_DEVICE);
-                    }
-                }
-
-                // 既存のファイルを開く
-
-                ntstatus = ctx->openFileHandle(CONT_CALLER FILE_WRITE_ATTRIBUTES, OPEN_EXISTING);
-                if (!NT_SUCCESS(ntstatus))
-                {
-                    traceW(L"fault: openFileHandle");
-                    return ntstatus;
-                }
-
-                APP_ASSERT(ctx->mFile.valid());
-            }
-            else
-            {
-                // マルチパート・ダウンロード
-
-                // ファイルを開く
-
-                ntstatus = ctx->openFileHandle(CONT_CALLER
-                    FILE_WRITE_ATTRIBUTES,
-                    needDownload ? CREATE_ALWAYS : OPEN_EXISTING
-                );
-
-                if (!NT_SUCCESS(ntstatus))
-                {
-                    traceW(L"fault: openFileHandle");
-                    return ntstatus;
-                }
-
-                APP_ASSERT(ctx->mFile.valid());
-
-                if (needDownload)
-                {
-                    // ダウンロードが必要
-
-                    if (!this->downloadMultipart(CONT_CALLER ctx, localPath))
-                    {
-                        traceW(L"fault: downloadMultipart");
-                        //return STATUS_IO_DEVICE_ERROR;
-                        return FspNtStatusFromWin32(ERROR_IO_DEVICE);
-                    }
-                }
-            }
+        if (ctx->mFileInfo.FileSize <= PART_SIZE_BYTE)
+        {
+            // 一度で全てをダウンロード
 
             if (needDownload)
             {
-                // ファイル日付の同期
+                // キャッシュ・ファイルの準備
 
-                if (!ctx->mFile.setFileTime(ctx->mFileInfo))
+                const FileOutputParams outputParams{ localPath, CREATE_ALWAYS };
+
+                const auto bytesWritten = mExecuteApi->GetObjectAndWriteToFile(CONT_CALLER ctx->mObjKey, outputParams);
+
+                if (bytesWritten < 0)
                 {
-                    const auto lerr = ::GetLastError();
-                    traceW(L"fault: setFileTime lerr=%lu", lerr);
+                    traceW(L"fault: GetObjectAndWriteToFile bytesWritten=%lld", bytesWritten);
 
-                    return FspNtStatusFromWin32(lerr);
+                    return FspNtStatusFromWin32(ERROR_IO_DEVICE);
                 }
             }
-            else
+
+            // 既存のファイルを開く
+
+            ntstatus = ctx->openFileHandle(CONT_CALLER FILE_WRITE_ATTRIBUTES, OPEN_EXISTING);
+            if (!NT_SUCCESS(ntstatus))
             {
-                // アクセス日時のみ更新
-
-                if (!ctx->mFile.setFileTime(0, 0))
-                {
-                    const auto lerr = ::GetLastError();
-                    traceW(L"fault: setFileTime lerr=%lu", lerr);
-
-                    return FspNtStatusFromWin32(lerr);
-                }
+                traceW(L"fault: openFileHandle");
+                return ntstatus;
             }
 
-            // 属性情報のサイズと比較
+            APP_ASSERT(ctx->mFile.valid());
+        }
+        else
+        {
+            // マルチパート・ダウンロード
 
-            LARGE_INTEGER fileSize;
-            if(!::GetFileSizeEx(ctx->mFile.handle(), &fileSize))
+            // ファイルを開く
+
+            ntstatus = ctx->openFileHandle(CONT_CALLER
+                FILE_WRITE_ATTRIBUTES,
+                needDownload ? CREATE_ALWAYS : OPEN_EXISTING
+            );
+
+            if (!NT_SUCCESS(ntstatus))
+            {
+                traceW(L"fault: openFileHandle");
+                return ntstatus;
+            }
+
+            APP_ASSERT(ctx->mFile.valid());
+
+            if (needDownload)
+            {
+                // ダウンロードが必要
+
+                if (!this->downloadMultipart(CONT_CALLER ctx, localPath))
+                {
+                    traceW(L"fault: downloadMultipart");
+                    //return STATUS_IO_DEVICE_ERROR;
+                    return FspNtStatusFromWin32(ERROR_IO_DEVICE);
+                }
+            }
+        }
+
+        if (needDownload)
+        {
+            // ファイル日付の同期
+
+            if (!ctx->mFile.setFileTime(ctx->mFileInfo))
             {
                 const auto lerr = ::GetLastError();
-                traceW(L"fault: GetFileSizeEx lerr=%lu", lerr);
+                traceW(L"fault: setFileTime lerr=%lu", lerr);
 
                 return FspNtStatusFromWin32(lerr);
             }
+        }
+        else
+        {
+            // アクセス日時のみ更新
 
-            if (ctx->mFileInfo.FileSize != (UINT64)fileSize.QuadPart)
+            if (!ctx->mFile.setFileTime(0, 0))
             {
-                APP_ASSERT(0);
+                const auto lerr = ::GetLastError();
+                traceW(L"fault: setFileTime lerr=%lu", lerr);
 
-                traceW(L"fault: no match filesize ");
-                //return STATUS_IO_DEVICE_ERROR;
-                return FspNtStatusFromWin32(ERROR_IO_DEVICE);
+                return FspNtStatusFromWin32(lerr);
             }
         }
-    }   // 名前のロックを解除 (safeShare の生存期間)
+
+        // 属性情報のサイズと比較
+
+        LARGE_INTEGER fileSize;
+        if(!::GetFileSizeEx(ctx->mFile.handle(), &fileSize))
+        {
+            const auto lerr = ::GetLastError();
+            traceW(L"fault: GetFileSizeEx lerr=%lu", lerr);
+
+            return FspNtStatusFromWin32(lerr);
+        }
+
+        if (ctx->mFileInfo.FileSize != (UINT64)fileSize.QuadPart)
+        {
+            APP_ASSERT(0);
+
+            traceW(L"fault: no match filesize ");
+            //return STATUS_IO_DEVICE_ERROR;
+            return FspNtStatusFromWin32(ERROR_IO_DEVICE);
+        }
+    }
 
     APP_ASSERT(ctx->mFile.valid());
 

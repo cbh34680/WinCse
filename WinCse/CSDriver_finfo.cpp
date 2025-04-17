@@ -3,12 +3,12 @@
 using namespace WCSE;
 
 
-NTSTATUS CSDriver::getFileInfoByFileName(CALLER_ARG PCWSTR fileName,
+NTSTATUS CSDriver::getFileInfoByFileName(CALLER_ARG PCWSTR argFileName,
 	FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pFileNameType)
 {
 	APP_ASSERT(pFileInfo);
 
-	if (wcscmp(fileName, L"\\") == 0)
+	if (wcscmp(argFileName, L"\\") == 0)
 	{
 		// "\" へのアクセスは参照用ディレクトリの情報を提供
 
@@ -18,7 +18,37 @@ NTSTATUS CSDriver::getFileInfoByFileName(CALLER_ARG PCWSTR fileName,
 	}
 	else
 	{
-		ObjectKey objKey{ ObjectKey::fromWinPath(fileName) };
+		{
+			// 新規作成時はまだストレージに存在しない状態なので、メモリ操作により
+			// 問い合わせに回答する
+
+			std::lock_guard lock_(CreateNew.mGuard);
+
+			const auto it = CreateNew.mFileInfos.find(argFileName);
+			if (it != CreateNew.mFileInfos.cend())
+			{
+				NEW_LOG_BLOCK();
+
+				*pFileInfo = it->second;
+
+				if (FA_IS_DIRECTORY(it->second.FileAttributes))
+				{
+					traceW(L"found: CreateNew argFileName=%s [DIRECTORY]", argFileName);
+
+					*pFileNameType = FileNameType::DirectoryObject;
+				}
+				else
+				{
+					traceW(L"found: CreateNew argFileName=%s [FILE]", argFileName);
+
+					*pFileNameType = FileNameType::FileObject;
+				}
+
+				return STATUS_SUCCESS;
+			}
+		}
+
+		ObjectKey objKey{ ObjectKey::fromWinPath(argFileName) };
 		if (objKey.invalid())
 		{
 			return STATUS_OBJECT_NAME_INVALID;
@@ -27,8 +57,6 @@ NTSTATUS CSDriver::getFileInfoByFileName(CALLER_ARG PCWSTR fileName,
 		if (objKey.isBucket())
 		{
 			// "\bucket" のパターン
-
-			APP_ASSERT(objKey.isBucket());
 
 			DirInfoType dirInfo;
 
@@ -43,36 +71,6 @@ NTSTATUS CSDriver::getFileInfoByFileName(CALLER_ARG PCWSTR fileName,
 		else if (objKey.isObject())
 		{
 			// "\bucket\***" のパターン
-
-			{
-				// 新規作成時はまだストレージに存在しない状態なので、メモリ操作により
-				// 問い合わせに回答する
-
-				std::lock_guard lock_(CreateNew.mGuard);
-
-				const auto it = CreateNew.mFileInfos.find(fileName);
-				if (it != CreateNew.mFileInfos.cend())
-				{
-					NEW_LOG_BLOCK();
-
-					*pFileInfo = it->second;
-
-					if (FA_IS_DIRECTORY(it->second.FileAttributes))
-					{
-						traceW(L"found: CreateNew=%s [DIRECTORY]", fileName);
-
-						*pFileNameType = FileNameType::DirectoryObject;
-					}
-					else
-					{
-						traceW(L"found: CreateNew=%s [FILE]", fileName);
-
-						*pFileNameType = FileNameType::FileObject;
-					}
-
-					return STATUS_SUCCESS;
-				}
-			}
 
 			// 同じ名前のファイルとディレクトリが存在したときに、ディレクトリを優先するため
 			// 引数の名前をディレクトリに変換しストレージを調べ、存在しないときはファイルとして調べる
@@ -110,12 +108,12 @@ NTSTATUS CSDriver::getFileInfoByFileName(CALLER_ARG PCWSTR fileName,
 	}
 
 	NEW_LOG_BLOCK();
-	traceW(L"not found: fileName=%s", fileName);
+	traceW(L"not found: argFileName=%s", argFileName);
 
 	return FspNtStatusFromWin32(ERROR_FILE_NOT_FOUND);
 }
 
-NTSTATUS CSDriver::DoGetSecurityByName(PCWSTR FileName, PUINT32 PFileAttributes,
+NTSTATUS CSDriver::GetSecurityByName(PCWSTR FileName, PUINT32 PFileAttributes,
 	PSECURITY_DESCRIPTOR SecurityDescriptor, PSIZE_T PSecurityDescriptorSize)
 {
 	StatsIncr(DoGetSecurityByName);

@@ -190,7 +190,17 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
             }
 
             const auto pattern{ WildcardToRegexW(TrimW(token)) };
-            bucketFilters.emplace_back(pattern, std::regex_constants::icase);
+
+            try
+            {
+                bucketFilters.emplace_back(pattern, std::regex_constants::icase);
+            }
+            catch (const std::regex_error& ex)
+            {
+                traceA("what=%s", ex.what());
+                return STATUS_INVALID_PARAMETER;
+            }
+
             already.insert(token);
         }
     }
@@ -281,7 +291,7 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
     if (!execApi->Ping(START_CALLER0))
     {
         traceW(L"fault: Ping");
-        return STATUS_ENCRYPTION_FAILED;
+        return STATUS_NETWORK_ACCESS_DENIED;
     }
 
     // (API 実行オブジェクトを使う) クエリ・オブジェクト
@@ -296,6 +306,7 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
 
     if (!this->createNotifListener(START_CALLER0))
     {
+        traceW(L"fault: createNotifListener");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 

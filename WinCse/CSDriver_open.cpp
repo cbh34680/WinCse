@@ -4,7 +4,7 @@
 using namespace WCSE;
 
 
-NTSTATUS CSDriver::DoOpen(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
+NTSTATUS CSDriver::Open(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedAccess,
 	PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo)
 {
 	StatsIncr(DoOpen);
@@ -69,7 +69,7 @@ NTSTATUS CSDriver::DoOpen(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedA
 
 		StatsIncr(_CallOpen);
 
-		CSDeviceContext* ctx = mCSDevice->open(START_CALLER objKey, CreateOptions, GrantedAccess, FileContext->FileInfo);
+		auto ctx{ std::unique_ptr<CSDeviceContext>{ mCSDevice->open(START_CALLER objKey, CreateOptions, GrantedAccess, FileContext->FileInfo) } };
 		if (!ctx)
 		{
 			traceW(L"fault: open");
@@ -83,7 +83,8 @@ NTSTATUS CSDriver::DoOpen(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedA
 			traceW(L"FileName=%s, CreateOptions=%u, GrantedAccess=%u, PFileContext=%p, FileInfo=%p", FileName, CreateOptions, GrantedAccess, PFileContext, FileInfo);
 		}
 
-		FileContext->UParam = ctx;
+		FileContext->UParam = ctx.get();
+		ctx.release();
 	}
 
 	// ƒSƒ~‰ñŽû‘ÎÛ‚É“o˜^
@@ -98,7 +99,7 @@ NTSTATUS CSDriver::DoOpen(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedA
 	return STATUS_SUCCESS;
 }
 
-VOID CSDriver::DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags)
+VOID CSDriver::Cleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags)
 {
 	StatsIncr(DoCleanup);
 	APP_ASSERT(FileContext);
@@ -135,7 +136,7 @@ VOID CSDriver::DoCleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG F
 	}
 }
 
-VOID CSDriver::DoClose(PTFS_FILE_CONTEXT* FileContext)
+VOID CSDriver::Close(PTFS_FILE_CONTEXT* FileContext)
 {
 	StatsIncr(DoClose);
 
@@ -157,17 +158,15 @@ VOID CSDriver::DoClose(PTFS_FILE_CONTEXT* FileContext)
 		StatsIncr(_CallClose);
 		mCSDevice->close(START_CALLER ctx);
 
+		// V‹Kì¬Žž‚Éì¬‚µ‚½ˆêŽžƒƒ‚ƒŠ‚ð‰ð•ú
+
+		std::lock_guard lock_(CreateNew.mGuard);
+
+		const auto it = CreateNew.mFileInfos.find(FileContext->FileName);
+		if (it != CreateNew.mFileInfos.cend())
 		{
-			// V‹Kì¬Žž‚Éì¬‚µ‚½ˆêŽžƒƒ‚ƒŠ‚ð‰ð•ú
-
-			std::lock_guard lock_(CreateNew.mGuard);
-
-			const auto it = CreateNew.mFileInfos.find(FileContext->FileName);
-			if (it != CreateNew.mFileInfos.cend())
-			{
-				traceW(L"erase CreateNew=%s", FileContext->FileName);
-				CreateNew.mFileInfos.erase(it);
-			}
+			traceW(L"erase CreateNew=%s", FileContext->FileName);
+			CreateNew.mFileInfos.erase(it);
 		}
 
 		delete ctx;

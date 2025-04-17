@@ -3,7 +3,7 @@
 using namespace WCSE;
 
 
-NTSTATUS CSDriver::DoGetFileInfo(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO* FileInfo)
+NTSTATUS CSDriver::GetFileInfo(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO* FileInfo)
 {
 	StatsIncr(DoGetFileInfo);
 
@@ -20,7 +20,7 @@ NTSTATUS CSDriver::DoGetFileInfo(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_
 	return STATUS_SUCCESS;
 }
 
-NTSTATUS CSDriver::DoGetSecurity(PTFS_FILE_CONTEXT* FileContext,
+NTSTATUS CSDriver::GetSecurity(PTFS_FILE_CONTEXT* FileContext,
 	PSECURITY_DESCRIPTOR SecurityDescriptor, PSIZE_T PSecurityDescriptorSize)
 {
 	StatsIncr(DoGetSecurity);
@@ -39,7 +39,7 @@ NTSTATUS CSDriver::DoGetSecurity(PTFS_FILE_CONTEXT* FileContext,
 	return HandleToSecurityInfo(Handle, SecurityDescriptor, PSecurityDescriptorSize);
 }
 
-NTSTATUS CSDriver::DoRead(PTFS_FILE_CONTEXT* FileContext,
+NTSTATUS CSDriver::Read(PTFS_FILE_CONTEXT* FileContext,
 	PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred)
 {
 	StatsIncr(DoRead);
@@ -58,14 +58,14 @@ NTSTATUS CSDriver::DoRead(PTFS_FILE_CONTEXT* FileContext,
 		Buffer, Offset, Length, PBytesTransferred);
 }
 
-NTSTATUS CSDriver::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
+NTSTATUS CSDriver::ReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern,
 	PWSTR Marker, PVOID Buffer, ULONG BufferLength, PULONG PBytesTransferred)
 {
 	StatsIncr(DoReadDirectory);
     NEW_LOG_BLOCK();
 
     APP_ASSERT(FileContext && Buffer && PBytesTransferred);
-	APP_ASSERT(FA_IS_DIRECTORY(FileContext->FileInfo.FileAttributes));
+	APP_ASSERT(FA_IS_DIRECTORY(FileContext->FileInfo.FileAttributes));      // ディレクトリのみ
 
     std::optional<std::wregex> re;
 
@@ -142,7 +142,7 @@ NTSTATUS CSDriver::DoReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern
     {
         for (const auto& dirInfo: dirInfoList)
         {
-            if (shouldIgnoreFileName(dirInfo->FileNameBuf))
+            if (this->shouldIgnoreFileName(dirInfo->FileNameBuf))
             {
                 continue;
             }

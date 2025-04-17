@@ -20,7 +20,7 @@ ExecuteApi::ExecuteApi(
     mSdkOptions = std::make_unique<Aws::SDKOptions>();
     Aws::InitAPI(*mSdkOptions);
 
-    std::string region{ WC2MB(argRegion) };
+    auto region{ WC2MB(argRegion) };
 
     Aws::Client::ClientConfiguration config;
     if (argRegion.empty())

@@ -149,6 +149,7 @@
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="CSDeviceBase.cpp" />
     <ClCompile Include="ScheduledWorker.cpp" />
     <ClCompile Include="CSDriver.cpp" />
     <ClCompile Include="CSDriver_finfo.cpp" />
@@ -160,6 +161,7 @@
     <ClCompile Include="DelayedWorker.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="CSDriverBase.hpp" />
     <ClInclude Include="ScheduledWorker.hpp" />
     <ClInclude Include="TimerWorker.hpp" />
     <ClInclude Include="CSDriver.hpp" />

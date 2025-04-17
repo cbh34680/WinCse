@@ -1,4 +1,5 @@
 #include "CSDevice.hpp"
+#include "Protect.hpp"
 
 using namespace WCSE;
 
@@ -7,67 +8,28 @@ using namespace WCSE;
 // 外部から呼び出されるインターフェース
 //
 
-//
-// ここから下のメソッドは UnprotectedShare による排他制御が必要
-//
-//static std::mutex gGuard;
-//#define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ gGuard }
-
-// 排他制御の必要な範囲を限定するため、グローバル変数にしている
-
-struct ObjectListShare : public SharedBase { };
-static ShareStore<ObjectListShare> gObjectListShare;
-
 bool CSDevice::headObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoType* pDirInfo)
 {
-    //THREAD_SAFE();
-    //NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.isObject());
-
-    //traceW(L"argObjKey=%s", argObjKey.c_str());
-
-    // ディレクトリの存在確認
 
     // クラウドストレージではディレクトリの概念は存在しないので
     // 本来は外部から listObjects() を実行して、ロジックで判断するが
     // 意味的にわかりにくくなるので、ここで吸収する
 
-    UnprotectedShare<ObjectListShare> unsafeShare{ &gObjectListShare, argObjKey.str() };   // 名前への参照を登録
+    if (argObjKey.meansDir())
     {
-        const auto safeShare{ unsafeShare.lock() }; // 名前のロック
-
-        if (argObjKey.meansDir())
-        {
-            return mQueryObject->unsafeHeadObject_CheckDir(CONT_CALLER argObjKey, pDirInfo);
-        }
-        else
-        {
-            APP_ASSERT(argObjKey.meansFile());
-
-            return mQueryObject->unsafeHeadObject(CONT_CALLER argObjKey, pDirInfo);
-        }
-
-    }   // 名前のロックを解除 (safeShare の生存期間)
-}
-
-bool CSDevice::listObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* pDirInfoList)
-{
-    //THREAD_SAFE();
-    NEW_LOG_BLOCK();
-    APP_ASSERT(argObjKey.meansDir());
-
-    UnprotectedShare<ObjectListShare> unsafeShare{ &gObjectListShare, argObjKey.str() };   // 名前への参照を登録
+        return mQueryObject->unsafeHeadObject_CheckDir(CONT_CALLER argObjKey, pDirInfo);
+    }
+    else
     {
-        const auto safeShare{ unsafeShare.lock() }; // 名前のロック
+        APP_ASSERT(argObjKey.meansFile());
 
-        return mQueryObject->unsafeListObjects(CONT_CALLER argObjKey, pDirInfoList);
-
-    }   // 名前のロックを解除 (safeShare の生存期間)
+        return mQueryObject->unsafeHeadObject(CONT_CALLER argObjKey, pDirInfo);
+    }
 }
 
 bool CSDevice::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* pDirInfoList)
 {
-    NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.meansDir());
     APP_ASSERT(pDirInfoList);
 
@@ -75,6 +37,7 @@ bool CSDevice::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfo
 
     if (!this->listObjects(CONT_CALLER argObjKey, &dirInfoList))
     {
+        NEW_LOG_BLOCK();
         traceW(L"fault: listObjects");
 
         return false;
@@ -143,38 +106,32 @@ bool CSDevice::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfo
 
         APP_ASSERT(searchObjKey.isObject());
 
-        UnprotectedShare<ObjectListShare> unsafeShare{ &gObjectListShare, searchObjKey.str() };   // 名前への参照を登録
+        DirInfoType mergeDirInfo;
+
+        if (mRuntimeEnv->StrictFileTimestamp)
         {
-            const auto safeShare{ unsafeShare.lock() }; // 名前のロック
+            // ディレクトリにファイル名を付与して HeadObject を取得
 
-            DirInfoType mergeDirInfo;
+            mQueryObject->unsafeHeadObject(CONT_CALLER searchObjKey, &mergeDirInfo);
+        }
+        else
+        {
+            // ディレクトリにファイル名を付与して HeadObject のキャッシュを検索
 
-            if (mRuntimeEnv->StrictFileTimestamp)
-            {
-                // ディレクトリにファイル名を付与して HeadObject を取得
+            mQueryObject->headObjectFromCache(CONT_CALLER searchObjKey, &mergeDirInfo);
+        }
 
-                mQueryObject->unsafeHeadObject(CONT_CALLER searchObjKey, &mergeDirInfo);
-            }
-            else
-            {
-                // ディレクトリにファイル名を付与して HeadObject のキャッシュを検索
+        if (mergeDirInfo)
+        {
+            dirInfo->FileInfo = mergeDirInfo->FileInfo;
+        }
 
-                mQueryObject->headObjectFromCache(CONT_CALLER searchObjKey, &mergeDirInfo);
-            }
+        if (mQueryObject->isNegative(CONT_CALLER searchObjKey))
+        {
+            // リージョン違いなどで HeadObject が失敗したものに HIDDEN 属性を追加
 
-            if (mergeDirInfo)
-            {
-                dirInfo->FileInfo = mergeDirInfo->FileInfo;
-            }
-
-            if (mQueryObject->isNegative(CONT_CALLER searchObjKey))
-            {
-                // リージョン違いなどで HeadObject が失敗したものに HIDDEN 属性を追加
-
-                dirInfo->FileInfo.FileAttributes |= FILE_ATTRIBUTE_HIDDEN;
-            }
-
-        }   // 名前のロックを解除 (safeShare の生存期間)
+            dirInfo->FileInfo.FileAttributes |= FILE_ATTRIBUTE_HIDDEN;
+        }
     }
 
     *pDirInfoList = std::move(dirInfoList);
@@ -182,14 +139,24 @@ bool CSDevice::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfo
     return true;
 }
 
-// イレギュラーな対応
-// 
-// 元々は CSDevice_obj_rw.cpp に記述されていたが、XCOPY /V を実行したときに
-// クローズ処理中に listObjectsV2 が呼ばれ、キャッシュ更新前のファイルサイズが利用されることで
-// 検証に失敗してしまう。
-// これに対応するため、PutObject とキャッシュの削除を listObjectsV2 のロックと同じ範囲で行う。
+#if XCOPY_V
 
-bool CSDevice::putObjectWithListLock(CALLER_ARG const ObjectKey& argObjKey,
+struct CloseGuard : public SharedBase { };
+static ShareStore<CloseGuard> gCloseGuard;
+
+bool CSDevice::listObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* pDirInfoList)
+{
+    APP_ASSERT(argObjKey.meansDir());
+
+    UnprotectedShare<CloseGuard> unsafeShare{ &gCloseGuard, argObjKey.c_str() };
+    {
+        const auto safeShare{ unsafeShare.lock() };
+
+        return mQueryObject->unsafeListObjects(CONT_CALLER argObjKey, pDirInfoList);
+    }
+}
+
+bool CSDevice::putObjectViaListLock(CALLER_ARG const ObjectKey& argObjKey,
     const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath)
 {
     NEW_LOG_BLOCK();
@@ -197,40 +164,31 @@ bool CSDevice::putObjectWithListLock(CALLER_ARG const ObjectKey& argObjKey,
 
     traceW(L"argObjKey=%s, argSourcePath=%s", argObjKey.c_str(), argSourcePath);
 
-    // 通常は操作対象とロックのキーが一致するが、ここでは親のディレクトリをロックしながら
-    // ディレクトリ内のファイルを操作している。
-
     const auto parentDir{ argObjKey.toParentDir() };
     APP_ASSERT(parentDir);
 
-    UnprotectedShare<ObjectListShare> unsafeShare{ &gObjectListShare, parentDir->str() };   // 名前への参照を登録
+    UnprotectedShare<CloseGuard> unsafeShare{ &gCloseGuard, parentDir->c_str() };
     {
-        const auto safeShare{ unsafeShare.lock() }; // 名前のロック
+        const auto safeShare{ unsafeShare.lock() };
 
-        if (!mExecuteApi->PutObject(CONT_CALLER argObjKey, argFileInfo, argSourcePath))
+        if (!this->putObject(CONT_CALLER argObjKey, argFileInfo, argSourcePath))
         {
-            traceW(L"fault: PutObject");
+            traceW(L"fault: putObject");
             return false;
         }
-
-        // キャッシュ・メモリから削除
-        //
-        // 上記で作成したディレクトリがキャッシュに反映されていない状態で
-        // 利用されてしまうことを回避するために事前に削除しておき、改めてキャッシュを作成させる
-
-        const auto num = mQueryObject->deleteCache(CONT_CALLER argObjKey);
-        traceW(L"cache delete num=%d, argObjKey=%s", num, argObjKey.c_str());
-    }
-
-    // headObject() は必須ではないが、作成直後に属性が参照されることに対応
-
-    if (!this->headObject(CONT_CALLER argObjKey, nullptr))
-    {
-        traceW(L"fault: headObject");
-        return false;
     }
 
     return true;
 }
+
+#else
+bool CSDevice::listObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoListType* pDirInfoList)
+{
+    APP_ASSERT(argObjKey.meansDir());
+
+    return mQueryObject->unsafeListObjects(CONT_CALLER argObjKey, pDirInfoList);
+}
+
+#endif
 
 // EOF

@@ -91,24 +91,19 @@ NTSTATUS CSDevice::getHandleFromContext(CALLER_ARG
 
     // ファイル名への参照を登録
 
-    UnprotectedShare<PrepareLocalFileShare> unsafeShare{ &mPrepareLocalFileShare, remotePath };  // 名前への参照を登録
+    if (ctx->mFile.invalid())
     {
-        const auto safeShare{ unsafeShare.lock() };                                 // 名前のロック
+        // AwsS3::open() 後の初回の呼び出し
 
-        if (ctx->mFile.invalid())
+        NTSTATUS ntstatus = ctx->openFileHandle(CONT_CALLER argDesiredAccess, argCreationDisposition);
+        if (!NT_SUCCESS(ntstatus))
         {
-            // AwsS3::open() 後の初回の呼び出し
-
-            NTSTATUS ntstatus = ctx->openFileHandle(CONT_CALLER argDesiredAccess, argCreationDisposition);
-            if (!NT_SUCCESS(ntstatus))
-            {
-                traceW(L"fault: openFileHandle");
-                return ntstatus;
-            }
-
-            APP_ASSERT(ctx->mFile.valid());
+            traceW(L"fault: openFileHandle");
+            return ntstatus;
         }
-    }   // 名前のロックを解除 (safeShare の生存期間)
+
+        APP_ASSERT(ctx->mFile.valid());
+    }
 
     *pHandle = ctx->mFile.handle();
 
