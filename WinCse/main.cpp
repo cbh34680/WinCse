@@ -11,21 +11,21 @@
 #include <csignal>
 #include <iostream>
 #include <iomanip>
-#include <unordered_map>
 
 #define DIRECT_LINK_TEST        (0)
 
 #if DIRECT_LINK_TEST
 #pragma comment(lib, "WinCse-aws-s3.lib")
-#include "..\WinCse-aws-s3\\CSDevice.hpp"
+#include "..\WinCse-aws-s3\CSDevice.hpp"
 #endif
 
 
-using namespace WCSE;
+using namespace CSELIB;
+using namespace CSEDRV;
+
 
 static WCHAR PROGNAME[] = L"WinCse";
 
-static bool app_tempdir(std::wstring* tmpDir);
 static void app_terminate();
 static void app_sighandler(int signum);
 
@@ -48,14 +48,25 @@ static void writeStats(
 struct DllModule
 {
     HMODULE mModule;
-    ICSDevice* mCSDevice;
+    ICSDevice* mDevice;
 
-    DllModule() : mModule(NULL), mCSDevice(nullptr) {}
-    DllModule(HMODULE argModule, ICSDevice* argCSDevice) : mModule(argModule), mCSDevice(argCSDevice) {}
+    DllModule()
+        :
+        mModule(NULL),
+        mDevice(nullptr)
+    {
+    }
+
+    DllModule(HMODULE argModule, ICSDevice* argCSDevice)
+        :
+        mModule(argModule),
+        mDevice(argCSDevice)
+    {
+    }
 
     ~DllModule()
     {
-        delete mCSDevice;
+        delete mDevice;
 
         if (mModule)
         {
@@ -65,10 +76,9 @@ struct DllModule
 };
 
 #if DIRECT_LINK_TEST
-static bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir,
-    PCWSTR iniSection, NamedWorker workers[], DllModule* pDll)
+static bool loadCSDevice(const std::wstring&, PCWSTR iniSection, NamedWorker workers[], DllModule* pDll)
 {
-    pDll->mCSDevice = NewCSDevice(tmpDir.c_str(), iniSection, workers);
+    pDll->mDevice = NewCSDevice(iniSection, workers);
 
     return true;
 }
@@ -79,20 +89,18 @@ static bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir
 // その中にエクスポートされた NewCSDevice() を実行する。
 // 戻り値は ICSDevice* になる。
 //
-static bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir,
-    PCWSTR iniSection, NamedWorker workers[], DllModule* pDll)
+static bool loadCSDevice(const std::wstring& csDeviceType, PCWSTR iniSection, NamedWorker workers[], DllModule* pDll)
 {
     NEW_LOG_BLOCK();
 
     bool ret = false;
 
-	const auto dllName{ std::wstring(PROGNAME) + L'-' + dllType + L".dll" };
+	const auto dllName{ std::wstring(PROGNAME) + L'-' + csDeviceType + L".dll" };
 
-	//typedef WCSE::ICSDevice* (*NewCSDevice)(PCWSTR argTempDir, PCWSTR argIniSection, NamedWorker workers[]);
-    using NewCSDevice = WCSE::ICSDevice* (*)(PCWSTR argTempDir, PCWSTR argIniSection, NamedWorker workers[]);
+    using NewCSDevice = CSELIB::ICSDevice* (*)(PCWSTR argIniSection, NamedWorker workers[]);
 
 	NewCSDevice dllFunc = nullptr;
-    ICSDevice* pCSDevice = nullptr;
+    ICSDevice* pDevice = nullptr;
 
 	HMODULE hModule = ::LoadLibrary(dllName.c_str());
 	if (hModule == NULL)
@@ -110,8 +118,8 @@ static bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir
         goto exit;
     }
 
-    pCSDevice = dllFunc(tmpDir.c_str(), iniSection, workers);
-	if (!pCSDevice)
+    pDevice = dllFunc(iniSection, workers);
+	if (!pDevice)
 	{
         std::wcerr << L"fault: NewCSDevice" << std::endl;
         traceW(L"fault: NewCSDevice");
@@ -119,17 +127,17 @@ static bool loadCSDevice(const std::wstring& dllType, const std::wstring& tmpDir
     }
 
     pDll->mModule = hModule;
-    pDll->mCSDevice = pCSDevice;
+    pDll->mDevice = pDevice;
 
     hModule = NULL;
-    pCSDevice = nullptr;
+    pDevice = nullptr;
 
     traceW(L"success");
 
     ret = true;
 
 exit:
-    delete pCSDevice;
+    delete pDevice;
 
     if (hModule)
     {
@@ -141,23 +149,13 @@ exit:
 
 #endif
 
-static int app_main(int argc, wchar_t** argv,
-    PCWSTR iniSection, PCWSTR trcDir, const std::wstring& dllType)
+static int app_main(int argc, wchar_t** argv, PCWSTR iniSection, PCWSTR traceLogDir, const std::wstring& csDeviceType)
 {
     std::signal(SIGABRT, app_sighandler);
 
     // スレッドでの捕捉されない例外を拾えるかも
 
     std::set_terminate(app_terminate);
-
-    std::wstring tmpDir;
-    if (!app_tempdir(&tmpDir))
-    {
-        std::cerr << "fault: app_tempdir" << std::endl;
-        return EXIT_FAILURE;
-    }
-
-    std::wcout << L"use Tempdir: " << tmpDir << std::endl;
 
     // ここ以降は return は使わず、ret に設定して最後まで進める
 
@@ -176,7 +174,7 @@ static int app_main(int argc, wchar_t** argv,
     // 6) DLL アンロード (DllModuleRAII デストラクタ)
     // 7) ロガー解放 (DeleteLogger)
     //
-    if (CreateLogger(tmpDir.c_str(), trcDir, dllType.c_str()))
+    if (CreateLogger(traceLogDir))
     {
         // traceW/A が使えるのはここから
 
@@ -200,8 +198,8 @@ static int app_main(int argc, wchar_t** argv,
                 std::wcout << L"iniSection: " << iniSection << std::endl;
                 traceW(L"iniSection: %s", iniSection);
 
-                DelayedWorker dworker(tmpDir, iniSection);
-                TimerWorker tworker(tmpDir, iniSection);
+                DelayedWorker dworker(iniSection);
+                TimerWorker tworker(iniSection);
 
                 NamedWorker workers[] =
                 {
@@ -210,12 +208,12 @@ static int app_main(int argc, wchar_t** argv,
                     { nullptr, nullptr },
                 };
 
-                std::wcout << L"load dll type=" << dllType << std::endl;
-                traceW(L"load dll type=%s", dllType.c_str());
+                std::wcout << L"load dll type=" << csDeviceType << std::endl;
+                traceW(L"load dll type=%s", csDeviceType.c_str());
 
                 // dll のロード
 
-                if (loadCSDevice(dllType, tmpDir, iniSection, workers, &dll))
+                if (loadCSDevice(csDeviceType, iniSection, workers, &dll))
                 {
                     // WinCse メンバのデストラクタでの処理を appSTats に反映させるため
                     // app の生存期間より長くする
@@ -224,20 +222,29 @@ static int app_main(int argc, wchar_t** argv,
                     WINCSE_IF appif{};
 
                     {
-                        CSDriver app(&appStats, tmpDir, iniSection, workers, dll.mCSDevice);
+                        // このブロック化は必要
 
-                        std::wcout << L"call WinFspMain" << std::endl;
-                        traceW(L"call WinFspMain");
+                        std::wcout << L"call NewCSDriver" << std::endl;
+                        traceW(L"call NewCSDriver");
 
-                        appif.pCSDriver = &app;
+                        auto app{ std::unique_ptr<ICSDriver>{ NewCSDriver(csDeviceType.c_str(), iniSection, workers, dll.mDevice, &appStats) } };
+                        if (app)
+                        {
+                            appif.mDriver = app.get();
 
-                        rc = WinFspMain(argc, argv, PROGNAME, &appif);
+                            rc = WinFspMain(argc, argv, PROGNAME, &appif);
+                        }
+                        else
+                        {
+                            std::wcerr << L"fault: NewCSDriver" << std::endl;
+                            traceW(L"fault: NewCSDriver");
+                        }
                     }
 
-                    PCWSTR logDir = GetLogger()->getOutputDirectory();
-                    if (logDir)
+                    PCWSTR outputDir = GetLogger()->getOutputDirectory();
+                    if (outputDir)
                     {
-                        writeStats(logDir, &appif.FspStats, &appStats);
+                        writeStats(outputDir, &appif.FspStats, &appStats);
                     }
 
                     std::wcout << L"WinFspMain done. return=" << rc << std::endl;
@@ -374,7 +381,7 @@ int wmain(int argc, wchar_t** argv)
         }
 
         // "WinCse.aws-s3.Y" の中から "aws-s3" を取り出す
-        const auto names{ SplitString(segments[0], L'.', false) };
+        const auto names{ SplitString(segments[0], L'.', true) };
         if (names.size() < 2)
         {
             std::wcerr << L"[u] parameter parse error" << std::endl;
@@ -399,49 +406,24 @@ int wmain(int argc, wchar_t** argv)
     return rc;
 }
 
-static bool app_tempdir(std::wstring* pTmpDir)
-{
-    wchar_t tmpdir[MAX_PATH];
-    const auto err = ::GetTempPath(MAX_PATH, tmpdir);
-    APP_ASSERT(err != 0);
-
-    if (tmpdir[wcslen(tmpdir) - 1] == L'\\')
-    {
-        tmpdir[wcslen(tmpdir) - 1] = L'\0';
-    }
-
-    wcscat_s(tmpdir, L"\\WinCse");
-
-    if (!MkdirIfNotExists(tmpdir))
-    {
-        std::wcerr << tmpdir << L": dir not exists" << std::endl;
-        return false;
-    }
-
-    *pTmpDir = tmpdir;
-
-    return true;
-}
-
 static void app_sighandler(int signum)
 {
-    WCSE::AbnormalEnd(__FILE__, __LINE__, __FUNCTION__, signum);
+    CSELIB::AbnormalEnd(__FILEW__, __LINE__, __FUNCTIONW__, signum);
 }
 
 static void app_terminate()
 {
-    WCSE::AbnormalEnd(__FILE__, __LINE__, __FUNCTION__, -1);
+    CSELIB::AbnormalEnd(__FILEW__, __LINE__, __FUNCTIONW__, -1);
 }
 
-static void writeStats(
-    PCWSTR logDir, const WINFSP_STATS* libStats, const WINCSE_DRIVER_STATS* appStats)
+static void writeStats(PCWSTR outputDir, const WINFSP_STATS* libStats, const WINCSE_DRIVER_STATS* appStats)
 {
     SYSTEMTIME st;
     ::GetLocalTime(&st);
 
     std::wostringstream ss;
 
-    ss << logDir;
+    ss << outputDir;
     ss << L'\\';
     ss << L"stats";
     ss << L'-';
@@ -466,6 +448,8 @@ static void writeStats(
             fputs("\n", fp);
 
             fputs("[WinFsp Stats]\n", fp);
+            fprintf(fp, "\t" "SvcStart: %ld\n", libStats->SvcStart);
+            fprintf(fp, "\t" "SvcStop: %ld\n", libStats->SvcStop);
             fprintf(fp, "\t" "GetSecurityByName: %ld\n", libStats->GetSecurityByName);
             fprintf(fp, "\t" "GetFileInfo: %ld\n", libStats->GetFileInfo);
             fprintf(fp, "\t" "GetFileInfoInternal: %ld\n", libStats->GetFileInfoInternal);
@@ -489,31 +473,26 @@ static void writeStats(
             fputs("\n", fp);
 
             fputs("[CSDriver Stats]\n", fp);
-            fprintf(fp, "\t" "PreCreateFilesystem: %ld\n", appStats->PreCreateFilesystem);
-            fprintf(fp, "\t" "OnSvcStart: %ld\n", appStats->OnSvcStart);
-            fprintf(fp, "\t" "OnSvcStop: %ld\n", appStats->OnSvcStop);
-            fprintf(fp, "\t" "DoGetSecurityByName: %ld\n", appStats->DoGetSecurityByName);
-            fprintf(fp, "\t" "DoGetFileInfo: %ld\n", appStats->DoGetFileInfo);
-            fprintf(fp, "\t" "DoGetSecurity: %ld\n", appStats->DoGetSecurity);
-            fprintf(fp, "\t" "DoCreate: %ld\n", appStats->DoCreate);
-            fprintf(fp, "\t" "DoOpen: %ld\n", appStats->DoOpen);
-            fprintf(fp, "\t" "DoCleanup: %ld\n", appStats->DoCleanup);
-            fprintf(fp, "\t" "DoClose: %ld\n", appStats->DoClose);
-            fprintf(fp, "\t" "DoRead: %ld\n", appStats->DoRead);
-            fprintf(fp, "\t" "DoWrite: %ld\n", appStats->DoWrite);
-            fprintf(fp, "\t" "DoReadDirectory: %ld\n", appStats->DoReadDirectory);
-            fprintf(fp, "\t" "DoFlush: %ld\n", appStats->DoFlush);
-            fprintf(fp, "\t" "DoOverwrite: %ld\n", appStats->DoOverwrite);
-            fprintf(fp, "\t" "DoRename: %ld\n", appStats->DoRename);
-            fprintf(fp, "\t" "DoSetBasicInfo: %ld\n", appStats->DoSetBasicInfo);
-            fprintf(fp, "\t" "DoSetDelete: %ld\n", appStats->DoSetDelete);
-            fprintf(fp, "\t" "DoSetFileSize: %ld\n", appStats->DoSetFileSize);
-            fprintf(fp, "\t" "DoSetSecurity: %ld\n", appStats->DoSetSecurity);
-
-            fprintf(fp, "\t" "_CallCreate: %ld\n", appStats->_CallCreate);
-            fprintf(fp, "\t" "_CallOpen: %ld\n", appStats->_CallOpen);
-            fprintf(fp, "\t" "_CallClose: %ld\n", appStats->_CallClose);
-            fprintf(fp, "\t" "_ForceClose: %ld\n", appStats->_ForceClose);
+            fprintf(fp, "\t" "RelayPreCreateFilesystem: %ld\n", appStats->RelayPreCreateFilesystem);
+            fprintf(fp, "\t" "RelayOnSvcStart: %ld\n", appStats->RelayOnSvcStart);
+            fprintf(fp, "\t" "RelayOnSvcStop: %ld\n", appStats->RelayOnSvcStop);
+            fprintf(fp, "\t" "RelayGetSecurityByName: %ld\n", appStats->RelayGetSecurityByName);
+            fprintf(fp, "\t" "RelayGetFileInfo: %ld\n", appStats->RelayGetFileInfo);
+            fprintf(fp, "\t" "RelayGetSecurity: %ld\n", appStats->RelayGetSecurity);
+            fprintf(fp, "\t" "RelayCreate: %ld\n", appStats->RelayCreate);
+            fprintf(fp, "\t" "RelayOpen: %ld\n", appStats->RelayOpen);
+            fprintf(fp, "\t" "RelayCleanup: %ld\n", appStats->RelayCleanup);
+            fprintf(fp, "\t" "RelayClose: %ld\n", appStats->RelayClose);
+            fprintf(fp, "\t" "RelayRead: %ld\n", appStats->RelayRead);
+            fprintf(fp, "\t" "RelayWrite: %ld\n", appStats->RelayWrite);
+            fprintf(fp, "\t" "RelayReadDirectory: %ld\n", appStats->RelayReadDirectory);
+            fprintf(fp, "\t" "RelayFlush: %ld\n", appStats->RelayFlush);
+            fprintf(fp, "\t" "RelayOverwrite: %ld\n", appStats->RelayOverwrite);
+            fprintf(fp, "\t" "RelayRename: %ld\n", appStats->RelayRename);
+            fprintf(fp, "\t" "RelaySetBasicInfo: %ld\n", appStats->RelaySetBasicInfo);
+            fprintf(fp, "\t" "RelaySetDelete: %ld\n", appStats->RelaySetDelete);
+            fprintf(fp, "\t" "RelaySetFileSize: %ld\n", appStats->RelaySetFileSize);
+            fprintf(fp, "\t" "RelaySetSecurity: %ld\n", appStats->RelaySetSecurity);
             fputs("\n", fp);
 
             fclose(fp);

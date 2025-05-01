@@ -168,15 +168,18 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Crypt.cpp" />
+    <ClCompile Include="DirInfo.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="FileUtils.cpp" />
     <ClCompile Include="Logger.cpp" />
+    <ClCompile Include="ObjectKey.cpp" />
     <ClCompile Include="StringUtils.cpp" />
     <ClCompile Include="TimeUtils.cpp" />
     <ClCompile Include="WinCseLib.cpp" />
     <ClCompile Include="WinFsp_c.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="DirInfo.hpp" />
     <ClInclude Include="ICSDevice.hpp" />
     <ClInclude Include="ILogger.hpp" />
     <ClInclude Include="internal_define_alloc.h" />
@@ -188,6 +191,7 @@
     <ClInclude Include="ObjectKey.hpp" />
     <ClInclude Include="Protect.hpp" />
     <ClInclude Include="WinCseLib.h" />
+    <ClInclude Include="WinCseLib_c.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

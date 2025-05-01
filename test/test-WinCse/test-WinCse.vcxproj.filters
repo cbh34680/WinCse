@@ -1,0 +1,52 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="ソース ファイル">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="ヘッダー ファイル">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="リソース ファイル">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="ソース ファイル\WinCseLib">
+      <UniqueIdentifier>{a68bae3d-cc54-4a1e-9366-b1c986387879}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ソース ファイル\WinCseLib-aws-s3">
+      <UniqueIdentifier>{86f25df5-04a0-4bb8-aa06-9e5a5871c645}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="main.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="String.cpp">
+      <Filter>ソース ファイル\WinCseLib</Filter>
+    </ClCompile>
+    <ClCompile Include="System.cpp">
+      <Filter>ソース ファイル\WinCseLib</Filter>
+    </ClCompile>
+    <ClCompile Include="ObjectKey.cpp">
+      <Filter>ソース ファイル\WinCseLib</Filter>
+    </ClCompile>
+    <ClCompile Include="Protect.cpp">
+      <Filter>ソース ファイル\WinCseLib</Filter>
+    </ClCompile>
+    <ClCompile Include="Find.cpp">
+      <Filter>ソース ファイル\WinCseLib-aws-s3</Filter>
+    </ClCompile>
+    <ClCompile Include="FEP.cpp">
+      <Filter>ソース ファイル\WinCseLib-aws-s3</Filter>
+    </ClCompile>
+    <ClCompile Include="Time.cpp">
+      <Filter>ソース ファイル\WinCseLib</Filter>
+    </ClCompile>
+    <ClCompile Include="Crypt.cpp">
+      <Filter>ソース ファイル\WinCseLib</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>

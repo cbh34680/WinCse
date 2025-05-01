@@ -1,6 +1,7 @@
 ﻿// dllmain.cpp : DLL アプリケーションのエントリ ポイントを定義します。
 
-#pragma comment(lib, "winfsp-x64.lib")
+//#pragma comment(lib, "winfsp-x64.lib")
+// winfsp-$(PlatformTarget).dll
 #pragma comment(lib, "aws-cpp-sdk-core.lib")
 #pragma comment(lib, "aws-cpp-sdk-s3.lib")
 #pragma comment(lib, "WinCseLib.lib")

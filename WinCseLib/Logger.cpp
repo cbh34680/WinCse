@@ -1,71 +1,12 @@
 #include "WinCseLib.h"
 #include "Logger.hpp"
-#include <filesystem>
 #include <iostream>
 
 #undef traceW
 #undef traceA
 
 
-namespace WCSE {
-
-//
-// スレッド・ローカル変数の初期化
-//
-thread_local std::wofstream Logger::mTLFile;
-thread_local bool Logger::mTLFileOK = true;
-thread_local UINT64 Logger::mTLFlushTime = 0;
-
-//
-// プログラム引数 "-T" で指定されたディレクトリをログ出力用に保存する
-//
-bool Logger::internalInit(const std::wstring& argTempDir,
-	const std::wstring& argTrcDir, const std::wstring& argDllType) noexcept
-{
-	namespace fs = std::filesystem;
-
-	APP_ASSERT(fs::exists(argTempDir) && fs::is_directory(argTempDir));
-
-	mTempDir = argTempDir;
-
-	if (!argTrcDir.empty())
-	{
-		// "-T" 引数で出力ディレクトリの指定がある
-
-		const auto trcDir{ fs::weakly_canonical(fs::path(argTrcDir)) };
-
-		if (fs::exists(trcDir) && fs::is_directory(trcDir))
-		{
-			// 指定されたディレクトリが利用できるとき (通常はここ)
-
-			mTraceLogDir = trcDir.wstring();
-		}
-		else
-		{
-			// 指定されたディレクトリが利用できないときは、代替としてシステムの
-			// アプリケーション用一時ディレクトリ (argTempDir) にログ用の
-			// ディレクトリを作成し、それを利用する
-
-			auto altTrcDir{ mTempDir + L'\\' + argDllType + L"\\log" };
-
-			if (MkdirIfNotExists(altTrcDir))
-			{
-				mTraceLogDir = altTrcDir;
-			}
-			else
-			{
-				// それも出来ないときは argTempDir をログ用に利用する
-
-				mTraceLogDir = argTempDir;
-			}
-		}
-
-		APP_ASSERT(!mTraceLogDir.empty());
-		mTraceLogEnabled = true;
-	}
-
-	return true;
-}
+namespace CSELIB {
 
 // デバッグ用ログ出力
 
@@ -82,8 +23,10 @@ void Logger::traceW_impl(int indent, PCWSTR fullPath, int line, PCWSTR func, PCW
 	LastErrorBackup _backup;
 
 #ifdef _RELEASE
-	if (!mTraceLogEnabled)
+	if (!mTraceLogDir)
+	{
 		return;
+	}
 #endif
 
 	APP_ASSERT(indent >= 0);
@@ -137,8 +80,10 @@ void Logger::traceA_impl(int indent, PCSTR fullPath, int line, PCSTR func, PCSTR
 	LastErrorBackup _backup;
 
 #ifdef _RELEASE
-	if (!mTraceLogEnabled)
+	if (!mTraceLogDir)
+	{
 		return;
+	}
 #endif
 
 	APP_ASSERT(indent >= 0);
@@ -193,20 +138,20 @@ void Logger::traceW_write(const SYSTEMTIME* st, PCWSTR buf) const noexcept
 	const auto pid = ::GetCurrentProcessId();
 	const auto tid = ::GetCurrentThreadId();
 
-	{
-		std::wostringstream ss;
+	std::wostringstream ss;
 
-		ss << L"| ";
-		ss << std::setw(3) << (tid % 1000);
-		ss << L' ' << buf;
+	ss << L"| ";
+	ss << std::setw(3) << (tid % 1000);
+	ss << L' ' << buf;
 
 #ifdef _DEBUG
-		::OutputDebugStringW(ss.str().c_str());
+	::OutputDebugStringW(ss.str().c_str());
 #endif
-	}
 
-	if (!mTraceLogEnabled)
+	if (!mTraceLogDir)
+	{
 		return;
+	}
 
 	//
 	// mLog.TLFile はスレッド・ローカルなので、実行されたスレッドごとに
@@ -216,14 +161,14 @@ void Logger::traceW_write(const SYSTEMTIME* st, PCWSTR buf) const noexcept
 	{
 		if (!mTLFile.is_open())
 		{
-			std::wostringstream ss;
+			ss.str(L"");
 
 #ifdef _DEBUG
-			ss << mTraceLogDir << L"\\trace-";
+			ss << mTraceLogDir->wstring() << L"\\trace-";
 			ss << tid % 1000 << L'-';
 
 #else
-			ss << mTraceLogDir << L"\\WinCse-trace-";
+			ss << *mTraceLogDir << L"\\WinCse-trace-";
 			ss << std::setw(4) << std::setfill(L'0') << st->wYear;
 			ss << std::setw(2) << std::setfill(L'0') << st->wMonth;
 			ss << std::setw(2) << std::setfill(L'0') << st->wDay;
@@ -231,13 +176,16 @@ void Logger::traceW_write(const SYSTEMTIME* st, PCWSTR buf) const noexcept
 #endif
 
 			ss << pid << L'-' << tid << L".log";
-			const std::wstring path = ss.str();
+			const auto path{ ss.str() };
 
 #ifdef _RELEASE
 			std::wcout << L"Open trace log file: " << path << std::endl;
 #endif
-			// これやらないと日本語が出力できない
+			// これがないと日本語が出力できない
+
 			mTLFile.imbue(std::locale("", LC_ALL));
+
+			// 追加書き込みでオープン
 
 			mTLFile.open(path, std::ios_base::app);
 
@@ -245,9 +193,9 @@ void Logger::traceW_write(const SYSTEMTIME* st, PCWSTR buf) const noexcept
 			{
 				// 開けなかったら以降は試みない
 
-				std::wcerr << L"errno: " << errno << std::endl;
-
+				std::wcerr << L"fault: open errno=" << errno << std::endl;
 				mTLFileOK = false;
+
 				return;
 			}
 
@@ -266,7 +214,7 @@ void Logger::traceW_write(const SYSTEMTIME* st, PCWSTR buf) const noexcept
 #else
 		const auto now{ GetCurrentUtcMillis() };
 
-		if (now - mTLFlushTime > (60ULL * 1 * 1000))
+		if (now - mTLFlushTime > TIMEMILLIS_1MINll)
 		{
 			// 1 分に一度程度は flush する
 
@@ -274,52 +222,104 @@ void Logger::traceW_write(const SYSTEMTIME* st, PCWSTR buf) const noexcept
 
 			mTLFlushTime = now;
 		}
+
 #endif
 	}
 }
 
-// single instance
-static Logger* gLogger;
+// スレッド・ローカル変数の初期化
 
-bool CreateLogger(PCWSTR argTempDir, PCWSTR argTrcDir, PCWSTR argDllType)
+thread_local std::wofstream		Logger::mTLFile;
+thread_local bool				Logger::mTLFileOK = true;
+thread_local UTC_MILLIS_T		Logger::mTLFlushTime = 0;
+
+Logger*							Logger::mInstance = nullptr;
+
+//
+// プログラム引数 "-T" で指定されたディレクトリをログ出力用に保存する
+//
+
+ILogger* CreateLogger(PCWSTR argTraceLogDir)
 {
-	APP_ASSERT(argTempDir);
-	APP_ASSERT(argDllType);
+	namespace fs = std::filesystem;
 
-	if (gLogger)
+	if (!Logger::mInstance)
 	{
-		return false;
+		fs::path dir;
+
+		if (argTraceLogDir)
+		{
+			// "-T" 引数で出力ディレクトリの指定がある
+
+			std::error_code ec;
+			const auto ok = fs::is_directory(argTraceLogDir, ec);
+
+			if (ok)
+			{
+				// 指定されたディレクトリが利用できるとき (通常はここ)
+
+				dir = argTraceLogDir;
+
+				std::wcout << L"use trace-log-dir=" << dir << std::endl;
+			}
+			else
+			{
+				// 指定されたディレクトリが利用できないときは、代替としてシステムのテンポラリ・ディレクトリに
+				// ログ出力用ディレクトリを作成し、それを利用する
+
+				wchar_t tmpdir[MAX_PATH];
+				const auto len = ::GetTempPathW(MAX_PATH, tmpdir);
+
+				if (len)
+				{
+					if (tmpdir[len - 1] == L'\\')
+					{
+						tmpdir[len - 1] = L'\0';
+					}
+
+					wcscat_s(tmpdir, L"\\WinCse\\log");
+
+					if (mkdirIfNotExists(tmpdir))
+					{
+						dir = tmpdir;
+
+						std::wcout << L"use trace-log-dir=" << dir << std::endl;
+					}
+					else
+					{
+						std::wcerr << L"fault: mkdirIfNotExists tmpdir=" << tmpdir << std::endl;
+					}
+				}
+				else
+				{
+					std::wcerr << L"fault: GetTempPath" << std::endl;
+				}
+			}
+		}
+		else
+		{
+			std::wcout << L"no logger" << std::endl;
+		}
+
+		Logger::mInstance = new Logger{ dir.empty() ? std::nullopt : std::optional{ dir } };
 	}
 
-	const std::wstring tmpDir{ argTempDir };
-	const std::wstring trcDir{ argTrcDir ? argTrcDir : L"" };
-	const std::wstring dllType{ argDllType };
-
-	Logger* logger = new Logger();
-	if (!logger->internalInit(tmpDir, trcDir, dllType))
-	{
-		delete logger;
-		return false;
-	}
-
-	gLogger = logger;
-
-	return true;
+	return Logger::mInstance;
 }
 
 ILogger* GetLogger()
 {
-	APP_ASSERT(gLogger);
+	APP_ASSERT(Logger::mInstance);
 
-	return gLogger;
+	return Logger::mInstance;
 }
 
 void DeleteLogger()
 {
-	delete gLogger;
-	gLogger = nullptr;
+	delete Logger::mInstance;
+	Logger::mInstance = nullptr;
 }
 
-} // namespace WCSE
+} // namespace CSELIB
 
 // EOF

@@ -1,31 +1,30 @@
 #include "CacheListBuckets.hpp"
 
-using namespace WCSE;
+using namespace CSELIB;
+using namespace CSEDAS3;
 
 
-static std::mutex gGuard;
-#define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ gGuard }
+#define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ mGuard }
 
-
-std::chrono::system_clock::time_point CacheListBuckets::getLastSetTime(CALLER_ARG0) const noexcept
+std::chrono::system_clock::time_point CacheListBuckets::clbGetLastSetTime(CALLER_ARG0) const noexcept
 {
     THREAD_SAFE();
 
-    const auto copy{ mLastSetTime };
+    const auto lastSetTime{ mLastSetTime };
 
-    return copy;
+    return lastSetTime;
 }
 
-bool CacheListBuckets::empty(CALLER_ARG0) const noexcept
+bool CacheListBuckets::clbEmpty(CALLER_ARG0) const noexcept
 {
     THREAD_SAFE();
 
-    const auto copy{ mList.empty() };
+    const auto listIsEmpty = mList.empty();
 
-    return copy;
+    return listIsEmpty;
 }
 
-void CacheListBuckets::set(CALLER_ARG const DirInfoListType& argDirInfoList) noexcept
+void CacheListBuckets::clbSet(CALLER_ARG const DirInfoPtrList& argDirInfoList) noexcept
 {
     THREAD_SAFE();
     NEW_LOG_BLOCK();
@@ -39,7 +38,7 @@ void CacheListBuckets::set(CALLER_ARG const DirInfoListType& argDirInfoList) noe
     mList = argDirInfoList;
 }
 
-void CacheListBuckets::get(CALLER_ARG WCSE::DirInfoListType* pDirInfoList) const noexcept
+void CacheListBuckets::clbGet(CALLER_ARG CSELIB::DirInfoPtrList* pDirInfoList) const noexcept
 {
     THREAD_SAFE();
     APP_ASSERT(pDirInfoList);
@@ -51,7 +50,7 @@ void CacheListBuckets::get(CALLER_ARG WCSE::DirInfoListType* pDirInfoList) const
     *pDirInfoList = mList;
 }
 
-void CacheListBuckets::clear(CALLER_ARG0) noexcept
+void CacheListBuckets::clbClear(CALLER_ARG0) noexcept
 {
     THREAD_SAFE();
     NEW_LOG_BLOCK();
@@ -72,14 +71,17 @@ void CacheListBuckets::clear(CALLER_ARG0) noexcept
     mCountClear++;
 }
 
-bool CacheListBuckets::find(CALLER_ARG const std::wstring& argBucketName, DirInfoType* pDirInfo) const noexcept
+bool CacheListBuckets::clbFind(CALLER_ARG const std::wstring& argBucketName, DirInfoPtr* pDirInfo) const noexcept
 {
     THREAD_SAFE();
     APP_ASSERT(pDirInfo);
     APP_ASSERT(!argBucketName.empty());
+    APP_ASSERT(argBucketName.back() != L'/');
 
     const auto it = std::find_if(mList.cbegin(), mList.cend(), [&argBucketName](const auto& dirInfo)
     {
+        // バケット名なので "/" 終端ではない名前と比較
+
         return argBucketName == dirInfo->FileNameBuf;
     });
 
@@ -100,8 +102,7 @@ bool CacheListBuckets::find(CALLER_ARG const std::wstring& argBucketName, DirInf
     return true;
 }
 
-bool CacheListBuckets::getBucketRegion(CALLER_ARG
-    const std::wstring& argBucketName, std::wstring* pBucketRegion) const noexcept
+bool CacheListBuckets::clbGetBucketRegion(CALLER_ARG const std::wstring& argBucketName, std::wstring* pBucketRegion) const noexcept
 {
     THREAD_SAFE();
     APP_ASSERT(!argBucketName.empty());
@@ -120,7 +121,7 @@ bool CacheListBuckets::getBucketRegion(CALLER_ARG
     return true;
 }
 
-void CacheListBuckets::addBucketRegion(CALLER_ARG
+void CacheListBuckets::clbAddBucketRegion(CALLER_ARG
     const std::wstring& argBucketName, const std::wstring& argBucketRegion) noexcept
 {
     THREAD_SAFE();
@@ -141,32 +142,32 @@ void CacheListBuckets::addBucketRegion(CALLER_ARG
 #define INDENT4         L"\t\t\t\t"
 #define INDENT5         L"\t\t\t\t\t"
 
-void CacheListBuckets::report(CALLER_ARG FILE* fp) const noexcept
+void CacheListBuckets::clbReport(CALLER_ARG FILE* fp) const noexcept
 {
     THREAD_SAFE();
 
-    fwprintf(fp, L"LastGetCallChain=%s" LN, mLastGetCallChain.c_str());
-    fwprintf(fp, L"LastSetCallChain=%s" LN, mLastSetCallChain.c_str());
-    fwprintf(fp, L"LastClearCallChain=%s" LN, mLastClearCallChain.c_str());
+    fwprintf(fp, L"LastGetCallChain=%s"     LN, mLastGetCallChain.c_str());
+    fwprintf(fp, L"LastSetCallChain=%s"     LN, mLastSetCallChain.c_str());
+    fwprintf(fp, L"LastClearCallChain=%s"   LN, mLastClearCallChain.c_str());
 
-    fwprintf(fp, L"LastGetTime=%s" LN, TimePointToLocalTimeStringW(mLastGetTime).c_str());
-    fwprintf(fp, L"LastSetTime=%s" LN, TimePointToLocalTimeStringW(mLastSetTime).c_str());
-    fwprintf(fp, L"LastClearTime=%s" LN, TimePointToLocalTimeStringW(mLastClearTime).c_str());
+    fwprintf(fp, L"LastGetTime=%s"          LN, TimePointToLocalTimeStringW(mLastGetTime).c_str());
+    fwprintf(fp, L"LastSetTime=%s"          LN, TimePointToLocalTimeStringW(mLastSetTime).c_str());
+    fwprintf(fp, L"LastClearTime=%s"        LN, TimePointToLocalTimeStringW(mLastClearTime).c_str());
 
-    fwprintf(fp, L"CountGet=%d" LN, mCountGet);
-    fwprintf(fp, L"CountSet=%d" LN, mCountSet);
-    fwprintf(fp, L"CountClear=%d" LN, mCountClear);
+    fwprintf(fp, L"CountGet=%d"             LN, mCountGet);
+    fwprintf(fp, L"CountSet=%d"             LN, mCountSet);
+    fwprintf(fp, L"CountClear=%d"           LN, mCountClear);
 
-    fwprintf(fp, L"[BucketNames]" LN);
-    fwprintf(fp, INDENT1 L"List.size=%zu" LN, mList.size());
+    fwprintf(fp, L"[BucketNames]"           LN);
+    fwprintf(fp, INDENT1 L"List.size=%zu"   LN, mList.size());
 
     for (const auto& it: mList)
     {
-        fwprintf(fp, INDENT2 L"%s" LN, it->FileNameBuf);
+        fwprintf(fp, INDENT2 L"%s"                      LN, it->FileName.c_str());
     }
 
-    fwprintf(fp, INDENT1 L"[Region Map]" LN);
-    fwprintf(fp, INDENT2 L"BucketRegions.size=%zu" LN, mBucketRegions.size());
+    fwprintf(fp, INDENT1 L"[Region Map]"                LN);
+    fwprintf(fp, INDENT2 L"BucketRegions.size=%zu"      LN, mBucketRegions.size());
 
     for (const auto& it: mBucketRegions)
     {

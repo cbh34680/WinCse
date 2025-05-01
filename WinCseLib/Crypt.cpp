@@ -6,7 +6,7 @@
 // éÂÇ… ChatGPT Ç…ÇÊÇËê∂ê¨
 //
 
-namespace WCSE {
+namespace CSELIB {
 
 // GUID ÇÃê∂ê¨
 std::wstring CreateGuidW()
@@ -278,6 +278,6 @@ exit:
     return ntstatus;
 }
 
-} // namespace WCSE
+} // namespace CSELIB
 
 // EOF

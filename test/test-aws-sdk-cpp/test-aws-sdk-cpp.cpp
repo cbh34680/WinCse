@@ -17,15 +17,18 @@
 #include <aws/core/auth/AWSCredentialsProvider.h>
 #include <aws/s3/S3Client.h>
 
-#include <aws/s3/model/BucketLocationConstraint.h>
-#include <aws/s3/model/Bucket.h>
-#include <aws/s3/model/GetBucketLocationRequest.h>
-#include <aws/s3/model/HeadBucketRequest.h>
+//#include <aws/s3/model/ListBucketsRequest.h>
 #include <aws/s3/model/ListObjectsV2Request.h>
+#include <aws/s3/model/GetObjectRequest.h>
 
 #undef USE_IMPORT_EXPORT
 
-int test1()
+#include <functional>
+#include <list>
+#include <vector>
+#include <map>
+
+void FEP(const std::function<void(Aws::S3::S3Client*, const char*)>& callback)
 {
     Aws::SDKOptions options;
     Aws::InitAPI(options);
@@ -36,17 +39,17 @@ int test1()
     char *bucket;
     size_t len;
 
-    _dupenv_s( &region, &len, "WINCSE_AWS_DEFAULT_REGION");
-    _dupenv_s( &key_id, &len, "WINCSE_AWS_ACCESS_KEY_ID");
-    _dupenv_s( &secret, &len, "WINCSE_AWS_SECRET_ACCESS_KEY");
-    _dupenv_s( &bucket, &len, "WINCSE_BUCKET_NAME");
+    _dupenv_s( &region, &len, "WINCSE_TEST_AWS_DEFAULT_REGION");
+    _dupenv_s( &key_id, &len, "WINCSE_TEST_AWS_ACCESS_KEY_ID");
+    _dupenv_s( &secret, &len, "WINCSE_TEST_AWS_SECRET_ACCESS_KEY");
+    _dupenv_s( &bucket, &len, "WINCSE_TEST_BUCKET_NAME");
 
     assert(region && key_id && secret && bucket);
 
-    std::cout << region << std::endl;
-    std::cout << key_id << std::endl;
-    std::cout << secret << std::endl;
-    std::cout << bucket << std::endl;
+    //std::cout << region << std::endl;
+    //std::cout << key_id << std::endl;
+    //std::cout << secret << std::endl;
+    //std::cout << bucket << std::endl;
 
     Aws::Client::ClientConfiguration config;
     config.region = region;
@@ -57,65 +60,110 @@ int test1()
     Aws::Auth::AWSCredentials credentials{ access_key, secret_key };
     auto client = new Aws::S3::S3Client(credentials, nullptr, config);
 
-    auto test = client->ListBuckets();
-    if (test.IsSuccess())
-    {
-        Aws::S3::Model::ListObjectsV2Request request;
+    callback(client, bucket);
 
-        request.SetBucket(bucket);
-        //request.SetPrefix("新しいフォルダー/");
-        request.SetPrefix("テスト/");
-        request.SetDelimiter("/");
-
-        Aws::String continuationToken;
-
-        do
-        {
-            if (!continuationToken.empty())
-            {
-                request.SetContinuationToken(continuationToken);
-            }
-
-            auto outcome = client->ListObjectsV2(request);
-            if (!outcome.IsSuccess())
-            {
-                std::cerr << "Error: listObjects: " << outcome.GetError().GetMessage() << std::endl;
-                break;
-            }
-
-            auto& result = outcome.GetResult();
-
-            for (const auto& it : result.GetCommonPrefixes())
-            {
-                const std::string fullPath{ it.GetPrefix().c_str() };
-
-                std::cout << "1 [" << fullPath << "]" << std::endl;
-            }
-
-            for (const auto& it: result.GetContents())
-            {
-                std::cout << "2 [" << it.GetKey() << "]" << std::endl;
-            }
-
-            continuationToken = outcome.GetResult().GetNextContinuationToken();
-        }
-        while(!continuationToken.empty());
-    }
-    else
-    {
-        std::cerr << "Error: listObjects: " << test.GetError().GetMessage() << std::endl;
-    }
+    delete client;
 
     free(region);
     free(key_id);
     free(secret);
+    free(bucket);
+}
 
-    return 0;
+void listBuckets(Aws::S3::S3Client* client, const char* envBucket)
+{
+    auto outcome = client->ListBuckets();
+    if (!outcome.IsSuccess())
+    {
+        std::cerr << "Error: ListBuckets: " << outcome.GetError().GetMessage() << std::endl;
+        return;
+    }
+
+    const auto& result = outcome.GetResult();
+    for (const auto& bucket: result.GetBuckets())
+    {
+        std::cout << bucket.GetName() << std::endl;
+        std::cout << bucket.GetCreationDate().ToGmtString("%Y-%m-%d %H:%M:%S") << std::endl;
+    }
+}
+
+void listObjects(Aws::S3::S3Client* client, const char* envBucket)
+{
+    Aws::S3::Model::ListObjectsV2Request request;
+
+    request.SetBucket(envBucket);
+    request.SetPrefix("test/");
+    request.SetDelimiter("/");
+
+    Aws::String continuationToken;
+
+    do
+    {
+        if (!continuationToken.empty())
+        {
+            request.SetContinuationToken(continuationToken);
+        }
+
+        auto outcome = client->ListObjectsV2(request);
+        if (!outcome.IsSuccess())
+        {
+            std::cerr << "Error: listObjects: " << outcome.GetError().GetMessage() << std::endl;
+            break;
+        }
+
+        auto& result = outcome.GetResult();
+
+        for (const auto& it : result.GetCommonPrefixes())
+        {
+            const std::string fullPath{ it.GetPrefix().c_str() };
+
+            std::cout << "1 [" << fullPath << "]" << std::endl;
+        }
+
+        for (const auto& it: result.GetContents())
+        {
+            std::cout << "2 [" << it.GetKey() << "]" << std::endl;
+        }
+
+        continuationToken = outcome.GetResult().GetNextContinuationToken();
+    }
+    while(!continuationToken.empty());
+}
+
+void getObject(Aws::S3::S3Client* client, const char* envBucket)
+{
+    Aws::S3::Model::GetObjectRequest request;
+
+    request.SetBucket(envBucket);
+    request.SetKey("55b.txt");
+    request.SetRange("bytes=0-100");
+
+    const auto outcome = client->GetObject(request);
+
+    if (!outcome.IsSuccess())
+    {
+        std::cerr << "Error: GetObject: " << outcome.GetError().GetMessage() << std::endl;
+        return;
+    }
+
+    const auto& result = outcome.GetResult();
+
+    char buf[512] = {};
+
+    const auto pbuf = result.GetBody().rdbuf();
+    const auto contentSize = result.GetContentLength();  // ファイルサイズ
+
+    const auto rn = pbuf->sgetn(buf, sizeof(buf));
+
+
+    std::cout << buf << std::endl;
 }
 
 int main()
 {
-    test1();
+    //FEP(listBuckets);
+    //FEP(listObjects);
+    FEP(getObject);
 
     return 0;
 }

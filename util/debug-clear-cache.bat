@@ -2,5 +2,5 @@
 
 @cd "%~dp0"
 
-start x64\Debug\util-ClearCacheRequest.exe
+start x64\Debug\util-awss3-ClearCache.exe
 

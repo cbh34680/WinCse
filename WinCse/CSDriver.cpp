@@ -1,91 +1,103 @@
 #include "CSDriver.hpp"
-#include <filesystem>
+
+using namespace CSELIB;
+using namespace CSEDRV;
 
 
-using namespace WCSE;
-
-CSDriver::CSDriver(WINCSE_DRIVER_STATS* argStats,
-	const std::wstring&, const std::wstring& argIniSection,
-	NamedWorker argWorkers[], ICSDevice* argCSDevice) noexcept
-	:
-	mStats(argStats),
-	mIniSection(argIniSection),
-	mCSDevice(argCSDevice),
-	mResourceSweeper(this)
+CSELIB::ICSDriver* NewCSDriver(PCWSTR argCSDeviceType, PCWSTR argIniSection, CSELIB::NamedWorker argWorkers[], CSELIB::ICSDevice* argCSDevice, WINCSE_DRIVER_STATS* argStats)
 {
-	NEW_LOG_BLOCK();
+    std::map<std::wstring, IWorker*> workers;
 
-	APP_ASSERT(argCSDevice);
+    if (NamedWorkersToMap(argWorkers, &workers) <= 0)
+    {
+        return nullptr;
+    }
 
-	NamedWorkersToMap(argWorkers, &mWorkers);
+    for (const auto key: { L"delayed", L"timer", })
+    {
+        if (workers.find(key) == workers.cend())
+        {
+            return nullptr;
+        }
+    }
+
+	return new CSDriver{ argCSDeviceType, argIniSection, workers, argCSDevice, argStats };
 }
 
-CSDriver::~CSDriver()
+DirInfoPtr CSDriver::getDirInfoByWinPath(CALLER_ARG const std::filesystem::path& argWinPath)
 {
-	NEW_LOG_BLOCK();
-
-	traceW(L"all done.");
-}
-
-bool CSDriver::shouldIgnoreFileName(const std::wstring& arg) const noexcept
-{
-	// desktop.ini などリクエストが増え過ぎるものは無視する
-
-	if (mIgnoreFileNamePatterns)
+	if (argWinPath == L"\\")
 	{
-		return std::regex_search(arg, *mIgnoreFileNamePatterns);
+		// "\" へのアクセスは参照用ディレクトリの情報を提供
+
+		FSP_FSCTL_FILE_INFO fileInfo;
+
+		const auto ntstatus = GetFileInfoInternal(mRuntimeEnv->DirSecurityRef.handle(), &fileInfo);
+		if (!NT_SUCCESS(ntstatus))
+		{
+			return nullptr;
+		}
+
+		return allocBasicDirInfo(L"/", FileTypeEnum::RootDirectory, fileInfo);
+	}
+	else
+	{
+		const auto optObjKey{ ObjectKey::fromWinPath(argWinPath) };
+		if (!optObjKey)
+		{
+			return nullptr;
+		}
+
+		const auto& objKey{ *optObjKey };
+
+		if (objKey.isBucket())
+		{
+			// "\bucket" のパターン
+
+			DirInfoPtr dirInfo;
+
+			if (mDevice->headBucket(CONT_CALLER objKey.bucket(), &dirInfo))
+			{
+				return dirInfo;
+			}
+		}
+		else if (objKey.isObject())
+		{
+			// "\bucket\***" のパターン
+
+			// 同じ名前のファイルとディレクトリが存在したときに、ディレクトリを優先するため
+			// 引数の名前をディレクトリに変換しストレージを調べ、存在しないときはファイルとして調べる
+
+			DirInfoPtr dirInfo;
+
+			if (mDevice->headObject(CONT_CALLER objKey.toDir(), &dirInfo))
+			{
+				// "\bucket\dir" のパターン
+				// 
+				// ディレクトリを採用
+
+				return dirInfo;
+			}
+
+			if (mDevice->headObject(CONT_CALLER objKey, &dirInfo))
+			{
+				// "\bucket\dir\file.txt" のパターン
+				// 
+				// ファイルを採用
+
+				return dirInfo;
+			}
+		}
+		else
+		{
+			APP_ASSERT(0);
+		}
 	}
 
-	// 正規表現が設定されていない
-	return false;
-}
-
-//
-// エクスプローラーを開いたまま切断すると WinFsp の Close が実行されない (為だと思う)
-// ので、DoOpen が呼ばれて DoClose が呼ばれていないものは、アプリケーション終了時に
-// 強制的に DoClose を呼び出す
-// 
-// 放置しても問題はないが、デバッグ時にメモリリークとして報告されてしまい
-// 本来の意味でのメモリリークと混在してしまうため
-//
-CSDriver::ResourceSweeper::~ResourceSweeper()
-{
 	NEW_LOG_BLOCK();
+	traceW(L"not found: argWinPath=%s", argWinPath.c_str());
 
-	// DoClose で mOpenAddrs.erase() をするのでコピーが必要
-
-	auto copy{ mOpenAddrs };
-
-	for (auto& FileContext: copy)
-	{
-		::InterlockedIncrement(&(mThat->mStats->_ForceClose));
-
-		traceW(L"force close address=%p", FileContext);
-
-		mThat->DoClose(FileContext);
-	}
-}
-
-//
-// ここから下のメソッドは THREAD_SAFE マクロによる修飾が必要
-//
-static std::mutex gGuard;
-#define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ gGuard }
-
-void CSDriver::ResourceSweeper::add(PTFS_FILE_CONTEXT* FileContext) noexcept
-{
-	THREAD_SAFE();
-	APP_ASSERT(mOpenAddrs.find(FileContext) == mOpenAddrs.cend());
-
-	mOpenAddrs.insert(FileContext);
-}
-
-void CSDriver::ResourceSweeper::remove(PTFS_FILE_CONTEXT* FileContext) noexcept
-{
-	THREAD_SAFE();
-	APP_ASSERT(mOpenAddrs.find(FileContext) != mOpenAddrs.cend());
-
-	mOpenAddrs.erase(FileContext);
+	return nullptr;
 }
 
 // EOF

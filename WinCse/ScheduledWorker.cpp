@@ -1,8 +1,8 @@
 #include "ScheduledWorker.hpp"
-#include <filesystem>
 #include <numeric>
 
-using namespace WCSE;
+using namespace CSELIB;
+using namespace CSEDRV;
 
 
 #define ENABLE_WORKER		(1)
@@ -13,7 +13,7 @@ static const int WORKER_MAX = 1;
 static const int WORKER_MAX = 0;
 #endif
 
-ScheduledWorker::ScheduledWorker(const std::wstring&, const std::wstring& argIniSection)
+ScheduledWorker::ScheduledWorker(const std::wstring& argIniSection)
 	:
 	mIniSection(argIniSection)
 {
@@ -56,7 +56,7 @@ NTSTATUS ScheduledWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
 
 	for (int i=0; i<WORKER_MAX; i++)
 	{
-		auto& thr = mThreads.emplace_back(&ScheduledWorker::listenEvent, this, i);
+		auto& thr = mThreads.emplace_back(&ScheduledWorker::listen, this, i);
 
 		const auto priority = this->getThreadPriority();
 
@@ -114,7 +114,7 @@ VOID ScheduledWorker::OnSvcStop()
 	mTasks.clear();
 }
 
-void ScheduledWorker::listenEvent(const int argThreadIndex) noexcept
+void ScheduledWorker::listen(int argThreadIndex) noexcept
 {
 	NEW_LOG_BLOCK();
 
@@ -152,7 +152,7 @@ void ScheduledWorker::listenEvent(const int argThreadIndex) noexcept
 					// SetEvent の実行、又はシステムエラー
 
 					const auto lerr = ::GetLastError();
-					traceW(L"%s(%d): wait for signal: error reason=%ld error=%ld, break",
+					traceW(L"%s(%d): wait for signal: error reason=%lu error=%lu, break",
 						klassNameCstr, argThreadIndex, reason, lerr);
 
 					breakLoop = true;
@@ -177,7 +177,7 @@ void ScheduledWorker::listenEvent(const int argThreadIndex) noexcept
 				try
 				{
 					//traceW(L"%s(%d): run idle task ...", klassNameCstr, argThreadIndex);
-					task->run(std::wstring(task->mCaller) + L"->" + __FUNCTIONW__);
+					task->run(argThreadIndex);
 					//traceW(L"%s(%d): run idle task done", klassNameCstr, argThreadIndex);
 
 					// 処理するごとに他のスレッドに回す
@@ -201,17 +201,16 @@ void ScheduledWorker::listenEvent(const int argThreadIndex) noexcept
 //
 // ここから下のメソッドは THREAD_SAFE マクロによる修飾が必要
 //
-static std::mutex gGuard;
-#define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ gGuard }
 
-bool ScheduledWorker::addTypedTask(CALLER_ARG WCSE::IScheduledTask* argTask)
+#define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ mGuard }
+
+bool ScheduledWorker::addTypedTask(CSELIB::IScheduledTask* argTask)
 {
 	THREAD_SAFE();
 	NEW_LOG_BLOCK();
 	APP_ASSERT(argTask);
 
 #if ENABLE_WORKER
-	argTask->mCaller = _wcsdup(CALL_CHAIN().c_str());
 	mTasks.emplace_back(argTask);
 
 	return true;
@@ -219,7 +218,7 @@ bool ScheduledWorker::addTypedTask(CALLER_ARG WCSE::IScheduledTask* argTask)
 #else
 	// ワーカー処理が無効な場合は、タスクのリクエストを無視
 
-	argTask->cancelled(CONT_CALLER0);
+	argTask->cancelled();
 	delete argTask;
 
 	return false;

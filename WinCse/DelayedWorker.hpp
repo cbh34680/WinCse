@@ -1,31 +1,37 @@
 #pragma once
 
-#include "WinCseLib.h"
+#include "CSDriverCommon.h"
 #include <queue>
 
-class DelayedWorker : public WCSE::ITaskTypedWorker<WCSE::IOnDemandTask>
+namespace CSEDRV
+{
+
+class DelayedWorker final : public CSELIB::ITaskTypedWorker<CSELIB::IOnDemandTask>
 {
 private:
-	const std::wstring mIniSection;
+	const std::wstring									mIniSection;
+	std::list<std::thread>								mThreads;
+	int													mTaskSkipCount = 0;
+	std::atomic<bool>									mEndWorkerFlag = false;
+	std::deque<std::unique_ptr<CSELIB::IOnDemandTask>>	mTaskQueue;
+	CSELIB::EventHandle									mEvent;
 
-	std::list<std::thread> mThreads;
-	int mTaskSkipCount;
-	std::deque<std::unique_ptr<WCSE::IOnDemandTask>> mTaskQueue;
-	std::atomic<bool> mEndWorkerFlag = false;
-	WCSE::EventHandle mEvent;
+	mutable std::mutex									mGuard;
 
 protected:
-	void listenEvent(const int argThreadIndex) noexcept;
-	std::unique_ptr<WCSE::IOnDemandTask> dequeueTask() noexcept;
+	void listen(int argThreadIndex) noexcept;
+	std::unique_ptr<CSELIB::IOnDemandTask> dequeueTask() noexcept;
 
 public:
-	DelayedWorker(const std::wstring& argTempDir, const std::wstring& argIniSection);
+	DelayedWorker(const std::wstring& argIniSection);
 	~DelayedWorker();
 
 	NTSTATUS OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
 	VOID OnSvcStop() override;
 
-	bool addTypedTask(CALLER_ARG WCSE::IOnDemandTask* argTask) override;
+	bool addTypedTask(CSELIB::IOnDemandTask* argTask) override;
 };
+
+}	// namespace CSELIB
 
 // EOF

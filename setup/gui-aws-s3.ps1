@@ -636,6 +636,11 @@ region=${region}
 ; default: 0 (Not strict)
 #strict_file_timestamp=0
 
+; The part size during multipart transfer.
+; valid range: 1 (1 MiB) to 1024 (1 GiB)
+;
+#transfer_part_size_mib=4
+
 ; Files matching the following regex patterns will be ignored.
 ; default: Empty (Don't ignore)
 re_ignore_patterns=\b(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif)|\.DS_Store)$

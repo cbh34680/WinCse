@@ -1,9 +1,11 @@
 #pragma once
 
-#include "WinCseLib.h"
 #include "ScheduledWorker.hpp"
 
-class TimerWorker : public ScheduledWorker
+namespace CSEDRV
+{
+
+class TimerWorker final : public ScheduledWorker
 {
 protected:
 	int getThreadPriority() const noexcept override
@@ -13,11 +15,13 @@ protected:
 
 	DWORD getTimePeriodMillis() const noexcept override
 	{
-		return WCSE::TIMEMILLIS_1MINu;
+		return CSELIB::TIMEMILLIS_1MINu;
 	}
 
 public:
 	using ScheduledWorker::ScheduledWorker;
 };
+
+}	// namespace CSELIB
 
 // EOF

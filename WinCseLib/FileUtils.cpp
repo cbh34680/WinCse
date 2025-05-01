@@ -1,16 +1,15 @@
 #include "WinCseLib.h"
 #include <fstream>
-#include <filesystem>
 #include <sddl.h>
 
 
-namespace WCSE {
+namespace CSELIB {
 
-BOOL DeleteFilePassively(PCWSTR argPath)
+BOOL DeleteFilePassively(const std::filesystem::path& argPath)
 {
 	// 開いているファイル・ハンドルがない状態の時に削除する
 
-	HANDLE handle = ::CreateFile(argPath, 0, 0, NULL, OPEN_EXISTING, FILE_FLAG_DELETE_ON_CLOSE, NULL);
+	HANDLE handle = ::CreateFileW(argPath.c_str(), 0, 0, NULL, OPEN_EXISTING, FILE_FLAG_DELETE_ON_CLOSE, NULL);
 	if (handle == INVALID_HANDLE_VALUE)
 	{
 		return FALSE;
@@ -21,61 +20,26 @@ BOOL DeleteFilePassively(PCWSTR argPath)
 	return TRUE;
 }
 
-std::wstring GetCacheFilePath(const std::wstring& argDir, const std::wstring& argName)
+bool GetFileNameFromHandle(HANDLE hFile, std::filesystem::path* pPath)
 {
-	std::wstring nameSha256;
+	WCHAR filePath[MAX_PATH];
 
-	const auto ntstatus = ComputeSHA256W(argName, &nameSha256);
-	if (!NT_SUCCESS(ntstatus))
+	const auto result = ::GetFinalPathNameByHandleW(hFile, filePath, MAX_PATH, FILE_NAME_NORMALIZED);
+	if (result == 0)
 	{
-		throw FatalError(__FUNCTION__, ntstatus);
+		return false;
 	}
 
-	// 先頭の 2Byte はディレクトリ名
+	*pPath = filePath;
 
-	std::filesystem::path filePath{ argDir };
-	filePath.append(nameSha256.substr(0, 2));
-
-	std::error_code ec;
-	std::filesystem::create_directory(filePath, ec);
-
-	if (ec)
-	{
-		throw FatalError(__FUNCTION__);
-	}
-
-	filePath.append(nameSha256.substr(2));
-
-	return filePath.wstring();
+	return true;
 }
 
-NTSTATUS PathToFileInfo(const std::wstring& path, FSP_FSCTL_FILE_INFO* pFileInfo)
+bool mkdirIfNotExists(const std::filesystem::path& argDir)
 {
-	FileHandle hFile = ::CreateFileW
-	(
-		path.c_str(),
-		FILE_READ_ATTRIBUTES,
-		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-		NULL,
-		OPEN_EXISTING,
-		FILE_FLAG_BACKUP_SEMANTICS,
-		NULL
-	);
-
-	if(hFile.invalid())
+	if (std::filesystem::exists(argDir))
 	{
-		const auto lerr = ::GetLastError();
-		return FspNtStatusFromWin32(lerr);
-	}
-
-	return GetFileInfoInternal(hFile.handle(), pFileInfo);
-}
-
-bool MkdirIfNotExists(const std::wstring& arg)
-{
-	if (std::filesystem::exists(arg))
-	{
-		if (!std::filesystem::is_directory(arg))
+		if (!std::filesystem::is_directory(argDir))
 		{
 			return false;
 		}
@@ -83,7 +47,7 @@ bool MkdirIfNotExists(const std::wstring& arg)
 	else
 	{
 		std::error_code ec;
-		if (!std::filesystem::create_directories(arg, ec))
+		if (!std::filesystem::create_directories(argDir, ec))
 		{
 			return false;
 		}
@@ -92,7 +56,7 @@ bool MkdirIfNotExists(const std::wstring& arg)
 	// 書き込みテスト
 
 	WCHAR tmpfile[MAX_PATH];
-	if (!::GetTempFileName(arg.c_str(), L"tst", 0, tmpfile))
+	if (!::GetTempFileNameW(argDir.c_str(), L"tst", 0, tmpfile))
 	{
 		return false;
 	}
@@ -110,14 +74,14 @@ bool MkdirIfNotExists(const std::wstring& arg)
 	return true;
 }
 
-bool forEachFiles(const std::wstring& argDir, const std::function<void(const WIN32_FIND_DATA& wfd, const std::wstring& fullPath)>& callback)
+bool forEachFiles(const std::filesystem::path& argDir, const std::function<void(const WIN32_FIND_DATA&, const std::filesystem::path&)>& callback)
 {
-	const auto dir{ std::filesystem::absolute(argDir) };
+	const auto dir{ argDir / L"*" };
 
 	WIN32_FIND_DATA wfd;
-	HANDLE Handle = ::FindFirstFileW((dir.wstring() + L"\\*").c_str(), &wfd);
+	HANDLE hFile = ::FindFirstFileW(dir.c_str(), &wfd);
 
-	if (Handle == INVALID_HANDLE_VALUE)
+	if (hFile == INVALID_HANDLE_VALUE)
 	{
 		return false;
 	}
@@ -131,7 +95,7 @@ bool forEachFiles(const std::wstring& argDir, const std::function<void(const WIN
 
 		const auto curPath{ dir / wfd.cFileName };
 
-		if (FA_IS_DIRECTORY(wfd.dwFileAttributes))
+		if (FA_IS_DIR(wfd.dwFileAttributes))
 		{
 			if (!forEachFiles(curPath, callback))
 			{
@@ -140,24 +104,24 @@ bool forEachFiles(const std::wstring& argDir, const std::function<void(const WIN
 		}
 		else
 		{
-			callback(wfd, curPath.wstring());
+			callback(wfd, curPath);
 		}
 	}
-	while (::FindNextFile(Handle, &wfd) != 0);
+	while (::FindNextFile(hFile, &wfd) != 0);
 
-	::FindClose(Handle);
+	::FindClose(hFile);
 
 	return true;
 }
 
-bool forEachDirs(const std::wstring& argDir, const std::function<void(const WIN32_FIND_DATA& wfd, const std::wstring& fullPath)>& callback)
+bool forEachDirs(const std::filesystem::path& argDir, const std::function<void(const WIN32_FIND_DATA& wfd, const std::filesystem::path& fullPath)>& callback)
 {
-	const auto dir{ std::filesystem::absolute(argDir) };
+	const auto dir{ argDir / L"*" };
 
 	WIN32_FIND_DATA wfd;
-	HANDLE Handle = ::FindFirstFileW((dir.wstring() + L"\\*").c_str(), &wfd);
+	HANDLE hFile = ::FindFirstFileW(dir.c_str(), &wfd);
 
-	if (Handle == INVALID_HANDLE_VALUE)
+	if (hFile == INVALID_HANDLE_VALUE)
 	{
 		return false;
 	}
@@ -171,23 +135,23 @@ bool forEachDirs(const std::wstring& argDir, const std::function<void(const WIN3
 
 		const auto curPath{ dir / wfd.cFileName };
 
-		if (FA_IS_DIRECTORY(wfd.dwFileAttributes))
+		if (FA_IS_DIR(wfd.dwFileAttributes))
 		{
 			if (!forEachDirs(curPath, callback))
 			{
 				return false;
 			}
 
-			callback(wfd, curPath.wstring());
+			callback(wfd, curPath);
 		}
 	}
-	while (::FindNextFile(Handle, &wfd) != 0);
+	while (::FindNextFile(hFile, &wfd) != 0);
 
-	::FindClose(Handle);
+	::FindClose(hFile);
 
 	return true;
 }
 
-} // WCSE
+} // CSELIB
 
 // EOF

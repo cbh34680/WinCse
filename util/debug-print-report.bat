@@ -2,5 +2,5 @@
 
 @cd "%~dp0"
 
-start x64\Debug\util-PrintReportRequest.exe
+start x64\Debug\util-PrintReport.exe
 

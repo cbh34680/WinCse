@@ -16,23 +16,23 @@
 // 1601年1月1日から1970年1月1日までのオフセット (100ナノ秒単位)
 #define EPOCH_DIFFERENCE_100NS					(116444736000000000ULL)
 
-UINT64 WinFileTimeToWinFileTime100ns(const FILETIME& ft)
+INT64 WinFileTimeToWinFileTime100ns(const FILETIME& ft)
 {
     return ((PLARGE_INTEGER)&ft)->QuadPart;
 }
 
-UINT64 WinFileTimeToUtcMillis(const FILETIME &ft)
+INT64 WinFileTimeToUtcMillis(const FILETIME &ft)
 {
     // 差を引き、ミリ秒単位に変換
     return (WinFileTimeToWinFileTime100ns(ft) - EPOCH_DIFFERENCE_100NS) / HUNDRED_NANOSECONDS_PER_MILLISECOND;
 }
 
-UINT64 WinFileTime100nsToUtcMillis(UINT64 ft100ns)
+INT64 WinFileTime100nsToUtcMillis(INT64 ft100ns)
 {
     return (ft100ns - EPOCH_DIFFERENCE_100NS) / HUNDRED_NANOSECONDS_PER_MILLISECOND;
 }
 
-std::wstring UtcMilliToLocalTimeStringW(UINT64 milliseconds)
+std::wstring UtcMilliToLocalTimeStringW(INT64 milliseconds)
 {
     // ミリ秒を chrono::milliseconds に変換
     const std::chrono::milliseconds ms{ milliseconds };

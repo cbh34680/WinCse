@@ -2,29 +2,26 @@
 
 #include <fstream>
 
+namespace CSELIB {
 
-namespace WCSE {
-
-class Logger : public WCSE::ILogger
+class Logger final : public ILogger
 {
 private:
-	std::wstring mTempDir;
+	const std::optional<std::filesystem::path>	mTraceLogDir;		// ログ出力ディレクトリ (プログラム引数 "-T")
 
-	// ログ出力ディレクトリ (プログラム引数 "-T")
-	std::wstring mTraceLogDir;
-	bool mTraceLogEnabled = false;
-
-	// ログ用ファイル (スレッド・ローカル)
-	static thread_local std::wofstream mTLFile;
-	static thread_local bool mTLFileOK;
-	static thread_local UINT64 mTLFlushTime;
+	static thread_local std::wofstream			mTLFile;			// ログ用ファイル (スレッド・ローカル)
+	static thread_local bool					mTLFileOK;
+	static thread_local UTC_MILLIS_T			mTLFlushTime;
+	static Logger*								mInstance;
 
 	// hidden
-	Logger() = default;
-	~Logger() = default;
+	Logger(const std::optional<std::filesystem::path>& argTraceLogDir) noexcept
+		:
+		mTraceLogDir(argTraceLogDir)
+	{
+	}
 
-	bool internalInit(const std::wstring& argTempDir,
-		const std::wstring& argTrcDir, const std::wstring& dllType) noexcept;
+	~Logger() = default;
 
 protected:
 	void traceW_write(const SYSTEMTIME* st, PCWSTR buf) const noexcept;
@@ -32,9 +29,9 @@ protected:
 public:
 	PCWSTR getOutputDirectory() const noexcept override
 	{
-		if (mTraceLogEnabled)
+		if (mTraceLogDir)
 		{
-			return mTraceLogDir.c_str();
+			return mTraceLogDir->c_str();
 		}
 
 		return nullptr;
@@ -45,7 +42,7 @@ public:
 	void traceW_impl(int indent, PCWSTR, int, PCWSTR, PCWSTR format, ...) const noexcept override;
 
 	// friend
-	friend bool CreateLogger(PCWSTR argTempDir, PCWSTR argTrcDir, PCWSTR argDllType);
+	friend ILogger* CreateLogger(PCWSTR argTraceLogDir);
 	friend ILogger* GetLogger();
 	friend void DeleteLogger();
 };

@@ -1,116 +1,59 @@
 #pragma once
 
 #include "CSDriverBase.hpp"
-#include <set>
+#include "ActiveDirInfo.hpp"
 
-class CSDriver : public CSDriverBase
+extern "C"
+{
+	CSELIB::ICSDriver* NewCSDriver(PCWSTR argCSDeviceType, PCWSTR argIniSection, CSELIB::NamedWorker argWorkers[], CSELIB::ICSDevice* argCSDevice, WINCSE_DRIVER_STATS* argStats);
+}
+
+namespace CSEDRV
+{
+
+class CSDriver;
+
+bool makeCacheFilePath(const std::filesystem::path& argDir, const std::wstring& argName, std::filesystem::path* pPath);
+NTSTATUS updateFileInfo(HANDLE hFile, FSP_FSCTL_FILE_INFO* pFileInfo);
+NTSTATUS syncAttributes(const std::filesystem::path& cacheFilePath, const CSELIB::DirInfoPtr& remoteDirInfo);
+NTSTATUS syncContent(CSDriver* driver, FileContext* ctx, CSELIB::FILEIO_OFFSET_T argReadOffset, CSELIB::FILEIO_LENGTH_T argReadLength);
+
+
+class CSDriver final : public CSDriverBase
 {
 private:
-	const std::wstring mIniSection;
+	ActiveDirInfo mActiveDirInfo;
 
-	WINCSE_DRIVER_STATS* const mStats;
-	WCSE::ICSDevice* const mCSDevice;
-	bool mReadOnly = false;
-
-	struct
-	{
-		std::mutex mGuard;
-		std::unordered_map<std::wstring, FSP_FSCTL_FILE_INFO> mFileInfos;
-	}
-	CreateNew;
-
-	// Worker
-	std::unordered_map<std::wstring, WCSE::IWorker*> mWorkers;
-
-	WCSE::IWorker* getWorker(const std::wstring& argName) const noexcept
-	{
-		APP_ASSERT(mWorkers.find(argName) != mWorkers.cend());
-
-		return mWorkers.at(argName);
-	}
-
-	// 無視するファイル名の正規表現
-	std::optional<std::wregex> mIgnoreFileNamePatterns;
-
-	// 作業用ディレクトリ (プログラム引数 "-u" から算出される)
-	//std::wstring mWorkDir;
-
-	// 属性参照用ファイル・ハンドル
-	WCSE::FileHandle mRefFile;
-	WCSE::FileHandle mRefDir;
-
-	struct ResourceSweeper
-	{
-		CSDriver* const mThat;
-		std::set<PTFS_FILE_CONTEXT*> mOpenAddrs;
-
-		explicit ResourceSweeper(CSDriver* argThat) noexcept
-			:
-			mThat(argThat)
-		{
-		}
-
-		void add(PTFS_FILE_CONTEXT* FileContext) noexcept;
-		void remove(PTFS_FILE_CONTEXT* FileContext) noexcept;
-
-		~ResourceSweeper();
-	}
-	mResourceSweeper;
-
-	enum class FileNameType
-	{
-		RootDirectory,
-		DirectoryObject,
-		FileObject,
-		Bucket,
-	};
-
-	NTSTATUS getFileInfoByFileName(CALLER_ARG PCWSTR fileName,
-		FSP_FSCTL_FILE_INFO* pFileInfo, FileNameType* pFileNameType);
-
-	NTSTATUS canCreateObject(CALLER_ARG
-		PCWSTR argFileName, bool argIsDir, WCSE::ObjectKey* pObjKey) const noexcept;
-
-protected:
-	bool shouldIgnoreFileName(const std::wstring& FileName) const noexcept;
-
-public:
-	explicit CSDriver(
-		WINCSE_DRIVER_STATS* argStats, const std::wstring& argTempDir,
-		const std::wstring& argIniSection, WCSE::NamedWorker argWorkers[],
-		WCSE::ICSDevice* argCSDevice) noexcept;
-
-	~CSDriver();
-
-	// WinFsp から呼び出される関数
-	NTSTATUS PreCreateFilesystem(FSP_SERVICE* Service,
-		PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams) override;
-
-	NTSTATUS OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
-	VOID OnSvcStop() override;
+private:
+	using CSDriverBase::CSDriverBase;
+	CSELIB::DirInfoPtr getDirInfoByWinPath(CALLER_ARG const std::filesystem::path& argWinPath);
 
 protected:
 	// CSDriverBase を経由して呼び出される関数
 
-	NTSTATUS GetSecurityByName(PCWSTR FileName, PUINT32 PFileAttributes, PSECURITY_DESCRIPTOR SecurityDescriptor, PSIZE_T PSecurityDescriptorSize) override;
-	NTSTATUS Open(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedAccess, PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo) override;
-	NTSTATUS Create(PCWSTR FileName, UINT32 CreateOptions, UINT32 GrantedAccess, UINT32 FileAttributes, PSECURITY_DESCRIPTOR SecurityDescriptor, UINT64 AllocationSize, PVOID* PFileContext, FSP_FSCTL_FILE_INFO* FileInfo) override;
-	VOID	 Close(PTFS_FILE_CONTEXT* FileContext) override;
-	VOID	 Cleanup(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, ULONG Flags) override;
-	NTSTATUS Flush(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO* FileInfo) override;
-	NTSTATUS GetFileInfo(PTFS_FILE_CONTEXT* FileContext, FSP_FSCTL_FILE_INFO* FileInfo) override;
-	NTSTATUS GetSecurity(PTFS_FILE_CONTEXT* FileContext, PSECURITY_DESCRIPTOR SecurityDescriptor, PSIZE_T PSecurityDescriptorSize) override;
-	NTSTATUS Overwrite(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttributes, BOOLEAN ReplaceFileAttributes, UINT64 AllocationSize, FSP_FSCTL_FILE_INFO* FileInfo) override;
-	NTSTATUS Read(PTFS_FILE_CONTEXT* FileContext, PVOID Buffer, UINT64 Offset, ULONG Length, PULONG PBytesTransferred) override;
-	NTSTATUS ReadDirectory(PTFS_FILE_CONTEXT* FileContext, PWSTR Pattern, PWSTR Marker, PVOID Buffer, ULONG BufferLength, PULONG PBytesTransferred) override;
-	NTSTATUS Rename(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, PWSTR NewFileName, BOOLEAN ReplaceIfExists) override;
-	NTSTATUS SetBasicInfo(PTFS_FILE_CONTEXT* FileContext, UINT32 FileAttributes, UINT64 CreationTime, UINT64 LastAccessTime, UINT64 LastWriteTime, UINT64 ChangeTime, FSP_FSCTL_FILE_INFO* FileInfo) override;
-	NTSTATUS SetFileSize(PTFS_FILE_CONTEXT* FileContext, UINT64 NewSize, BOOLEAN SetAllocationSize, FSP_FSCTL_FILE_INFO* FileInfo) override;
-	NTSTATUS SetSecurity(PTFS_FILE_CONTEXT* FileContext, SECURITY_INFORMATION SecurityInformation, PSECURITY_DESCRIPTOR ModificationDescriptor) override;
-	NTSTATUS Write(PTFS_FILE_CONTEXT* FileContext, PVOID Buffer, UINT64 Offset, ULONG Length, BOOLEAN WriteToEndOfFile, BOOLEAN ConstrainedIo, PULONG PBytesTransferred, FSP_FSCTL_FILE_INFO* FileInfo) override;
-	NTSTATUS SetDelete(PTFS_FILE_CONTEXT* FileContext, PWSTR FileName, BOOLEAN deleteFile) override;
+	NTSTATUS GetSecurityByName(const std::filesystem::path& argWinPath, PUINT32 pFileAttributes, PSECURITY_DESCRIPTOR argSecurityDescriptor, PSIZE_T argSecurityDescriptorSize) override;
+	NTSTATUS Open(const std::filesystem::path& argWinPath, UINT32 argCreateOptions, UINT32 argGrantedAccess, FileContext** pFileContext, FSP_FSCTL_FILE_INFO* pFileInfo) override;
+	NTSTATUS Create(const std::filesystem::path& argWinPath, UINT32 argCreateOptions, UINT32 argGrantedAccess, UINT32 argFileAttributes, PSECURITY_DESCRIPTOR argSecurityDescriptor, UINT64 argAllocationSize, FileContext** argFileContext, FSP_FSCTL_FILE_INFO* argFileInfo) override;
+	VOID	 Close(FileContext* ctx) override;
+	VOID	 Cleanup(FileContext* ctx, PWSTR argFileName, ULONG argFlags) override;
+	NTSTATUS Flush(FileContext* ctx, FSP_FSCTL_FILE_INFO* pFileInfo) override;
+	NTSTATUS GetFileInfo(FileContext* ctx, FSP_FSCTL_FILE_INFO* pFileInfo) override;
+	NTSTATUS GetSecurity(FileContext* ctx, PSECURITY_DESCRIPTOR argSecurityDescriptor, PSIZE_T pSecurityDescriptorSize) override;
+	NTSTATUS Overwrite(FileContext* argFileContext, UINT32 argFileAttributes, BOOLEAN argReplaceFileAttributes, UINT64 argAllocationSize, FSP_FSCTL_FILE_INFO* argFileInfo) override;
+	NTSTATUS Read(FileContext* ctx, PVOID argBuffer, UINT64 argOffset, ULONG argLength, PULONG argBytesTransferred) override;
+	NTSTATUS ReadDirectory(FileContext* ctx, PWSTR argPattern, PWSTR argMarker, PVOID argBuffer, ULONG argBufferLength, PULONG argBytesTransferred) override;
+	NTSTATUS Rename(FileContext* argFileContext, PWSTR argFileName, PWSTR argNewFileName, BOOLEAN argReplaceIfExists) override;
+	NTSTATUS SetBasicInfo(FileContext* argFileContext, UINT32 argFileAttributes, UINT64 argCreationTime, UINT64 argLastAccessTime, UINT64 argLastWriteTime, UINT64 argChangeTime, FSP_FSCTL_FILE_INFO* argFileInfo) override;
+	NTSTATUS SetFileSize(FileContext* ctx, UINT64 argNewSize, BOOLEAN argSetAllocationSize, FSP_FSCTL_FILE_INFO* pFileInfo) override;
+	NTSTATUS SetSecurity(FileContext* argFileContext, SECURITY_INFORMATION argSecurityInformation, PSECURITY_DESCRIPTOR argModificationDescriptor) override;
+	NTSTATUS Write(FileContext* ctx, PVOID argBuffer, UINT64 argOffset, ULONG argLength, BOOLEAN argWriteToEndOfFile, BOOLEAN argConstrainedIo, PULONG argBytesTransferred, FSP_FSCTL_FILE_INFO* pFileInfo) override;
+	NTSTATUS SetDelete(FileContext* ctx, PWSTR argFileName, BOOLEAN argDeleteFile) override;
+
+private:
+	friend CSELIB::ICSDriver* ::NewCSDriver(PCWSTR argCSDeviceType, PCWSTR argIniSection, CSELIB::NamedWorker argWorkers[], CSELIB::ICSDevice* argCSDevice, WINCSE_DRIVER_STATS* argStats);
+	friend NTSTATUS syncContent(CSDriver* driver, FileContext* ctx, CSELIB::FILEIO_OFFSET_T argReadOffset, CSELIB::FILEIO_LENGTH_T argReadLength);
 };
 
-#define StatsIncr(name)			::InterlockedIncrement(& (this->mStats->name))
+}	// namespace CSELIB
 
 // EOF

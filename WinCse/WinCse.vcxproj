@@ -149,19 +149,28 @@
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="CSDeviceBase.cpp" />
-    <ClCompile Include="ScheduledWorker.cpp" />
     <ClCompile Include="CSDriver.cpp" />
-    <ClCompile Include="CSDriver_finfo.cpp" />
-    <ClCompile Include="CSDriver_if_w.cpp" />
-    <ClCompile Include="CSDriver_open.cpp" />
-    <ClCompile Include="CSDriver_svc.cpp" />
+    <ClCompile Include="CSDriverBase_cb.cpp" />
+    <ClCompile Include="CSDriverBase.cpp" />
+    <ClCompile Include="CSDriver_cb_util.cpp" />
+    <ClCompile Include="CSDriverBase_event.cpp" />
+    <ClCompile Include="FileContext.cpp" />
+    <ClCompile Include="FileContextSweeper.cpp" />
+    <ClCompile Include="NotifListener.cpp" />
+    <ClCompile Include="RuntimeEnv.cpp" />
+    <ClCompile Include="ScheduledWorker.cpp" />
+    <ClCompile Include="CSDriver_cb.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="CSDriver_if_r.cpp" />
     <ClCompile Include="DelayedWorker.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CSDriverBase.hpp" />
+    <ClInclude Include="ActiveDirInfo.hpp" />
+    <ClInclude Include="CSDriverCommon.h" />
+    <ClInclude Include="FileContext.hpp" />
+    <ClInclude Include="FileContextSweeper.hpp" />
+    <ClInclude Include="NotifListener.hpp" />
+    <ClInclude Include="RuntimeEnv.hpp" />
     <ClInclude Include="ScheduledWorker.hpp" />
     <ClInclude Include="TimerWorker.hpp" />
     <ClInclude Include="CSDriver.hpp" />

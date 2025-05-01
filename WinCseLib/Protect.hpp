@@ -2,6 +2,9 @@
 
 #include "WinCseLib.h"
 
+namespace CSELIB
+{
+
 //
 // ñºëOÇ≈ÇÃîrëºêßå‰
 //
@@ -15,17 +18,20 @@ class SharedBase
 
 	template<typename T> friend class UnprotectedShare;
 	template<typename T> friend class ProtectedShare;
+
+public:
+	virtual ~SharedBase() = default;
 };
 
 template <typename T>
-struct ShareStore
+struct ShareStore final
 {
 	std::mutex mMapGuard;
-	std::unordered_map<std::wstring, std::unique_ptr<T>> mMap;
+	std::map<std::wstring, std::unique_ptr<T>> mMap;
 };
 
 template <typename T>
-class ProtectedShare
+class ProtectedShare final
 {
 	T* mV;
 
@@ -35,6 +41,8 @@ class ProtectedShare
 		:
 		mV(argV)
 	{
+		APP_ASSERT(mV);
+
 		mV->mMutex.lock();
 	}
 
@@ -66,7 +74,7 @@ public:
 };
 
 template <typename T>
-class UnprotectedShare
+class UnprotectedShare final
 {
 	ShareStore<T>* mShareStore;
 	const std::wstring mName;
@@ -79,6 +87,9 @@ public:
 		mShareStore(argShareStore),
 		mName(argName)
 	{
+		APP_ASSERT(argShareStore);
+		APP_ASSERT(!mName.empty());
+
 		std::lock_guard<std::mutex> lock_{ mShareStore->mMapGuard };
 
 		auto it{ mShareStore->mMap.find(mName) };
@@ -93,7 +104,7 @@ public:
 
 		//mV = dynamic_cast<T*>(it->second.get());
 		mV = static_cast<T*>(it->second.get());
-		_ASSERT(mV);
+		APP_ASSERT(mV);
 	}
 
 	~UnprotectedShare()
@@ -115,5 +126,7 @@ public:
 		return ProtectedShare<T>(this->mV);
 	}
 };
+
+}	// namespace CSELIB
 
 // EOF

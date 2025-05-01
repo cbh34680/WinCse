@@ -1,24 +1,22 @@
 #pragma once
 
-#include "WinCseLib.h"
+#include "CSDeviceCommon.h"
 
 // HeadObject, ListObjectsV2 から取得したデータをキャッシュする
-// どちらも型が異なるだけ (DirInfoType, DirInfoListType) なのでテンプレートにして
+// どちらも型が異なるだけ (DirInfoPtr, DirInfoPtrList) なのでテンプレートにして
 // このファイルの最後でそれぞれの型のクラスを実体化させている
 //
 // HeadObject の場合
-//  [unordered_map]
+//  [map]
 //      キー      値
 //      ----------------------------
-//      ObjectKey DirInfoType
+//      ObjectKey DirInfoPtr
 //
 // ListObjectsV2 の場合
-//  [unordered_map]
+//  [map]
 //      キー      値
 //      ----------------------------
-//      ObjectKey DirInfoListType
-
-#include <set>
+//      ObjectKey DirInfoPtrList
 
 #pragma warning(push)
 #pragma warning(disable : 4100)
@@ -31,6 +29,9 @@
 
 #define THREAD_SAFE()       std::lock_guard<std::mutex> lock_{ mGuard }
 
+namespace CSEDAS3
+{
+
 template<typename T>
 class ObjectCacheTmpl
 {
@@ -39,11 +40,11 @@ public:
 
 	struct CacheValue
 	{
-		mutable std::wstring mCreateCallChain;
-        mutable std::wstring mLastAccessCallChain;
-        mutable std::chrono::system_clock::time_point mCreateTime;
-        mutable std::chrono::system_clock::time_point mLastAccessTime;
-        mutable int mRefCount = 0;
+		mutable std::wstring                            mCreateCallChain;
+        mutable std::wstring                            mLastAccessCallChain;
+        mutable std::chrono::system_clock::time_point   mCreateTime;
+        mutable std::chrono::system_clock::time_point   mLastAccessTime;
+        mutable int                                     mRefCount = 0;
 
         CacheValue(CALLER_ARG0) noexcept
 		{
@@ -66,18 +67,16 @@ public:
 	};
 
 protected:
-    std::unordered_map<WCSE::ObjectKey, PositiveValue> mPositive;
-    std::unordered_map<WCSE::ObjectKey, NegativeValue> mNegative;
+    std::map<CSELIB::ObjectKey, PositiveValue>  mPositive;
+    std::map<CSELIB::ObjectKey, NegativeValue>  mNegative;
 
-    mutable std::mutex mGuard;
-
-    mutable int mGetPositive = 0;
-    mutable int mSetPositive = 0;
-    mutable int mUpdPositive = 0;
-
-    mutable int mGetNegative = 0;
-    mutable int mSetNegative = 0;
-    mutable int mUpdNegative = 0;
+    mutable std::mutex                          mGuard;
+    mutable int                                 mGetPositive = 0;
+    mutable int                                 mSetPositive = 0;
+    mutable int                                 mUpdPositive = 0;
+    mutable int                                 mGetNegative = 0;
+    mutable int                                 mSetNegative = 0;
+    mutable int                                 mUpdNegative = 0;
 
     template <typename CacheDataT>
     int deleteBy(
@@ -106,9 +105,9 @@ public:
     // 以降は THREAD_SAFE() マクロによる修飾が必要
     // --> report() の実装時には同様のマクロを定義するか、std::lock_guard を使用する
 
-    virtual void report(CALLER_ARG FILE* fp) const noexcept = 0;
+    virtual void coReport(CALLER_ARG FILE* fp) const noexcept = 0;
 
-    int deleteByTime(CALLER_ARG std::chrono::system_clock::time_point threshold) noexcept
+    int coDeleteByTime(CALLER_ARG std::chrono::system_clock::time_point threshold) noexcept
     {
         THREAD_SAFE();
 
@@ -132,7 +131,7 @@ public:
         return sum;
     }
 
-    int deleteByKey(CALLER_ARG const WCSE::ObjectKey& argObjKey) noexcept
+    int coDeleteByKey(CALLER_ARG const CSELIB::ObjectKey& argObjKey) noexcept
     {
         THREAD_SAFE();
 
@@ -185,7 +184,7 @@ public:
         return sum;
     }
 
-    void clear(CALLER_ARG0) noexcept
+    void coClear(CALLER_ARG0) noexcept
     {
         THREAD_SAFE();
 
@@ -195,10 +194,9 @@ public:
 
     // ----------------------- Positive
 
-    bool get(CALLER_ARG const WCSE::ObjectKey& argObjKey, T* pV) const noexcept
+    bool coGet(CALLER_ARG const CSELIB::ObjectKey& argObjKey, T* pV) const noexcept
     {
         THREAD_SAFE();
-        APP_ASSERT(argObjKey.valid());
 
         const auto it{ mPositive.find(argObjKey) };
 
@@ -221,11 +219,10 @@ public:
         return true;
     }
 
-    void set(CALLER_ARG const WCSE::ObjectKey& argObjKey, const T& argV) noexcept
+    void coSet(CALLER_ARG const CSELIB::ObjectKey& argObjKey, const T& argV) noexcept
     {
         THREAD_SAFE();
         NEW_LOG_BLOCK();
-        APP_ASSERT(argObjKey.valid());
 
         // キャッシュにコピー
 
@@ -245,10 +242,9 @@ public:
 
     // ----------------------- Negative
 
-    bool isNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey) const noexcept
+    bool coIsNegative(CALLER_ARG const CSELIB::ObjectKey& argObjKey) const noexcept
     {
         THREAD_SAFE();
-        APP_ASSERT(argObjKey.valid());
 
         const auto it{ mNegative.find(argObjKey) };
 
@@ -266,11 +262,10 @@ public:
         return true;
     }
 
-    void addNegative(CALLER_ARG const WCSE::ObjectKey& argObjKey) noexcept
+    void coAddNegative(CALLER_ARG const CSELIB::ObjectKey& argObjKey) noexcept
     {
         THREAD_SAFE();
         NEW_LOG_BLOCK();
-        APP_ASSERT(argObjKey.valid());
 
         if (mNegative.find(argObjKey) == mNegative.cend())
         {
@@ -287,20 +282,27 @@ public:
     }
 };
 
+}	// namespace CSEDAS3
+
 #undef THREAD_SAFE
 
 #pragma warning(pop)
 
-class CacheHeadObject : public ObjectCacheTmpl<WCSE::DirInfoType>
+namespace CSEDAS3
+{
+
+class CacheHeadObject final : public ObjectCacheTmpl<CSELIB::DirInfoPtr>
 {
 public:
-    void report(CALLER_ARG FILE* fp) const noexcept override;
+    void coReport(CALLER_ARG FILE* fp) const noexcept override;
 };
 
-class CacheListObjects : public ObjectCacheTmpl<WCSE::DirInfoListType>
+class CacheListObjects final : public ObjectCacheTmpl<CSELIB::DirInfoPtrList>
 {
 public:
-    void report(CALLER_ARG FILE* fp) const noexcept override;
+    void coReport(CALLER_ARG FILE* fp) const noexcept override;
 };
+
+}	// namespace CSEDAS3
 
 // EOF

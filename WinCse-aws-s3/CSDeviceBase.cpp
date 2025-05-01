@@ -1,38 +1,20 @@
 #include "CSDeviceBase.hpp"
 
-using namespace WCSE;
+using namespace CSELIB;
+using namespace CSEDAS3;
 
 
 static bool decryptIfNecessaryW(const std::wstring& argSecretKey, std::wstring* pInOut);
 
 static PCWSTR CONFIGFILE_FNAME = L"WinCse.conf";
-static PCWSTR CACHE_DATA_DIR_FNAME = L"aws-s3\\cache\\data";
-static PCWSTR CACHE_REPORT_DIR_FNAME = L"aws-s3\\cache\\report";
 
 
-CSDeviceBase::CSDeviceBase(const std::wstring&, const std::wstring& argIniSection,
-    const std::unordered_map<std::wstring, IWorker*>& argWorkers)
+CSDeviceBase::CSDeviceBase(const std::wstring& argIniSection,
+    const std::map<std::wstring, IWorker*>& argWorkers)
     :
     mIniSection(argIniSection),
     mWorkers(argWorkers)
 {
-}
-
-NTSTATUS CSDeviceBase::PreCreateFilesystem(FSP_SERVICE*, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* VolumeParams)
-{
-    NEW_LOG_BLOCK();
-    APP_ASSERT(argWorkDir);
-
-    // 読み取り専用
-
-    if (VolumeParams->ReadOnlyVolume)
-    {
-        mDefaultFileAttributes |= FILE_ATTRIBUTE_READONLY;
-    }
-
-    //mWinFspService = Service;
-
-    return STATUS_SUCCESS;
 }
 
 struct TimerTask : public IScheduledTask
@@ -52,9 +34,9 @@ struct TimerTask : public IScheduledTask
         return true;
     }
 
-    void run(CALLER_ARG0) override
+    void run(int) override
     {
-        mThat->onTimer(CONT_CALLER0);
+        mThat->onTimer();
     }
 };
 
@@ -68,89 +50,27 @@ struct IdleTask : public IScheduledTask
     {
     }
 
-    bool shouldRun(int i) const noexcept override
+    bool shouldRun(int argTick) const noexcept override
     {
         // 10 分間隔で run() を実行
 
-        return i % 10 == 0;
+        return argTick % 10 == 0;
     }
 
-    void run(CALLER_ARG0) override
+    void run(int) override
     {
-        mThat->onIdle(CONT_CALLER0);
+        mThat->onIdle();
     }
 };
 
-NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
+NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
 {
     NEW_LOG_BLOCK();
 
     APP_ASSERT(argWorkDir);
-    APP_ASSERT(FileSystem);
+    //APP_ASSERT(FileSystem);
 
-    std::wstring workDir{ argWorkDir };
-    auto confPath{ workDir + L'\\' + CONFIGFILE_FNAME };
-
-    // 属性参照用ファイル/ディレクトリの準備
-
-    FileHandle refFile = ::CreateFileW
-    (
-        confPath.c_str(),
-        FILE_READ_ATTRIBUTES | READ_CONTROL,
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,		// 共有モード
-        NULL,														// セキュリティ属性
-        OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL,
-        NULL														// テンプレートなし
-    );
-
-    if (refFile.invalid())
-    {
-        traceW(L"fault: CreateFileW, confPath=%s", confPath.c_str());
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    FileHandle refDir = ::CreateFileW
-    (
-        argWorkDir,
-        FILE_READ_ATTRIBUTES | READ_CONTROL,
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,     // 共有モード
-        NULL,                                                       // セキュリティ属性
-        OPEN_EXISTING,
-        FILE_FLAG_BACKUP_SEMANTICS,
-        NULL                                                        // テンプレートなし
-    );
-
-    if (refDir.invalid())
-    {
-        traceW(L"fault: CreateFileW, argWorkDir=%s", argWorkDir);
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    // ファイル・キャッシュ保存用ディレクトリの準備
-
-    auto cacheDataDir{ workDir + L'\\' + CACHE_DATA_DIR_FNAME };
-    if (!MkdirIfNotExists(cacheDataDir))
-    {
-        traceW(L"%s: can not create directory", cacheDataDir.c_str());
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    auto cacheReportDir{ workDir + L'\\' + CACHE_REPORT_DIR_FNAME };
-    if (!MkdirIfNotExists(cacheReportDir))
-    {
-        traceW(L"%s: can not create directory", cacheReportDir.c_str());
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-#ifdef _DEBUG
-    forEachFiles(cacheDataDir, [this, &LOG_BLOCK()](const auto& wfd, const auto& fullPath)
-    {
-        APP_ASSERT(!FA_IS_DIRECTORY(wfd.dwFileAttributes));
-
-        traceW(L"cache file: [%s]", fullPath.c_str());
-    });
-#endif
+    const auto confPath{ std::filesystem::path{ argWorkDir } / CONFIGFILE_FNAME };
 
     // ini ファイルから値を取得
 
@@ -168,7 +88,7 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
 
     // バケット名フィルタ
 
-    std::vector<std::wregex> bucketFilters;
+    std::list<std::wregex> bucketFilters;
     std::wstring bucket_filters_str;
 
     if (GetIniStringW(confPath, mIniSection.c_str(), L"bucket_filters", &bucket_filters_str))
@@ -205,6 +125,38 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
         }
     }
 
+    // 無視するファイル名のパターン
+
+    std::optional<std::wregex> ignoreFileNamePatterns;
+    std::wstring re_ignore_patterns;
+
+    if (GetIniStringW(confPath, mIniSection, L"re_ignore_patterns", &re_ignore_patterns))
+    {
+        if (!re_ignore_patterns.empty())
+        {
+            try
+            {
+                // conf で指定された正規表現パターンの整合性テスト
+                // 不正なパターンの場合は例外で catch されるので反映されない
+
+                auto re{ std::wregex{ re_ignore_patterns, std::regex_constants::icase } };
+
+                // OK
+
+                ignoreFileNamePatterns = std::move(re);
+            }
+            catch (const std::regex_error& ex)
+            {
+                traceA("regex_error: %s", ex.what());
+                traceW(L"%s: ignored, set default patterns", re_ignore_patterns.c_str());
+            }
+        }
+    }
+
+    // 読み取り専用
+
+    const UINT32 defaultFileAttributes = GetIniBoolW(confPath, mIniSection, L"readonly", false) ? FILE_ATTRIBUTE_READONLY : 0;
+
     // AWS 接続リージョン
 
     std::wstring region;
@@ -217,18 +169,13 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
         //----------------------------------------------------------------------------------------------------
         GetIniIntW(confPath,    mIniSection,    L"bucket_cache_expiry_min",         20,   1,        1440),
         bucketFilters,
-        cacheDataDir,
-        cacheReportDir,
-        GetIniIntW(confPath,    mIniSection,    L"cache_file_retention_min",        60,   1,       10080),
         clientGuid,
-        STCTimeToWinFileTimeW(workDir),
-        mDefaultFileAttributes,
-        GetIniBoolW(confPath,   mIniSection,    L"delete_after_upload",         false),
-        GetIniIntW(confPath,    mIniSection,    L"delete_dir_condition",             2,   1,           2),
+        STCTimeToWinFileTime100nsW(argWorkDir),
+        defaultFileAttributes,
+        ignoreFileNamePatterns,
         GetIniIntW(confPath,    mIniSection,    L"max_display_buckets",              8,   0, INT_MAX - 1),
         GetIniIntW(confPath,    mIniSection,    L"max_display_objects",           1000,   0, INT_MAX - 1),
         GetIniIntW(confPath,    mIniSection,    L"object_cache_expiry_min",          5,   1,          60),
-        GetIniBoolW(confPath,   mIniSection,    L"readonly",                    false),
         region,
         GetIniBoolW(confPath,   mIniSection,    L"strict_bucket_region",        false),
         GetIniBoolW(confPath,   mIniSection,    L"strict_file_timestamp",       false)
@@ -279,9 +226,7 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
         return STATUS_ENCRYPTION_FAILED;
     }
 
-#ifdef _DEBUG
-    traceW(L"accessKeyId=%s, secretAccessKey=%s", accessKeyId.c_str(), secretAccessKey.c_str());
-#endif
+    traceW(L"accessKeyId=%s***, secretAccessKey=%s***", accessKeyId.substr(0, 5).c_str(), secretAccessKey.substr(0, 5).c_str());
 
     // API 実行オブジェクト
 
@@ -302,19 +247,9 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
     auto queryObject{ std::make_unique<QueryObject>(runtimeEnv.get(), execApi.get()) };
     APP_ASSERT(queryObject);
 
-    // 外部からの通知待ちスレッドの開始
-
-    if (!this->createNotifListener(START_CALLER0))
-    {
-        traceW(L"fault: createNotifListener");
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
     // メンバに保存
 
     //mFileSystem     = FileSystem;
-    mRefFile        = std::move(refFile);
-    mRefDir         = std::move(refDir);
     mRuntimeEnv     = std::move(runtimeEnv);
     mExecuteApi     = std::move(execApi);
     mQueryBucket    = std::move(queryBucket);
@@ -322,25 +257,21 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
 
     // 定期実行タスクを登録
 
-    getWorker(L"timer")->addTask(START_CALLER new TimerTask{ this });
+    getWorker(L"timer")->addTask(new TimerTask{ this });
 
     // アイドル時のタスクを登録
 
-    getWorker(L"timer")->addTask(START_CALLER new IdleTask{ this });
+    getWorker(L"timer")->addTask(new IdleTask{ this });
 
     return STATUS_SUCCESS;
 }
 
 VOID CSDeviceBase::OnSvcStop()
 {
-    // 外部からの通知待ちスレッドの停止
-
-    this->deleteNotifListener(START_CALLER0);
 }
 
 static bool decryptIfNecessaryA(const std::string& argSecretKey, std::string* pInOut)
 {
-    NEW_LOG_BLOCK();
     APP_ASSERT(pInOut);
 
     std::string str{ *pInOut };
@@ -351,12 +282,15 @@ static bool decryptIfNecessaryA(const std::string& argSecretKey, std::string* pI
         {
             if (str.substr(0, 8) == "{aes256}")
             {
+                NEW_LOG_BLOCK();
+
                 // 先頭の "{aes256}" を除く
 
                 const auto concatB64Str{ str.substr(8) };
 
-                // MachineGuid の値を AES の key とし、iv には key[0..16] を設定する
+                traceA("concatB64Str=%s", concatB64Str.c_str());
 
+                // MachineGuid の値を AES の key とし、iv には key[0..16] を設定する
 
                 // BASE64 文字列をデコード
 
@@ -406,6 +340,8 @@ static bool decryptIfNecessaryA(const std::string& argSecretKey, std::string* pI
                 //*pInOut = std::move(str);
 
                 *pInOut = std::string((char*)decrypted.data());
+
+                traceW(L"success: DecryptAES");
             }
         }
     }

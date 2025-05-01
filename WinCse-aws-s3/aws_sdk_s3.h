@@ -15,8 +15,6 @@
 #include <aws/core/auth/AWSCredentials.h>
 #include <aws/core/auth/AWSCredentialsProvider.h>
 
-#include <aws/s3/model/BucketLocationConstraint.h>
-#include <aws/s3/model/Bucket.h>
 #include <aws/s3/model/GetBucketLocationRequest.h>
 #include <aws/s3/model/ListBucketsRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>

@@ -8,4 +8,4 @@ if not exist my-debug-test.bat (
 )
 
 @call my-debug-test.bat
-@pause
+
