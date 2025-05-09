@@ -18,7 +18,7 @@ WinCse is an application that integrates AWS S3 buckets into Windows Explorer, a
 ## Usage
 1. Run `setup/install-aws-s3.bat` with administrator privileges.
 2. Enter your AWS credentials in the form that appears.
-3. Click the ÅgCreateÅh button.
+3. Click the `Create` button.
 4. Run `mount.bat` from the displayed Explorer directory.
 5. You can now access your S3 bucket as a drive selected in the form.
 6. To unmount the drive, run `un-mount.bat`.
