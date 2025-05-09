@@ -30,7 +30,7 @@ WinCse ‚ÍAAWS S3 ƒoƒPƒbƒg‚ð Windows Explorer ‚É“‡‚·‚éƒAƒvƒŠƒP[ƒVƒ‡ƒ“‚ÅAS3 ƒ
 
 ## §ŒÀŽ–€
 - ‚¢‚­‚Â‚©‚Ì§–ñ‚É‚Â‚¢‚Ä‚Í [config](./doc/conf-example.txt) ‚ð•ÏX‚·‚é‚±‚Æ‚ÅŠÉ˜a‰Â”\‚Å‚·B
-- §ŒÀŽ–€‚É‚Â‚¢‚Ä‚Í [§ŒÀŽ–€.md](./limitations.md) ‚ðŽQÆ‚µ‚Ä‚­‚¾‚³‚¢B
+- §ŒÀŽ–€‚É‚Â‚¢‚Ä‚Í [§ŒÀŽ–€.md](./doc/limitations.md) ‚ðŽQÆ‚µ‚Ä‚­‚¾‚³‚¢B
 
 ## ’ˆÓŽ–€
 - Œ»Ý‚Ìƒo[ƒWƒ‡ƒ“‚ÍƒeƒXƒg’iŠK‚Å‚·B

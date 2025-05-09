@@ -30,7 +30,7 @@ WinCse is an application that integrates AWS S3 buckets into Windows Explorer, a
 
 ## Limitations
 - Some restrictions can be relaxed by modifying [config](./doc/conf-example.txt).
-- See [limitations.md](./limitations.md) for further details.
+- See [limitations.md](./doc/limitations.md) for further details.
 
 ## Notes
 - The current version is in testing.
