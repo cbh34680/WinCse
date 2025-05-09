@@ -364,7 +364,7 @@ FodyWeavers.xsd
 
 # ----------------------------------
 
-/cli*.bat
+/*.bat
 
 /misc/
 /work/
