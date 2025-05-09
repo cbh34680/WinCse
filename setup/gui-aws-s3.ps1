@@ -153,6 +153,10 @@ if (-not (Test-Path -Path $RegWinFspPath)) {
     Exit 1
 }
 
+if (-not (Test-Path -Path "${RegWinFspPath}\Services")) {
+    New-Item -Path "${RegWinFspPath}\Services" -Force
+}
+
 # -----------------
 # Access Key Id
 #
@@ -221,6 +225,7 @@ $chk_encrypt = New-Object System.Windows.Forms.CheckBox -Property @{
     Font = $FontM
     TextAlign = $LblTextAlign
     Checked = $true
+    Enabled = $true
 }
 
 # -----------------
@@ -430,7 +435,7 @@ $btn_reg.Add_Click({
     $workdir_dir = $workdir.Substring(3)
     $info_log_dir = ";"
 
-    if ($chk_encrypt) {
+    if ($chk_encrypt.Checked) {
         if ($keyid -ne "") {
             $keyid = "{aes256}" + (KeyId-EncryptString -Text $keyid)
         }
