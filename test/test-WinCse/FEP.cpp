@@ -18,7 +18,7 @@ struct NoopWorker : public IWorker
     }
 };
 
-void t_WinCseLib_aws_s3_FEP(std::initializer_list<std::function<void(CSELIB::ICSDevice*)>> callbacks)
+void t_WinCseLib_aws_s3_FEP(std::initializer_list<std::function<void(ICSDevice*)>> callbacks)
 {
     if (!CreateLogger(L"Q:\\not-exists\\dir"))
     {

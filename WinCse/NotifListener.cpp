@@ -4,7 +4,7 @@ using namespace CSELIB;
 using namespace CSEDRV;
 
 
-std::unique_ptr<NotifListener> NotifListener::create(const std::list<ICSService*>& argServices) noexcept
+std::unique_ptr<NotifListener> NotifListener::create(const std::list<ICSService*>& argServices)
 {
 	NEW_LOG_BLOCK();
 
@@ -34,7 +34,7 @@ std::unique_ptr<NotifListener> NotifListener::create(const std::list<ICSService*
 	return std::unique_ptr<NotifListener>{ new NotifListener{ std::move(notifs), std::vector<HANDLE>(notifs.size(), NULL) } };
 }
 
-NTSTATUS NotifListener::start() noexcept
+NTSTATUS NotifListener::start()
 {
 	NEW_LOG_BLOCK();
 
@@ -46,7 +46,7 @@ NTSTATUS NotifListener::start() noexcept
 	SECURITY_DESCRIPTOR sd{};
 	if (!::InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION))
 	{
-		traceW(L"fault: InitializeSecurityDescriptor");
+		errorW(L"fault: InitializeSecurityDescriptor");
 		return FspNtStatusFromWin32(::GetLastError());
 	}
 
@@ -54,7 +54,7 @@ NTSTATUS NotifListener::start() noexcept
 #pragma warning(suppress: 6248)
 	if (!::SetSecurityDescriptorDacl(&sd, TRUE, NULL, FALSE))
 	{
-		traceW(L"fault: SetSecurityDescriptorDacl");
+		errorW(L"fault: SetSecurityDescriptorDacl");
 		return FspNtStatusFromWin32(::GetLastError());
 	}
 
@@ -69,7 +69,7 @@ NTSTATUS NotifListener::start() noexcept
 		mEvents[i] = ::CreateEventW(&sa, FALSE, FALSE, name);
 		if (!mEvents[i])
 		{
-			traceW(L"fault: CreateEventW name=%s", name);
+			errorW(L"fault: CreateEventW name=%s", name);
 			return FspNtStatusFromWin32(::GetLastError());
 		}
 	}
@@ -85,7 +85,7 @@ NTSTATUS NotifListener::start() noexcept
 	return STATUS_SUCCESS;
 }
 
-NTSTATUS NotifListener::stop() noexcept
+NTSTATUS NotifListener::stop()
 {
 	NEW_LOG_BLOCK();
 
@@ -120,7 +120,7 @@ NTSTATUS NotifListener::stop() noexcept
 	return STATUS_SUCCESS;
 }
 
-void NotifListener::listen() noexcept
+void NotifListener::listen()
 {
 	NEW_LOG_BLOCK();
 
@@ -131,6 +131,7 @@ void NotifListener::listen() noexcept
 
 	while (true)
 	{
+		traceW(L"WaitForMultipleObjects ...");
 		const auto reason = ::WaitForMultipleObjects(numEvents, events, FALSE, INFINITE);
 
 		if (WAIT_OBJECT_0 <= reason && reason < (WAIT_OBJECT_0 + numEvents))
@@ -140,8 +141,8 @@ void NotifListener::listen() noexcept
 		else
 		{
 			const auto lerr = ::GetLastError();
-			traceW(L"un-expected reason=%lu, lerr=%lu, break", reason, lerr);
-			break;
+			errorW(L"un-expected reason=%lu, lerr=%lu, continue", reason, lerr);
+			continue;
 		}
 
 		if (mEndThreadFlag)
@@ -164,17 +165,16 @@ void NotifListener::listen() noexcept
 
 			if (!service->onNotif(eventName))
 			{
-				traceW(L"fault: %s::onNotif eventId=%lu, eventName=%s", klassName.c_str(), eventId, eventName);
+				errorW(L"fault: %s::onNotif eventId=%lu, eventName=%s", klassName.c_str(), eventId, eventName);
 			}
 		}
 		catch (const std::exception& ex)
 		{
-			traceA("what: %s", ex.what());
-			break;
+			errorA("what: %s, continue", ex.what());
 		}
 		catch (...)
 		{
-			traceA("unknown error, continue");
+			errorA("unknown error, continue");
 		}
 	}
 

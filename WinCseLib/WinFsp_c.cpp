@@ -178,7 +178,7 @@ void setupWinCseGlobal(WINCSE_IF* argWinCseIf)
 }
 
 template<typename MethodT, typename... Args>
-NTSTATUS relayReturnable(const MethodT method, Args... args) noexcept
+NTSTATUS relayReturnable(const MethodT method, Args... args)
 {
     try
     {
@@ -199,7 +199,7 @@ NTSTATUS relayReturnable(const MethodT method, Args... args) noexcept
 }
 
 template<typename MethodT, typename... Args>
-VOID relayNonReturnable(const MethodT method, Args... args) noexcept
+VOID relayNonReturnable(const MethodT method, Args... args)
 {
     try
     {

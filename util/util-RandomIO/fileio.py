@@ -20,11 +20,13 @@ def getint(cols, idx, default_value, min_value=None):
 def file_open(open_path):
     try:
         f = open(open_path, 'r+b', buffering=0)
+        os.chdir(os.path.abspath(os.path.dirname(f.name)))
         return f
 
     except FileNotFoundError:
         try:
-            f = open(open_path, 'wb', buffering=0)
+            f = open(open_path, 'w+b', buffering=0)
+            os.chdir(os.path.abspath(os.path.dirname(f.name)))
             return f
 
         except Exception as ex:
@@ -96,7 +98,7 @@ def main():
                 print(f'open: {f.name}')
 
         else:
-            print(f'{f.name}> ', end='', flush=True)
+            print('{}$ '.format(os.path.abspath(f.name)), end='', flush=True)
             cols = sys.stdin.readline().strip().split(' ')
             cols = [item.lower() for item in cols]
 
@@ -132,13 +134,18 @@ def main():
                         file_name = None
 
                     case 's':                   # seek forward
-                        off = getint(cols, 1, default_value=0, min_value=0)
-                        cur = f.seek(off)
+                        move = getint(cols, 1, default_value=0, min_value=0)
+                        cur = f.seek(move)
                         print(f'position={cur}')
 
                     case 'b':                   # seek back
-                        off = getint(cols, 1, default_value=1)
-                        cur = f.seek(off * -1, 1)
+                        move = getint(cols, 1, default_value=1)
+                        cur = f.seek(move * -1, 1)
+                        print(f'position={cur}')
+
+                    case 'l':
+                        move = getint(cols, 1, default_value=0, min_value=0)
+                        cur = f.seek(move * -1, 2)
                         print(f'position={cur}')
 
                     case 'r':                   # read

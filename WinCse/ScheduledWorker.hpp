@@ -17,11 +17,11 @@ private:
 	mutable std::mutex									mGuard;
 
 protected:
-	void listen(int i) noexcept;
-	std::deque<std::shared_ptr<CSELIB::IScheduledTask>> getTasks() const noexcept;
+	void listen(int i);
+	std::deque<std::shared_ptr<CSELIB::IScheduledTask>> getTasks() const;
 
-	virtual int getThreadPriority() const noexcept = 0;
-	virtual DWORD getTimePeriodMillis() const noexcept = 0;
+	virtual int getThreadPriority() const = 0;
+	virtual DWORD getTimePeriodMillis() const = 0;
 
 public:
 	ScheduledWorker(const std::wstring& argIniSection);

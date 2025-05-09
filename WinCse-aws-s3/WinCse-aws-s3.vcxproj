@@ -22,6 +22,7 @@
     <ClCompile Include="CSDevice.cpp" />
     <ClCompile Include="CSDeviceBase.cpp" />
     <ClCompile Include="CSDeviceCommon.cpp" />
+    <ClCompile Include="ExecuteUpload.cpp" />
     <ClCompile Include="QueryBucket.cpp" />
     <ClCompile Include="ExecuteApi.cpp" />
     <ClCompile Include="CSDeviceBase_event.cpp" />

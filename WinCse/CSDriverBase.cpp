@@ -5,12 +5,11 @@ using namespace CSELIB;
 using namespace CSEDRV;
 
 
-static PCWSTR CONFIGFILE_FNAME			= L"WinCse.conf";
 static PCWSTR CACHE_DATA_DIR_FNAME		= L"cache\\data";
 static PCWSTR CACHE_REPORT_DIR_FNAME	= L"cache\\report";
 
 
-static std::list<ICSService*> toServices(CSDriverBase* argThat, ICSDevice* argCSDevice, const std::map<std::wstring, CSELIB::IWorker*>& argWorkers) noexcept
+static std::list<ICSService*> toServices(CSDriverBase* argThat, ICSDevice* argCSDevice, const std::map<std::wstring, IWorker*>& argWorkers)
 {
 	std::list<ICSService*> services{ argThat, argCSDevice };
 
@@ -23,9 +22,9 @@ static std::list<ICSService*> toServices(CSDriverBase* argThat, ICSDevice* argCS
 CSDriverBase::CSDriverBase(
 	const std::wstring& argCSDeviceType,
 	const std::wstring& argIniSection,
-	const std::map<std::wstring, CSELIB::IWorker*>& argWorkers,
+	const std::map<std::wstring, IWorker*>& argWorkers,
 	ICSDevice* argCSDevice,
-	WINCSE_DRIVER_STATS* argStats) noexcept
+	WINCSE_DRIVER_STATS* argStats)
 	:
 	mDeviceType(argCSDeviceType),
 	mIniSection(argIniSection),
@@ -102,7 +101,7 @@ struct IdleTask : public IScheduledTask
 	{
 	}
 
-	bool shouldRun(int argTick) const noexcept override
+	bool shouldRun(int argTick) const override
 	{
 		// 10 分間隔で run() を実行
 
@@ -144,7 +143,7 @@ NTSTATUS CSDriverBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
 
 	if (dirSecRef.invalid())
 	{
-		traceW(L"fault: CreateFileW, argWorkDir=%s", argWorkDir);
+		errorW(L"fault: CreateFileW, argWorkDir=%s", argWorkDir);
 		//return STATUS_INSUFFICIENT_RESOURCES;
 		return FspNtStatusFromWin32(::GetLastError());
 	}
@@ -162,7 +161,7 @@ NTSTATUS CSDriverBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
 
 	if (fileSecRef.invalid())
 	{
-		traceW(L"fault: CreateFileW, confPath=%s", confPath.c_str());
+		errorW(L"fault: CreateFileW, confPath=%s", confPath.c_str());
 		//return STATUS_INSUFFICIENT_RESOURCES;
 		return FspNtStatusFromWin32(::GetLastError());
 	}
@@ -172,14 +171,14 @@ NTSTATUS CSDriverBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
 	const auto cacheDataDir{ workDir / mDeviceType / CACHE_DATA_DIR_FNAME };
 	if (!mkdirIfNotExists(cacheDataDir))
 	{
-		traceW(L"fault: mkdirIfNotExists cacheDataDir=%s", cacheDataDir.c_str());
+		errorW(L"fault: mkdirIfNotExists cacheDataDir=%s", cacheDataDir.c_str());
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
 	const auto cacheReportDir{ workDir / mDeviceType / CACHE_REPORT_DIR_FNAME };
 	if (!mkdirIfNotExists(cacheReportDir))
 	{
-		traceW(L"fault: mkdirIfNotExists cacheReportDir=%s", cacheReportDir.c_str());
+		errorW(L"fault: mkdirIfNotExists cacheReportDir=%s", cacheReportDir.c_str());
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
@@ -192,20 +191,26 @@ NTSTATUS CSDriverBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
 	});
 #endif
 
+	// 読み取り専用
+
+	const UINT32 defaultFileAttributes = GetIniBoolW(confPath, mIniSection, L"readonly", false) ? FILE_ATTRIBUTE_READONLY : 0;
+
 	// 実行時変数
 
 	auto runtimeEnv = std::make_unique<RuntimeEnv>(
-		//         ini-path     section         key                             default   min       max
+		//         ini-path     section         key                             default   min         max
 		//----------------------------------------------------------------------------------------------------
 		cacheDataDir,
-		GetIniIntW(confPath,    mIniSection,    L"cache_file_retention_min",        60,		1,	  10080),
+		GetIniIntW(confPath,    mIniSection,    L"cache_file_retention_min",        60,		1,	   10080),
 		cacheReportDir,
+		STCTimeToWinFileTime100nsW(argWorkDir),
+		defaultFileAttributes,
 		GetIniBoolW(confPath,   mIniSection,    L"delete_after_upload",         false),
-		GetIniIntW(confPath,    mIniSection,    L"delete_dir_condition",             2,   1,           2),
+		GetIniIntW(confPath,    mIniSection,    L"delete_dir_condition",             2,		1,		   2),
 		std::move(dirSecRef),
 		std::move(fileSecRef),
 		GetIniBoolW(confPath,	mIniSection,	L"readonly",					false),
-		GetIniIntW(confPath,	mIniSection,	L"transfer_part_size_mib",			 4,		1,	   1024)
+		GetIniIntW(confPath,	mIniSection,	L"transfer_read_size_mib",			10,		5,		 100)
 	);
 
 	traceW(L"runtimeEnv=%s", runtimeEnv->str().c_str());
@@ -220,7 +225,7 @@ NTSTATUS CSDriverBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
 	mNotifListener = NotifListener::create(mServices);
 	if (!mNotifListener)
 	{
-		traceW(L"fault: NotifListener");
+		errorW(L"fault: NotifListener");
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
@@ -236,6 +241,25 @@ NTSTATUS CSDriverBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
 VOID CSDriverBase::OnSvcStop()
 {
 	mNotifListener->stop();
+}
+
+void CSDriverBase::applyDefaultFileAttributes(FSP_FSCTL_FILE_INFO* pFileInfo) const
+{
+	if (mRuntimeEnv->DefaultFileAttributes)
+	{
+		// デフォルトのファイル属性を反映する
+
+		if (pFileInfo->FileAttributes & FILE_ATTRIBUTE_NORMAL)
+		{
+			// FILE_ATTRIBUTE_NORMAL のビットを落とす
+
+			pFileInfo->FileAttributes &= ~FILE_ATTRIBUTE_NORMAL;
+
+			APP_ASSERT(!pFileInfo->FileAttributes);
+		}
+
+		pFileInfo->FileAttributes |= mRuntimeEnv->DefaultFileAttributes;
+	}
 }
 
 // EOF

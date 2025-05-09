@@ -5,254 +5,33 @@
 #undef traceW
 #undef traceA
 
+#define FORMAT_DT		"%02d:%02d:%02d.%03d"
+#define FORMAT_ERR		"%-6lu"
+#define FORMAT_SRC		"%-32s"
+#define FORMAT_FUNC		"%-64s"
+
+#define FORMAT1			FORMAT_DT "\t" FORMAT_ERR "\t" FORMAT_SRC "\t" FORMAT_FUNC "\t"
+#define FORMAT2			"\n"
+
 
 namespace CSELIB {
 
-// デバッグ用ログ出力
-
-#define FORMAT_DT	"%02d:%02d:%02d.%03d"
-#define FORMAT_ERR	"%-3lu"
-#define FORMAT_SRC	"%-32s"
-#define FORMAT_FUNC	"%-40s"
-
-#define FORMAT1		FORMAT_DT "\t" FORMAT_ERR "\t" FORMAT_SRC "\t" FORMAT_FUNC "\t"
-#define FORMAT2		"\n"
-
-void Logger::traceW_impl(int indent, PCWSTR fullPath, int line, PCWSTR func, PCWSTR format, ...) const noexcept 
-{
-	LastErrorBackup _backup;
-
-#ifdef _RELEASE
-	if (!mTraceLogDir)
-	{
-		return;
-	}
-#endif
-
-	APP_ASSERT(indent >= 0);
-
-	const auto err = ::GetLastError();
-	const auto callFromFile{ std::filesystem::path(fullPath).filename().wstring() };
-	const auto file = callFromFile.c_str();
-
-	SYSTEMTIME st;
-	::GetLocalTime(&st);
-
-	std::wostringstream ss;
-	ss << file << L'(' << line << L')';
-
-	const auto src{ ss.str() };
-
-	va_list args;
-	va_start(args, format);
-
-	size_t bufsiz = 1;	// terminate
-	bufsiz += swprintf(nullptr, 0, L"" FORMAT1, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, err, src.c_str(), func);
-	bufsiz += indent;
-	bufsiz += vswprintf(nullptr, 0, format, args);
-	bufsiz += wcslen(L"" FORMAT2);
-
-	std::vector<wchar_t> vbuf(bufsiz);
-	wchar_t* buf = vbuf.data();
-
-	size_t remain = bufsiz;
-	remain -= swprintf(&buf[bufsiz - remain], remain, L"" FORMAT1, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, err, src.c_str(), func);
-
-	wchar_t* pos = &buf[bufsiz - remain];
-	for (int i = 0; i < indent; i++, pos++)
-	{
-		*pos = L'\t';
-
-	}
-	remain -= indent;
-
-	remain -= vswprintf(&buf[bufsiz - remain], remain, format, args);
-	remain -= swprintf(&buf[bufsiz - remain], remain, L"" FORMAT2);
-	APP_ASSERT(remain == 1);
-
-	va_end(args);
-
-	traceW_write(&st, buf);
-}
-
-void Logger::traceA_impl(int indent, PCSTR fullPath, int line, PCSTR func, PCSTR format, ...) const noexcept 
-{
-	LastErrorBackup _backup;
-
-#ifdef _RELEASE
-	if (!mTraceLogDir)
-	{
-		return;
-	}
-#endif
-
-	APP_ASSERT(indent >= 0);
-
-	const auto err = ::GetLastError();
-	const auto callFromFile{ std::filesystem::path(fullPath).filename().string() };
-	const auto file = callFromFile.c_str();
-
-	SYSTEMTIME st;
-	::GetLocalTime(&st);
-
-	std::ostringstream ss;
-	ss << file << '(' << line << ')';
-
-	const auto src{ ss.str() };
-
-	va_list args;
-	va_start(args, format);
-
-	size_t bufsiz = 1;	// terminate
-	bufsiz += snprintf(nullptr, 0, FORMAT1, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, err, src.c_str(), func);
-	bufsiz += indent;
-	bufsiz += vsnprintf(nullptr, 0, format, args);
-	bufsiz += strlen(FORMAT2);
-
-	std::vector<char> vbuf(bufsiz);
-	char* buf = vbuf.data();
-
-	auto remain = bufsiz;
-	remain -= snprintf(&buf[bufsiz - remain], remain, FORMAT1, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, err, src.c_str(), func);
-
-	char* pos = &buf[bufsiz - remain];
-	for (int i = 0; i < indent; i++, pos++)
-	{
-		*pos = '\t';
-
-	}
-	remain -= indent;
-
-	remain -= vsnprintf(&buf[bufsiz - remain], remain, format, args);
-	remain -= snprintf(&buf[bufsiz - remain], remain, FORMAT2);
-	APP_ASSERT(remain == 1);
-
-	va_end(args);
-
-	traceW_write(&st, MB2WC(buf).c_str());
-}
-
-#pragma warning(suppress: 4100)
-void Logger::traceW_write(const SYSTEMTIME* st, PCWSTR buf) const noexcept
-{
-	const auto pid = ::GetCurrentProcessId();
-	const auto tid = ::GetCurrentThreadId();
-
-	std::wostringstream ss;
-
-	ss << L"| ";
-	ss << std::setw(3) << (tid % 1000);
-	ss << L' ' << buf;
-
-#ifdef _DEBUG
-	::OutputDebugStringW(ss.str().c_str());
-#endif
-
-	if (!mTraceLogDir)
-	{
-		return;
-	}
-
-	//
-	// mLog.TLFile はスレッド・ローカルなので、実行されたスレッドごとに
-	// ログファイルが作成され、そこに出力が行われるため排他制御は不要
-	//
-	if (mTLFileOK)
-	{
-		if (!mTLFile.is_open())
-		{
-			ss.str(L"");
-
-#ifdef _DEBUG
-			ss << mTraceLogDir->wstring() << L"\\trace-";
-			ss << tid % 1000 << L'-';
-
-#else
-			ss << *mTraceLogDir << L"\\WinCse-trace-";
-			ss << std::setw(4) << std::setfill(L'0') << st->wYear;
-			ss << std::setw(2) << std::setfill(L'0') << st->wMonth;
-			ss << std::setw(2) << std::setfill(L'0') << st->wDay;
-			ss << L'-';
-#endif
-
-			ss << pid << L'-' << tid << L".log";
-			const auto path{ ss.str() };
-
-#ifdef _RELEASE
-			std::wcout << L"Open trace log file: " << path << std::endl;
-#endif
-			// これがないと日本語が出力できない
-
-			mTLFile.imbue(std::locale("", LC_ALL));
-
-			// 追加書き込みでオープン
-
-			mTLFile.open(path, std::ios_base::app);
-
-			if (!mTLFile)
-			{
-				// 開けなかったら以降は試みない
-
-				std::wcerr << L"fault: open errno=" << errno << std::endl;
-				mTLFileOK = false;
-
-				return;
-			}
-
-			mTLFlushTime = GetCurrentUtcMillis();
-		}
-	}
-
-	if (mTLFile)
-	{
-		mTLFile << buf;
-
-#ifdef _DEBUG
-		// デバッグに不便なので閉じてしまう
-		mTLFile.close();
-
-#else
-		const auto now{ GetCurrentUtcMillis() };
-
-		if (now - mTLFlushTime > TIMEMILLIS_1MINll)
-		{
-			// 1 分に一度程度は flush する
-
-			mTLFile.flush();
-
-			mTLFlushTime = now;
-		}
-
-#endif
-	}
-}
-
 // スレッド・ローカル変数の初期化
-
-thread_local std::wofstream		Logger::mTLFile;
-thread_local bool				Logger::mTLFileOK = true;
-thread_local UTC_MILLIS_T		Logger::mTLFlushTime = 0;
-
-Logger*							Logger::mInstance = nullptr;
-
-//
-// プログラム引数 "-T" で指定されたディレクトリをログ出力用に保存する
-//
 
 ILogger* CreateLogger(PCWSTR argTraceLogDir)
 {
-	namespace fs = std::filesystem;
+	// プログラム引数 "-T" で指定されたディレクトリをログ出力用に保存する
 
 	if (!Logger::mInstance)
 	{
-		fs::path dir;
+		std::filesystem::path dir;
 
 		if (argTraceLogDir)
 		{
 			// "-T" 引数で出力ディレクトリの指定がある
 
 			std::error_code ec;
-			const auto ok = fs::is_directory(argTraceLogDir, ec);
+			const auto ok = std::filesystem::is_directory(argTraceLogDir, ec);
 
 			if (ok)
 			{
@@ -260,7 +39,7 @@ ILogger* CreateLogger(PCWSTR argTraceLogDir)
 
 				dir = argTraceLogDir;
 
-				std::wcout << L"use trace-log-dir=" << dir << std::endl;
+				std::wcout << L"set trace-log-dir=" << dir.wstring() << std::endl;
 			}
 			else
 			{
@@ -283,7 +62,7 @@ ILogger* CreateLogger(PCWSTR argTraceLogDir)
 					{
 						dir = tmpdir;
 
-						std::wcout << L"use trace-log-dir=" << dir << std::endl;
+						std::wcout << L"set trace-log-dir=" << dir.wstring() << std::endl;
 					}
 					else
 					{
@@ -321,5 +100,264 @@ void DeleteLogger()
 }
 
 } // namespace CSELIB
+
+
+using namespace CSELIB;
+
+// グローバル領域
+
+struct OutputTarget
+{
+	// 注意) ほとんど参照
+
+	const std::optional<std::filesystem::path>&		outputDir;
+	PCWSTR											prefix;
+	std::wofstream&									stream;
+	bool&											streamOK;
+	UTC_MILLIS_T&									flushTime;
+
+	OutputTarget(const std::optional<std::filesystem::path>& argOutputDir, PCWSTR argPrefix, std::wofstream& argStream, bool& argStreamOK, UTC_MILLIS_T& argFlushTime)
+		:
+		outputDir(argOutputDir),
+		prefix(argPrefix),
+		stream(argStream),
+		streamOK(argStreamOK),
+		flushTime(argFlushTime)
+	{
+	}
+};
+
+#pragma warning(suppress: 4100)
+static void writeTextToTarget(const std::wstring& argText, const OutputTarget& target)
+{
+	LastErrorBackup _backup;
+
+	const auto pid = ::GetCurrentProcessId();
+	const auto tid = ::GetCurrentThreadId();
+	const auto now = GetCurrentUtcMillis();
+
+	SYSTEMTIME st;
+	::GetLocalTime(&st);
+
+#ifdef _DEBUG
+	std::wostringstream ssDebug;
+
+	ssDebug << L"| ";
+	ssDebug << std::setw(3) << (tid % 1000);
+	ssDebug << L' ' << argText;
+
+	::OutputDebugStringW(ssDebug.str().c_str());
+
+#endif
+	if (!target.outputDir)
+	{
+		return;
+	}
+
+	//
+	// mLog.TLFile はスレッド・ローカルなので、実行されたスレッドごとに
+	// ログファイルが作成され、そこに出力が行われるため排他制御は不要
+	//
+	if (target.streamOK)
+	{
+		if (!target.stream.is_open())
+		{
+			std::wostringstream ss;
+
+#ifdef _DEBUG
+			ss << target.prefix;
+			ss << L"-";
+			ss << tid % 1000 << L'-';
+
+#else
+			ss << L"WinCse-";
+			ss << target.prefix;
+			ss << L"-";
+			ss << std::setw(4) << std::setfill(L'0') << st.wYear;
+			ss << std::setw(2) << std::setfill(L'0') << st.wMonth;
+			ss << std::setw(2) << std::setfill(L'0') << st.wDay;
+			ss << L'-';
+#endif
+			ss << pid << L'-' << tid << L".log";
+
+			const auto path{ (*target.outputDir / ss.str()).wstring() };
+
+#ifdef _RELEASE
+			std::wcout << L"Open trace log file: " << path << std::endl;
+#endif
+			// これがないと日本語が出力できない
+
+			target.stream.imbue(std::locale("", LC_ALL));
+
+			// 追加書き込みでオープン
+
+			target.stream.open(path, std::ios_base::app);
+
+			if (!target.stream)
+			{
+				// 開けなかったら以降は試みない
+
+				std::wcerr << L"fault: open errno=" << errno << std::endl;
+				target.streamOK = false;
+
+				return;
+			}
+
+			target.flushTime = now;
+		}
+	}
+
+	if (target.stream)
+	{
+		target.stream << argText;
+
+#ifdef _DEBUG
+		// デバッグに不便なので毎回閉じてしまう
+
+		target.stream.close();
+		target.flushTime = now;
+
+#else
+		if (now - target.flushTime > TIMEMILLIS_1MINll)
+		{
+			// 1 分に一度程度は flush する
+
+			target.stream.flush();
+			target.flushTime = now;
+		}
+
+#endif
+	}
+}
+
+
+// Logger クラスの実装
+
+thread_local std::wofstream	Logger::mTraceLogStream;
+thread_local bool			Logger::mTraceLogStreamOK = true;
+thread_local UTC_MILLIS_T	Logger::mTraceLogFlushTime = 0;
+
+thread_local std::wofstream	Logger::mErrorLogStream;
+thread_local bool			Logger::mErrorLogStreamOK = true;
+thread_local UTC_MILLIS_T	Logger::mErrorLogFlushTime = 0;
+
+Logger* Logger::mInstance = nullptr;
+
+
+void Logger::writeToTraceLog(std::optional<std::wstring> optText)
+{
+	if (optText)
+	{
+		writeTextToTarget(*optText, { mOutputDir, L"trace", mTraceLogStream, mTraceLogStreamOK, mTraceLogFlushTime });
+	}
+}
+
+void Logger::writeToErrorLog(std::optional<std::wstring> optText)
+{
+	if (optText)
+	{
+		writeTextToTarget(*optText, { mOutputDir, L"error", mErrorLogStream, mErrorLogStreamOK, mErrorLogFlushTime });
+	}
+}
+
+std::optional<std::wstring> Logger::makeTextW(int argIndent, PCWSTR argPath, int argLine, PCWSTR argFunc, DWORD argLastError, PCWSTR argFormat, ...) const 
+{
+	APP_ASSERT(argIndent >= 0);
+
+#ifdef _RELEASE
+	if (!mOutputDir)
+	{
+		return std::nullopt;
+	}
+#endif
+
+	LastErrorBackup _backup;
+
+	SYSTEMTIME st;
+	::GetLocalTime(&st);
+
+	const auto src{ std::filesystem::path(argPath).filename().wstring() + L'(' + std::to_wstring(argLine) + L')' };
+
+	va_list args;
+	va_start(args, argFormat);
+
+	size_t bufsiz = 1;	// terminate
+	bufsiz += swprintf(nullptr, 0, L"" FORMAT1, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, argLastError, src.c_str(), argFunc);
+	bufsiz += argIndent;
+	bufsiz += vswprintf(nullptr, 0, argFormat, args);
+	bufsiz += wcslen(L"" FORMAT2);
+
+	std::vector<wchar_t> vbuf(bufsiz);
+	auto* buf = vbuf.data();
+
+	long remain = static_cast<long>(bufsiz);
+	remain -= swprintf(&buf[bufsiz - remain], remain, L"" FORMAT1, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, argLastError, src.c_str(), argFunc);
+
+	auto* pos = &buf[bufsiz - remain];
+	for (int i = 0; i < argIndent; i++, pos++)
+	{
+		*pos = L'\t';
+
+	}
+	remain -= argIndent;
+
+	remain -= vswprintf(&buf[bufsiz - remain], remain, argFormat, args);
+	remain -= swprintf(&buf[bufsiz - remain], remain, L"" FORMAT2);
+	APP_ASSERT(remain == 1);
+
+	va_end(args);
+
+	return buf;
+}
+
+std::optional<std::wstring> Logger::makeTextA(int argIndent, PCSTR argPath, int argLine, PCSTR argFunc, DWORD argLastError, PCSTR argFormat, ...) const 
+{
+	APP_ASSERT(argIndent >= 0);
+
+#ifdef _RELEASE
+	if (!mOutputDir)
+	{
+		return std::nullopt;
+	}
+#endif
+
+	LastErrorBackup _backup;
+
+	SYSTEMTIME st;
+	::GetLocalTime(&st);
+
+	const auto src{ std::filesystem::path(argPath).filename().string() + '(' + std::to_string(argLine) + ')' };
+
+	va_list args;
+	va_start(args, argFormat);
+
+	size_t bufsiz = 1;	// terminate
+	bufsiz += snprintf(nullptr, 0, FORMAT1, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, argLastError, src.c_str(), argFunc);
+	bufsiz += argIndent;
+	bufsiz += vsnprintf(nullptr, 0, argFormat, args);
+	bufsiz += strlen(FORMAT2);
+
+	std::vector<char> vbuf(bufsiz);
+	auto* buf = vbuf.data();
+
+	long remain = static_cast<long>(bufsiz);
+	remain -= snprintf(&buf[bufsiz - remain], remain, FORMAT1, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, argLastError, src.c_str(), argFunc);
+
+	auto* pos = &buf[bufsiz - remain];
+	for (int i = 0; i < argIndent; i++, pos++)
+	{
+		*pos = '\t';
+
+	}
+	remain -= argIndent;
+
+	remain -= vsnprintf(&buf[bufsiz - remain], remain, argFormat, args);
+	remain -= snprintf(&buf[bufsiz - remain], remain, FORMAT2);
+	APP_ASSERT(remain == 1);
+
+	va_end(args);
+
+	return MB2WC(buf);
+}
 
 // EOF

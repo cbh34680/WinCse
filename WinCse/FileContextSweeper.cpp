@@ -4,12 +4,14 @@ using namespace CSELIB;
 using namespace CSEDRV;
 
 //
-// エクスプローラーを開いたまま切断すると WinFsp の Close が実行されない (為だと思う)
+// エクスプローラーを開いたまま切断すると WinFsp の Close が実行されない
 // ので、RelayOpen が呼ばれて RelayClose が呼ばれていないものは、アプリケーション終了時に
 // 強制的に RelayClose を呼び出す
 // 
 // 放置しても問題はないが、デバッグ時にメモリリークとして報告されてしまい
 // 本来の意味でのメモリリークと混在してしまうため
+// 
+// https://groups.google.com/g/winfsp/c/c4kYcA6p8OQ/m/OBBLVfXADgAJ?utm_medium=email&utm_source=footer
 //
 
 FileContextSweeper::~FileContextSweeper()
@@ -30,7 +32,7 @@ FileContextSweeper::~FileContextSweeper()
 
 #define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ mGuard }
 
-void FileContextSweeper::add(FileContext* ctx) noexcept
+void FileContextSweeper::add(FileContext* ctx)
 {
 	THREAD_SAFE();
 	APP_ASSERT(mOpenAddrs.find(ctx) == mOpenAddrs.cend());
@@ -38,7 +40,7 @@ void FileContextSweeper::add(FileContext* ctx) noexcept
 	mOpenAddrs.insert(ctx);
 }
 
-void FileContextSweeper::remove(FileContext* ctx) noexcept
+void FileContextSweeper::remove(FileContext* ctx)
 {
 	THREAD_SAFE();
 	APP_ASSERT(mOpenAddrs.find(ctx) != mOpenAddrs.cend());

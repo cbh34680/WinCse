@@ -54,6 +54,9 @@
     <ClCompile Include="FileContext.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
+    <ClCompile Include="CSDriverCommon.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="DelayedWorker.hpp">
@@ -71,7 +74,7 @@
     <ClInclude Include="CSDriverBase.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="ActiveDirInfo.hpp">
+    <ClInclude Include="OpenDirEntry.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="FileContext.hpp">

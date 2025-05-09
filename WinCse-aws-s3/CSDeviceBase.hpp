@@ -43,9 +43,12 @@ public:
 	NTSTATUS OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
 	VOID OnSvcStop() override;
 
-	bool shouldIgnoreFileName(const std::wstring& arg) override
+	bool shouldIgnoreFileName(const std::filesystem::path& argWinPath) override
 	{
-		return mExecuteApi->shouldIgnoreFileName(arg);
+		APP_ASSERT(!argWinPath.empty());
+		APP_ASSERT(argWinPath.wstring().at(0) == L'\\');
+
+		return mExecuteApi->shouldIgnoreFileName(argWinPath);
 	}
 
 	void printReport(FILE* fp) override;

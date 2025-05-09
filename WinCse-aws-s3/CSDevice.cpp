@@ -4,7 +4,7 @@ using namespace CSELIB;
 using namespace CSEDAS3;
 
 
-CSELIB::ICSDevice* NewCSDevice(PCWSTR argIniSection, CSELIB::NamedWorker argWorkers[])
+ICSDevice* NewCSDevice(PCWSTR argIniSection, NamedWorker argWorkers[])
 {
     std::map<std::wstring, IWorker*> workers;
 
@@ -56,7 +56,7 @@ NTSTATUS CSDevice::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
     const auto ntstatus = CSDeviceBase::OnSvcStart(argWorkDir, FileSystem);
     if (!NT_SUCCESS(ntstatus))
     {
-        traceW(L"fault: AwsS3A::OnSvcStart");
+        errorW(L"fault: AwsS3A::OnSvcStart");
         return ntstatus;
     }
 
@@ -67,17 +67,17 @@ NTSTATUS CSDevice::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
     return STATUS_SUCCESS;
 }
 
-bool CSDevice::headBucket(CALLER_ARG const std::wstring& argBucketName, CSELIB::DirInfoPtr* pDirInfo)
+bool CSDevice::headBucket(CALLER_ARG const std::wstring& argBucketName, DirEntryType* pDirEntry)
 {
-    return mQueryBucket->qbHeadBucket(CONT_CALLER argBucketName, pDirInfo);
+    return mQueryBucket->qbHeadBucket(CONT_CALLER argBucketName, pDirEntry);
 }
 
-bool CSDevice::listBuckets(CALLER_ARG CSELIB::DirInfoPtrList* pDirInfoList)
+bool CSDevice::listBuckets(CALLER_ARG DirEntryListType* pDirEntryList)
 {
-    return mQueryBucket->qbListBuckets(CONT_CALLER pDirInfoList, {});
+    return mQueryBucket->qbListBuckets(CONT_CALLER pDirEntryList, {});
 }
 
-bool CSDevice::headObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoPtr* pDirInfo)
+bool CSDevice::headObject(CALLER_ARG const ObjectKey& argObjKey, DirEntryType* pDirEntry)
 {
     APP_ASSERT(argObjKey.isObject());
 
@@ -87,131 +87,140 @@ bool CSDevice::headObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoPtr* pDi
 
     if (argObjKey.meansDir())
     {
-        return mQueryObject->qoHeadObjectOrListObjects(CONT_CALLER argObjKey, pDirInfo);
+        return mQueryObject->qoHeadObjectOrListObjects(CONT_CALLER argObjKey, pDirEntry);
     }
     else
     {
         APP_ASSERT(argObjKey.meansFile());
 
-        return mQueryObject->qoHeadObject(CONT_CALLER argObjKey, pDirInfo);
+        return mQueryObject->qoHeadObject(CONT_CALLER argObjKey, pDirEntry);
     }
 }
 
-bool CSDevice::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoPtrList* pDirInfoList)
+bool CSDevice::headObjectFromCache_(CALLER_ARG const ObjectKey& argObjKey, DirEntryType* pDirEntry)
+{
+    // listDisplayObjects の中でのみ利用される関数
+
+    if (mRuntimeEnv->StrictFileTimestamp)
+    {
+        // HeadObject を取得
+
+        return this->headObject(CONT_CALLER argObjKey, pDirEntry);
+    }
+    else
+    {
+        // HeadObject のキャッシュを検索
+
+        return mQueryObject->qoHeadObjectFromCache(CONT_CALLER argObjKey, pDirEntry);
+    }
+}
+
+bool CSDevice::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryListType* pDirEntryList)
 {
     APP_ASSERT(argObjKey.meansDir());
-    APP_ASSERT(pDirInfoList);
+    APP_ASSERT(pDirEntryList);
 
-    DirInfoPtrList dirInfoList;
+    DirEntryListType dirEntryList;
 
-    if (!this->listObjects(CONT_CALLER argObjKey, &dirInfoList))
+    if (!this->listObjects(CONT_CALLER argObjKey, &dirEntryList))
     {
         NEW_LOG_BLOCK();
-        traceW(L"fault: listObjects");
+        errorW(L"fault: listObjects");
 
         return false;
     }
 
-    // CMD と同じ動きをさせるため ".", ".." が存在しない場合に追加する
+    // dirEntryList の内容を HeadObject で取得したキャッシュとマージ
 
-    // "C:\WORK" のようにドライブ直下のディレクトリでは ".." が表示されない動作に合わせる
-
-    if (argObjKey.isObject())
+    for (auto& dirEntry: dirEntryList)
     {
-        const auto itParent = std::find_if(dirInfoList.cbegin(), dirInfoList.cend(), [](const auto& dirInfo)
-        {
-            return dirInfo->FileName == L"..";
-        });
-
-        if (itParent == dirInfoList.cend())
-        {
-            // 親ディレクトリなので、ディレクトリ・オブジェクトとして登録
-
-            dirInfoList.insert(dirInfoList.cbegin(), this->makeDirInfoOfDir_1(L".."));
-        }
-        else
-        {
-            const auto save{ *itParent };
-            dirInfoList.erase(itParent);
-            dirInfoList.insert(dirInfoList.cbegin(), save);
-        }
-    }
-
-    const auto itCurr = std::find_if(dirInfoList.cbegin(), dirInfoList.cend(), [](const auto& dirInfo)
-    {
-        return dirInfo->FileName == L".";
-    });
-
-    if (itCurr == dirInfoList.cend())
-    {
-        // 自ディレクトリなので、ディレクトリ・オブジェクトとして登録
-
-        dirInfoList.insert(dirInfoList.cbegin(), this->makeDirInfoOfDir_1(L"."));
-    }
-    else
-    {
-        const auto save{ *itCurr };
-        dirInfoList.erase(itCurr);
-        dirInfoList.insert(dirInfoList.cbegin(), save);
-    }
-
-    //
-    // dirInfoList の内容を HeadObject で取得したキャッシュとマージ
-    //
-
-    for (auto& dirInfo: dirInfoList)
-    {
-        if (dirInfo->FileName == L"." || dirInfo->FileName == L"..")
-        {
-            continue;
-        }
+        APP_ASSERT(dirEntry->mName != L"." && dirEntry->mName != L"..");
 
         // ディレクトリにファイル名を付与
 
-        const auto searchObjKey{ argObjKey.append(dirInfo->FileName) };
+        const auto searchObjKey{ argObjKey.append(dirEntry->mName) };
 
         APP_ASSERT(searchObjKey.isObject());
 
-        DirInfoPtr mergeDirInfo;
+        DirEntryType mergeDirEntry;
 
-        if (mRuntimeEnv->StrictFileTimestamp)
+        if (this->headObjectFromCache_(CONT_CALLER searchObjKey, &mergeDirEntry))
         {
-            // HeadObject を取得
+            // キャッシュから取得出来たら差し替え
 
-            this->headObject(CONT_CALLER searchObjKey, &mergeDirInfo);
-        }
-        else
-        {
-            // HeadObject のキャッシュを検索
-
-            mQueryObject->qoHeadObjectFromCache(CONT_CALLER searchObjKey, &mergeDirInfo);
-        }
-
-        if (mergeDirInfo)
-        {
-            // 取得出来たら差し替え
-
-            dirInfo = std::move(mergeDirInfo);
+            dirEntry = std::move(mergeDirEntry);
         }
 
         if (mQueryObject->qoIsInNegativeCache(CONT_CALLER searchObjKey))
         {
             // リージョン違いなどで HeadObject が失敗したものに HIDDEN 属性を追加
 
-            dirInfo->FileInfo.FileAttributes |= FILE_ATTRIBUTE_HIDDEN;
+            dirEntry->mFileInfo.FileAttributes |= FILE_ATTRIBUTE_HIDDEN;
         }
     }
 
-    *pDirInfoList = std::move(dirInfoList);
+    // ドットエントリの追加 (CMD 対応)
+
+    const auto it = std::min_element(dirEntryList.cbegin(), dirEntryList.cend(), [](const auto& l, const auto& r)
+    {
+        return l->mFileInfo.LastWriteTime < r->mFileInfo.LastWriteTime;
+    });
+
+    const FILETIME_100NS_T defaultFileTime = it == dirEntryList.cend()
+        ? mRuntimeEnv->DefaultCommonPrefixTime : (*it)->mFileInfo.LastWriteTime;
+
+    if (!argObjKey.isBucket())
+    {
+        // CMD の動作に合わせる
+        //      C:\             ... ".", ".." は表示されない
+        //      C:\dir          ... "." は表示される
+        //      C:\dir\subdir   ... ".", ".." が表示される
+
+        DirEntryType dirEntry;
+
+        const auto optParentDir{ argObjKey.toParentDir() };
+        if (optParentDir)
+        {
+            if (optParentDir->isBucket())
+            {
+                this->headBucket(CONT_CALLER optParentDir->bucket(), &dirEntry);
+            }
+            else
+            {
+                this->headObjectFromCache_(CONT_CALLER *optParentDir, &dirEntry);
+            }
+        }
+
+        const FILETIME_100NS_T fileTime = dirEntry ? dirEntry->mFileInfo.LastWriteTime : defaultFileTime;
+
+        dirEntryList.push_front(DirectoryEntry::makeDotEntry(L"..", fileTime));
+    }
+
+    DirEntryType dirEntry;
+
+    if (argObjKey.isBucket())
+    {
+        this->headBucket(CONT_CALLER argObjKey.bucket(), &dirEntry);
+    }
+    else
+    {
+        this->headObjectFromCache_(CONT_CALLER argObjKey, &dirEntry);
+    }
+
+    const FILETIME_100NS_T fileTime = dirEntry ? dirEntry->mFileInfo.LastWriteTime : defaultFileTime;
+
+    dirEntryList.push_front(DirectoryEntry::makeDotEntry(L".", fileTime));
+
+    *pDirEntryList = std::move(dirEntryList);
 
     return true;
 }
 
-bool CSDevice::listObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoPtrList* pDirInfoList)
+bool CSDevice::listObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryListType* pDirEntryList)
 {
     APP_ASSERT(argObjKey.meansDir());
 
-    return mQueryObject->qoListObjects(CONT_CALLER argObjKey, pDirInfoList);
+    return mQueryObject->qoListObjects(CONT_CALLER argObjKey, pDirEntryList);
 }
 
 FILEIO_LENGTH_T CSDevice::getObjectAndWriteFile(CALLER_ARG const ObjectKey& argObjKey,
@@ -226,21 +235,61 @@ bool CSDevice::putObject(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSCTL_
 
     if (!mExecuteApi->PutObject(CONT_CALLER argObjKey, argFileInfo, argSourcePath))
     {
-        traceW(L"fault: PutObject");
+        errorW(L"fault: PutObject argObjKey=%s", argObjKey.c_str());
         return false;
     }
 
     // キャッシュ・メモリから削除
-    //
-    // 上記で作成したディレクトリがキャッシュに反映されていない状態で
-    // 利用されてしまうことを回避するために事前に削除しておき、改めてキャッシュを作成させる
 
     const auto num = mQueryObject->qoDeleteCache(CONT_CALLER argObjKey);
     traceW(L"cache delete num=%d, argObjKey=%s", num, argObjKey.c_str());
 
-    // headObject() は必須ではないが、作成直後に属性が参照されることに対応
+    return true;
+}
 
-    this->headObject(CONT_CALLER argObjKey, nullptr);
+bool CSDevice::deleteObject(CALLER_ARG const ObjectKey& argObjKey)
+{
+    NEW_LOG_BLOCK();
+
+    if (!mExecuteApi->DeleteObject(CONT_CALLER argObjKey))
+    {
+        errorW(L"fault: DeleteObject");
+        return false;
+    }
+
+    // キャッシュ・メモリから削除
+
+    const auto num = mQueryObject->qoDeleteCache(CONT_CALLER argObjKey);
+    traceW(L"cache delete num=%d, argObjKey=%s", num, argObjKey.c_str());
+
+    return true;
+}
+
+bool CSDevice::deleteObjects(CALLER_ARG const std::wstring& argBucket, const std::list<std::wstring>& argKeys)
+{
+    NEW_LOG_BLOCK();
+
+    if (!mExecuteApi->DeleteObjects(CONT_CALLER argBucket, argKeys))
+    {
+        traceW(L"fault: DeleteObject");
+        return false;
+    }
+
+    // キャッシュ・メモリから削除
+
+    for (const auto& key: argKeys)
+    {
+        const auto optObjKey{ ObjectKey::fromObjectPath(argBucket, key) };
+        if (optObjKey)
+        {
+            const auto num = mQueryObject->qoDeleteCache(CONT_CALLER *optObjKey);
+            traceW(L"cache delete num=%d, optObjKey=%s", num, optObjKey->c_str());
+        }
+        else
+        {
+            errorW(L"fault: fromObjectPath argBucket=%s key=%s", argBucket.c_str(), key.c_str());
+        }
+    }
 
     return true;
 }

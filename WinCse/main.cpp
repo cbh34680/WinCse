@@ -29,6 +29,9 @@ static WCHAR PROGNAME[] = L"WinCse";
 static void app_terminate();
 static void app_sighandler(int signum);
 
+static WCHAR WINCSE_BUILD_TIME[] = L"Build: 2025/05/09 18:10 JST";
+static WCHAR AWS_SDK_CPP_COMMIT[] = L"aws-sdk-cpp: Commit 6b03639";
+
 static void writeStats(
     PCWSTR logDir, const WINFSP_STATS* libStats,
     const WINCSE_DRIVER_STATS* appStats);
@@ -97,7 +100,7 @@ static bool loadCSDevice(const std::wstring& csDeviceType, PCWSTR iniSection, Na
 
 	const auto dllName{ std::wstring(PROGNAME) + L'-' + csDeviceType + L".dll" };
 
-    using NewCSDevice = CSELIB::ICSDevice* (*)(PCWSTR argIniSection, NamedWorker workers[]);
+    using NewCSDevice = ICSDevice* (*)(PCWSTR argIniSection, NamedWorker workers[]);
 
 	NewCSDevice dllFunc = nullptr;
     ICSDevice* pDevice = nullptr;
@@ -106,7 +109,7 @@ static bool loadCSDevice(const std::wstring& csDeviceType, PCWSTR iniSection, Na
 	if (hModule == NULL)
 	{
         std::wcerr << L"fault: LoadLibrary" << dllName << std::endl;
-        traceW(L"fault: LoadLibrary %s", dllName.c_str());
+        errorW(L"fault: LoadLibrary %s", dllName.c_str());
         goto exit;
 	}
     
@@ -114,7 +117,7 @@ static bool loadCSDevice(const std::wstring& csDeviceType, PCWSTR iniSection, Na
 	if (!dllFunc)
 	{
         std::wcerr << L"fault: GetProcAddress" << std::endl;
-        traceW(L"fault: GetProcAddress");
+        errorW(L"fault: GetProcAddress");
         goto exit;
     }
 
@@ -122,7 +125,7 @@ static bool loadCSDevice(const std::wstring& csDeviceType, PCWSTR iniSection, Na
 	if (!pDevice)
 	{
         std::wcerr << L"fault: NewCSDevice" << std::endl;
-        traceW(L"fault: NewCSDevice");
+        errorW(L"fault: NewCSDevice");
         goto exit;
     }
 
@@ -190,8 +193,8 @@ static int app_main(int argc, wchar_t** argv, PCWSTR iniSection, PCWSTR traceLog
                 wchar_t defaultIniSection[] = L"default";
                 if (!iniSection)
                 {
-                    std::wcout << L"use default ini section" << std::endl;
-                    traceW(L"use default ini section");
+                    std::wcout << L"use 'default' ini section" << std::endl;
+                    traceW(L"use 'default' ini section");
                     iniSection = defaultIniSection;
                 }
 
@@ -237,7 +240,7 @@ static int app_main(int argc, wchar_t** argv, PCWSTR iniSection, PCWSTR traceLog
                         else
                         {
                             std::wcerr << L"fault: NewCSDriver" << std::endl;
-                            traceW(L"fault: NewCSDriver");
+                            errorW(L"fault: NewCSDriver");
                         }
                     }
 
@@ -253,18 +256,18 @@ static int app_main(int argc, wchar_t** argv, PCWSTR iniSection, PCWSTR traceLog
                 else
                 {
                     std::wcerr << L"fault: loadCSDevice" << std::endl;
-                    traceW(L"fault: loadCSDevice");
+                    errorW(L"fault: loadCSDevice");
                 }
             }
             catch (const std::exception& ex)
             {
                 std::cerr << "catch exception: what=" << ex.what() << std::endl;
-                traceA("catch exception: what=%s", ex.what());
+                errorA("catch exception: what=%s", ex.what());
             }
             catch (...)
             {
                 std::cerr << "catch exception: unknown" << std::endl;
-                traceA("catch exception: unknown");
+                errorA("catch exception: unknown");
             }
         }
 
@@ -297,13 +300,13 @@ int wmain(int argc, wchar_t** argv)
 
     std::wcout << L"[External Libraries]" << std::endl;
     std::wcout << L"WinFsp: 2.0.23075" << std::endl;
-    std::wcout << L"aws-sdk-cpp: Commit b43cee1" << std::endl;
+    std::wcout << AWS_SDK_CPP_COMMIT << std::endl;
 
 #ifdef _DEBUG
     ::_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
     std::wcout << L"[WinCse]" << std::endl;
-    std::wcout << L"Build: 2025/04/15 18:20 JST" << std::endl;
+    std::wcout << WINCSE_BUILD_TIME << std::endl;
 
 #if WINFSP_PASSTHROUGH
     std::wcout << L"Type: passthrough" << std::endl;
@@ -311,7 +314,7 @@ int wmain(int argc, wchar_t** argv)
     std::wcout << L"Type: WinCse" << std::endl;
 #endif
 
-#if _DEBUG
+#ifdef _DEBUG
     std::wcout << L"Mode: Debug" << std::endl;
 #else
     std::wcout << L"Mode: Release" << std::endl;
@@ -408,12 +411,12 @@ int wmain(int argc, wchar_t** argv)
 
 static void app_sighandler(int signum)
 {
-    CSELIB::AbnormalEnd(__FILEW__, __LINE__, __FUNCTIONW__, signum);
+    AbnormalEnd(__FILEW__, __LINE__, __FUNCTIONW__, signum);
 }
 
 static void app_terminate()
 {
-    CSELIB::AbnormalEnd(__FILEW__, __LINE__, __FUNCTIONW__, -1);
+    AbnormalEnd(__FILEW__, __LINE__, __FUNCTIONW__, -1);
 }
 
 static void writeStats(PCWSTR outputDir, const WINFSP_STATS* libStats, const WINCSE_DRIVER_STATS* appStats)

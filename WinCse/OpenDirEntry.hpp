@@ -9,29 +9,29 @@
 namespace CSEDRV
 {
 
-class ActiveDirInfo final
+class OpenDirEntry final
 {
-	struct DirInfoWithRefCount
+	struct DirEntryWithRefCount
 	{
-		DirInfoWithRefCount(const CSELIB::DirInfoPtr& argDirInfo) noexcept
+		DirEntryWithRefCount(const CSELIB::DirEntryType& argDirEntry)
 			:
-			mDirInfo(argDirInfo)
+			mDirEntry(argDirEntry)
 		{
 		}
 
-		CSELIB::DirInfoPtr mDirInfo;
+		CSELIB::DirEntryType mDirEntry;
 		int mRefCount = 0;
 	};
 
-	std::mutex mGuard;
-	std::map<std::filesystem::path, DirInfoWithRefCount> mMap;
+	std::map<std::filesystem::path, DirEntryWithRefCount> mMap;
+	mutable std::mutex mGuard;
 
 public:
-	bool addAndAcquire(const std::filesystem::path& argFileName, const CSELIB::DirInfoPtr& argDirInfo) noexcept
+	bool addAndAcquire(const std::filesystem::path& argFileName, const CSELIB::DirEntryType& argDirEntry)
 	{
 		THREAD_SAFE();
 
-		const auto it = mMap.insert({ argFileName, argDirInfo });
+		const auto it = mMap.insert({ argFileName, argDirEntry });
 		if (!it.second)
 		{
 			return false;
@@ -42,7 +42,7 @@ public:
 		return true;
 	}
 
-	CSELIB::DirInfoPtr acquire(const std::filesystem::path& argFileName, bool addRefCount=true) noexcept
+	CSELIB::DirEntryType acquire(const std::filesystem::path& argFileName, bool addRefCount=true)
 	{
 		THREAD_SAFE();
 
@@ -57,10 +57,10 @@ public:
 			it->second.mRefCount++;
 		}
 
-		return it->second.mDirInfo;
+		return it->second.mDirEntry;
 	}
 
-	bool release(const std::filesystem::path& argFileName) noexcept
+	bool release(const std::filesystem::path& argFileName)
 	{
 		THREAD_SAFE();
 
@@ -82,25 +82,31 @@ public:
 
 	// 以下は参照カウンタを操作しないもの
 
-	CSELIB::DirInfoPtr get(const std::filesystem::path& argFileName) noexcept
+	CSELIB::DirEntryType get(const std::filesystem::path& argFileName)
 	{
 		return acquire(argFileName, false);
 	}
 
-	std::map<std::filesystem::path, CSELIB::DirInfoPtr> copy() noexcept
+	using copy_type = std::map<std::filesystem::path, CSELIB::DirEntryType>;
+
+	copy_type copy_if(std::function<bool(const copy_type::value_type&)> callback) const
 	{
 		THREAD_SAFE();
 
-		std::map<std::filesystem::path, CSELIB::DirInfoPtr> ret;
+		copy_type ret;
 
 		for (const auto& it: mMap)
 		{
-			ret.insert({ it.first, it.second.mDirInfo });
+			const copy_type::value_type value{ it.first, it.second.mDirEntry };
+
+			if (callback(value))
+			{
+				ret.insert(value);
+			}
 		}
 
 		return ret;
 	}
-
 };
 
 }	// namespace CSELIB

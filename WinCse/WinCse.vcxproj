@@ -152,6 +152,7 @@
     <ClCompile Include="CSDriver.cpp" />
     <ClCompile Include="CSDriverBase_cb.cpp" />
     <ClCompile Include="CSDriverBase.cpp" />
+    <ClCompile Include="CSDriverCommon.cpp" />
     <ClCompile Include="CSDriver_cb_util.cpp" />
     <ClCompile Include="CSDriverBase_event.cpp" />
     <ClCompile Include="FileContext.cpp" />
@@ -165,7 +166,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CSDriverBase.hpp" />
-    <ClInclude Include="ActiveDirInfo.hpp" />
+    <ClInclude Include="OpenDirEntry.hpp" />
     <ClInclude Include="CSDriverCommon.h" />
     <ClInclude Include="FileContext.hpp" />
     <ClInclude Include="FileContextSweeper.hpp" />

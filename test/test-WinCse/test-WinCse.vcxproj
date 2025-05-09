@@ -149,6 +149,7 @@
   <ItemGroup>
     <ClCompile Include="Crypt.cpp" />
     <ClCompile Include="FEP.cpp" />
+    <ClCompile Include="File.cpp" />
     <ClCompile Include="Find.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="ObjectKey.cpp" />

@@ -4,19 +4,6 @@ using namespace CSELIB;
 using namespace CSEDRV;
 
 
-#define ENABLE_TASK		(1)
-
-
-#if ENABLE_TASK
-// タスク処理が有効
-const int WORKER_MAX = 6;
-
-#else
-// タスク処理が無効
-const int WORKER_MAX = 0;
-
-#endif
-
 DelayedWorker::DelayedWorker(const std::wstring& argIniSection)
 	:
 	mIniSection(argIniSection)
@@ -46,11 +33,20 @@ NTSTATUS DelayedWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
 
 	if (mEvent.invalid())
 	{
-		traceW(L"mEvent is null");
+		errorW(L"mEvent is null");
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
-	for (int i=0; i<WORKER_MAX; i++)
+	const std::filesystem::path workDir{ argWorkDir };
+	const auto confPath{ workDir / CONFIGFILE_FNAME };
+
+	traceW(L"confPath=%s", confPath.c_str());
+
+	const auto numThreads = GetIniIntW(confPath, mIniSection, L"file_io_threads", 4, 1, 32);
+
+	traceW(L"numThreads=%d", numThreads);
+
+	for (int i=0; i<numThreads; i++)
 	{
 		auto& thr = mThreads.emplace_back(&DelayedWorker::listen, this, i);
 
@@ -62,8 +58,7 @@ NTSTATUS DelayedWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
 		const auto hresult = ::SetThreadDescription(h, ss.str().c_str());
 		APP_ASSERT(SUCCEEDED(hresult));
 		
-		//BOOL b = ::SetThreadPriority(h, THREAD_PRIORITY_HIGHEST);
-		BOOL b = ::SetThreadPriority(h, THREAD_PRIORITY_ABOVE_NORMAL);
+		BOOL b = ::SetThreadPriority(h, THREAD_PRIORITY_BELOW_NORMAL);
 		APP_ASSERT(b);
 	}
 
@@ -101,13 +96,13 @@ VOID DelayedWorker::OnSvcStop()
 	mTaskQueue.clear();
 }
 
-void DelayedWorker::listen(int argThreadIndex) noexcept
+void DelayedWorker::listen(int argThreadIndex)
 {
 	NEW_LOG_BLOCK();
 
-	while (1)
+	while (true)
 	{
-		//traceW(L"(%d): wait for signal ...", argThreadIndex);
+		traceW(L"(%d): WaitForSingleObject ...", argThreadIndex);
 		const auto reason = ::WaitForSingleObject(mEvent.handle(), INFINITE);
 
 		bool breakLoop = false;
@@ -120,23 +115,26 @@ void DelayedWorker::listen(int argThreadIndex) noexcept
 		}
 		else
 		{
+			// reason の値が何であれ、!mEndWorkerFlag である間はキューにある処理を実行する
+
 			switch (reason)
 			{
 				case WAIT_OBJECT_0:
 				{
 					// SetEvent の実行
 
-					//traceW(L"(%d): wait for signal: catch signal", argThreadIndex);
+					traceW(L"(%d): wait for signal: catch signal", argThreadIndex);
+
 					break;
 				}
 
 				default:
 				{
 					// タイムアウト、又はシステムエラー
+					// --> INFINITE なのでタイムアウトは発生しないはず
 
-					traceW(L"(%d): wait for signal: error code=%lu, break", argThreadIndex, reason);
-
-					breakLoop = true;
+					const auto lerr = ::GetLastError();
+					errorW(L"(%d): wait for signal: error code=%lu lerr=%lu", argThreadIndex, reason, lerr);
 
 					break;
 				}
@@ -151,29 +149,28 @@ void DelayedWorker::listen(int argThreadIndex) noexcept
 
 		// キューに入っているタスクを処理
 
-		while (1)
+		while (true)
 		{
 			auto task{ dequeueTask() };
 			if (!task)
 			{
-				//traceW(L"(%d): no more oneshot-tasks", argThreadIndex);
+				traceW(L"(%d): no more oneshot-tasks", argThreadIndex);
 				break;
 			}
 
 			try
 			{
-				//traceW(L"(%d): run oneshot task ...", argThreadIndex);
+				traceW(L"(%d): run oneshot task ...", argThreadIndex);
 				task->run(argThreadIndex);
-				//traceW(L"(%d): run oneshot task done", argThreadIndex);
+				traceW(L"(%d): run oneshot task done", argThreadIndex);
 			}
 			catch (const std::exception& ex)
 			{
-				traceA("(%d): what: %s", argThreadIndex, ex.what());
-				break;
+				errorA("(%d): what: %s, continue", argThreadIndex, ex.what());
 			}
 			catch (...)
 			{
-				traceA("(%d): unknown error, continue", argThreadIndex);
+				errorA("(%d): unknown error, continue", argThreadIndex);
 			}
 		}
 	}
@@ -204,8 +201,7 @@ void DelayedWorker::listen(int argThreadIndex) noexcept
 
 #define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ mGuard }
 
-#if ENABLE_TASK
-bool DelayedWorker::addTypedTask(CSELIB::IOnDemandTask* argTask)
+bool DelayedWorker::addTypedTask(IOnDemandTask* argTask)
 {
 	THREAD_SAFE();
 	NEW_LOG_BLOCK();
@@ -232,7 +228,7 @@ bool DelayedWorker::addTypedTask(CSELIB::IOnDemandTask* argTask)
 	return true;
 }
 
-std::unique_ptr<IOnDemandTask> DelayedWorker::dequeueTask() noexcept
+std::unique_ptr<IOnDemandTask> DelayedWorker::dequeueTask()
 {
 	THREAD_SAFE();
 
@@ -246,29 +242,5 @@ std::unique_ptr<IOnDemandTask> DelayedWorker::dequeueTask() noexcept
 
 	return nullptr;
 }
-
-#else
-
-bool DelayedWorker::addTypedTask(CALLER_ARG CSELIB::IOnDemandTask* argTask)
-{
-	THREAD_SAFE();
-
-	// ワーカー処理が無効な場合は、タスクのリクエストを無視
-
-	argTask->cancelled(CONT_CALLER0);
-	delete argTask;
-
-	return add;
-}
-
-std::unique_ptr<IOnDemandTask> DelayedWorker::dequeueTask() noexcept
-{
-	THREAD_SAFE();
-
-	// ワーカー処理が無効な場合は、null を返却
-
-	return nullptr;
-}
-#endif
 
 // EOF

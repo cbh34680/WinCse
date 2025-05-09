@@ -19,6 +19,9 @@
     <Filter Include="ソース ファイル\WinCseLib-aws-s3">
       <UniqueIdentifier>{86f25df5-04a0-4bb8-aa06-9e5a5871c645}</UniqueIdentifier>
     </Filter>
+    <Filter Include="ソース ファイル\CPP">
+      <UniqueIdentifier>{c578f5c0-819f-4ff9-9d7f-b4997f455f5a}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -47,6 +50,9 @@
     </ClCompile>
     <ClCompile Include="Crypt.cpp">
       <Filter>ソース ファイル\WinCseLib</Filter>
+    </ClCompile>
+    <ClCompile Include="File.cpp">
+      <Filter>ソース ファイル\CPP</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

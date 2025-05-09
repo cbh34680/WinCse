@@ -15,7 +15,7 @@ private:
 
 	NotifListener(
 		std::vector<std::pair<CSELIB::ICSService*, std::wstring>>&& argNotifs,
-		std::vector<HANDLE>&& argEvents) noexcept
+		std::vector<HANDLE>&& argEvents)
 		:
 		mNotifs(std::move(argNotifs)),
 		mEvents(std::move(argEvents))
@@ -23,16 +23,16 @@ private:
 	}
 
 public:
-	static std::unique_ptr<NotifListener> create(const std::list<CSELIB::ICSService*>& argServices) noexcept;
+	static std::unique_ptr<NotifListener> create(const std::list<CSELIB::ICSService*>& argServices);
 
 	~NotifListener()
 	{
 		this->stop();
 	}
 
-	NTSTATUS start() noexcept;
-	void listen() noexcept;
-	NTSTATUS stop() noexcept;
+	NTSTATUS start();
+	void listen();
+	NTSTATUS stop();
 };
 
 }	// CSEDRV

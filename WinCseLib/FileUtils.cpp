@@ -5,6 +5,25 @@
 
 namespace CSELIB {
 
+FILESIZE_T GetFileSize(const std::filesystem::path& argPath)
+{
+	NEW_LOG_BLOCK();
+
+	WIN32_FILE_ATTRIBUTE_DATA cacheFileInfo{};
+
+	if (!::GetFileAttributesExW(argPath.c_str(), GetFileExInfoStandard, &cacheFileInfo))
+	{
+		errorW(L"fault: GetFileAttributesExW argPath=%s", argPath.c_str());
+		return -1LL;
+	}
+
+	LARGE_INTEGER li{};
+	li.HighPart = cacheFileInfo.nFileSizeHigh;
+	li.LowPart = cacheFileInfo.nFileSizeLow;
+
+	return li.QuadPart;
+}
+
 BOOL DeleteFilePassively(const std::filesystem::path& argPath)
 {
 	// 開いているファイル・ハンドルがない状態の時に削除する
@@ -79,7 +98,7 @@ bool forEachFiles(const std::filesystem::path& argDir, const std::function<void(
 	const auto dir{ argDir / L"*" };
 
 	WIN32_FIND_DATA wfd;
-	HANDLE hFile = ::FindFirstFileW(dir.c_str(), &wfd);
+	HANDLE hFile = ::FindFirstFileW(dir.wstring().c_str(), &wfd);
 
 	if (hFile == INVALID_HANDLE_VALUE)
 	{
@@ -99,6 +118,8 @@ bool forEachFiles(const std::filesystem::path& argDir, const std::function<void(
 		{
 			if (!forEachFiles(curPath, callback))
 			{
+				::FindClose(hFile);
+
 				return false;
 			}
 		}
@@ -107,7 +128,7 @@ bool forEachFiles(const std::filesystem::path& argDir, const std::function<void(
 			callback(wfd, curPath);
 		}
 	}
-	while (::FindNextFile(hFile, &wfd) != 0);
+	while (::FindNextFileW(hFile, &wfd) != 0);
 
 	::FindClose(hFile);
 
@@ -119,7 +140,7 @@ bool forEachDirs(const std::filesystem::path& argDir, const std::function<void(c
 	const auto dir{ argDir / L"*" };
 
 	WIN32_FIND_DATA wfd;
-	HANDLE hFile = ::FindFirstFileW(dir.c_str(), &wfd);
+	HANDLE hFile = ::FindFirstFileW(dir.wstring().c_str(), &wfd);
 
 	if (hFile == INVALID_HANDLE_VALUE)
 	{
@@ -139,13 +160,15 @@ bool forEachDirs(const std::filesystem::path& argDir, const std::function<void(c
 		{
 			if (!forEachDirs(curPath, callback))
 			{
+				::FindClose(hFile);
+
 				return false;
 			}
 
 			callback(wfd, curPath);
 		}
 	}
-	while (::FindNextFile(hFile, &wfd) != 0);
+	while (::FindNextFileW(hFile, &wfd) != 0);
 
 	::FindClose(hFile);
 

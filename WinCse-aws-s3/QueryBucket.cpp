@@ -4,31 +4,25 @@ using namespace CSELIB;
 using namespace CSEDAS3;
 
 
-void QueryBucket::qbClearCache(CALLER_ARG0) noexcept
+void QueryBucket::qbClearCache(CALLER_ARG0)
 {
     mCacheListBuckets.clbClear(CONT_CALLER0);
 }
 
-void QueryBucket::qbReportCache(CALLER_ARG FILE* fp) const noexcept
+void QueryBucket::qbReportCache(CALLER_ARG FILE* fp) const
 {
     mCacheListBuckets.clbReport(CONT_CALLER fp);
 }
 
-std::wstring QueryBucket::qbGetBucketRegion(CALLER_ARG const std::wstring& argBucketName) noexcept
+std::wstring QueryBucket::qbGetBucketRegion(CALLER_ARG const std::wstring& argBucketName)
 {
-    //NEW_LOG_BLOCK();
+    NEW_LOG_BLOCK();
 
-    //traceW(L"bucketName: %s", bucketName.c_str());
+    traceW(L"argBucketName: %s", argBucketName.c_str());
 
     std::wstring bucketRegion;
 
-    if (mCacheListBuckets.clbGetBucketRegion(CONT_CALLER argBucketName, &bucketRegion))
-    {
-        APP_ASSERT(!bucketRegion.empty());
-
-        //traceW(L"hit in cache, region is %s", bucketRegion.c_str());
-    }
-    else
+    if (!mCacheListBuckets.clbGetBucketRegion(CONT_CALLER argBucketName, &bucketRegion))
     {
         // キャッシュに存在しない
 
@@ -38,24 +32,24 @@ std::wstring QueryBucket::qbGetBucketRegion(CALLER_ARG const std::wstring& argBu
 
             bucketRegion = MB2WC(AWS_DEFAULT_REGION);
 
-            //traceW(L"error, fall back region is %s", bucketRegion.c_str());
+            traceW(L"set fall back region is %s", bucketRegion.c_str());
         }
-
-        APP_ASSERT(!bucketRegion.empty());
 
         mCacheListBuckets.clbAddBucketRegion(CONT_CALLER argBucketName, bucketRegion);
     }
 
+    APP_ASSERT(!bucketRegion.empty());
+
     return bucketRegion;
 }
 
-bool QueryBucket::qbHeadBucket(CALLER_ARG const std::wstring& argBucketName, DirInfoPtr* pDirInfo) noexcept
+bool QueryBucket::qbHeadBucket(CALLER_ARG const std::wstring& argBucketName, DirEntryType* pDirEntry)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(!argBucketName.empty());
     APP_ASSERT(argBucketName.back() != L'/');
 
-    //traceW(L"bucket: %s", bucketName.c_str());
+    traceW(L"argBucketName: %s", argBucketName.c_str());
 
     const auto bucketRegion{ this->qbGetBucketRegion(CONT_CALLER argBucketName) };
     if (bucketRegion != mRuntimeEnv->ClientRegion)
@@ -69,27 +63,14 @@ bool QueryBucket::qbHeadBucket(CALLER_ARG const std::wstring& argBucketName, Dir
 
     // キャッシュから探す
 
-    DirInfoPtr dirInfo;
-
-    if (!mCacheListBuckets.clbFind(CONT_CALLER argBucketName, &dirInfo))
-    {
-        return false;
-    }
-
-    if (pDirInfo)
-    {
-        *pDirInfo = std::move(dirInfo);
-    }
-
-    return true;
+    return mCacheListBuckets.clbFind(CONT_CALLER argBucketName, pDirEntry);
 }
 
-bool QueryBucket::qbListBuckets(CALLER_ARG
-    CSELIB::DirInfoPtrList* pDirInfoList, const std::set<std::wstring>& options) noexcept
+bool QueryBucket::qbListBuckets(CALLER_ARG DirEntryListType* pDirEntryList, const std::set<std::wstring>& options)
 {
     NEW_LOG_BLOCK();
 
-    DirInfoPtrList dirInfoList;
+    DirEntryListType dirEntryList;
 
     if (mCacheListBuckets.clbEmpty(CONT_CALLER0))
     {
@@ -110,9 +91,9 @@ bool QueryBucket::qbListBuckets(CALLER_ARG
 
         // バケット一覧の取得
 
-        if (!mExecuteApi->ListBuckets(CONT_CALLER &dirInfoList))
+        if (!mExecuteApi->ListBuckets(CONT_CALLER &dirEntryList))
         {
-            traceW(L"fault: ListBuckets");
+            errorW(L"fault: ListBuckets");
             return false;
         }
 
@@ -120,22 +101,22 @@ bool QueryBucket::qbListBuckets(CALLER_ARG
 
         // キャッシュにコピー
 
-        mCacheListBuckets.clbSet(CONT_CALLER dirInfoList);
+        mCacheListBuckets.clbSet(CONT_CALLER dirEntryList);
     }
     else
     {
         // キャッシュからコピー
 
-        mCacheListBuckets.clbGet(CONT_CALLER0, &dirInfoList);
+        mCacheListBuckets.clbGet(CONT_CALLER0, &dirEntryList);
 
-        //traceW(L"use cache: size=%zu", dirInfoList.size());
+        //traceW(L"use cache: size=%zu", dirEntryList.size());
     }
 
-    if (pDirInfoList)
+    if (pDirEntryList)
     {
-        for (auto it=dirInfoList.cbegin(); it!=dirInfoList.cend(); )
+        for (auto it=dirEntryList.cbegin(); it!=dirEntryList.cend(); )
         {
-            const auto bucketName{ (*it)->FileName };
+            const auto& bucketName{ (*it)->mName };
 
             std::wstring bucketRegion;
 
@@ -145,7 +126,11 @@ bool QueryBucket::qbListBuckets(CALLER_ARG
 
                 bucketRegion = this->qbGetBucketRegion(CONT_CALLER bucketName);
 
-                APP_ASSERT(!bucketRegion.empty());
+                if (bucketRegion.empty())
+                {
+                    errorW(L"fault: bucketRegion is empty bucketName=%s", bucketName.c_str());
+                    return false;
+                }
             }
             else
             {
@@ -153,7 +138,11 @@ bool QueryBucket::qbListBuckets(CALLER_ARG
 
                 if (mCacheListBuckets.clbGetBucketRegion(CONT_CALLER bucketName, &bucketRegion))
                 {
-                    APP_ASSERT(!bucketRegion.empty());
+                    if (bucketRegion.empty())
+                    {
+                        errorW(L"fault: bucketRegion is empty bucketName=%s", bucketName.c_str());
+                        return false;
+                    }
                 }
             }
 
@@ -167,7 +156,7 @@ bool QueryBucket::qbListBuckets(CALLER_ARG
                     //
                     // --> headBucket() でリージョンを取得しているので、バケット・キャッシュ作成時ではできない
 
-                    (*it)->FileInfo.FileAttributes |= FILE_ATTRIBUTE_HIDDEN;
+                    (*it)->mFileInfo.FileAttributes |= FILE_ATTRIBUTE_HIDDEN;
                 }
             }
 
@@ -179,7 +168,7 @@ bool QueryBucket::qbListBuckets(CALLER_ARG
                 {
                     // 検索抽出条件に一致しない場合は取り除く
 
-                    it = dirInfoList.erase(it);
+                    it = dirEntryList.erase(it);
 
                     continue;
                 }
@@ -188,26 +177,26 @@ bool QueryBucket::qbListBuckets(CALLER_ARG
             ++it;
         }
 
-        *pDirInfoList = std::move(dirInfoList);
+        *pDirEntryList = std::move(dirEntryList);
     }
 
     return true;
 }
 
-bool QueryBucket::qbReload(CALLER_ARG std::chrono::system_clock::time_point threshold) noexcept
+bool QueryBucket::qbReload(CALLER_ARG std::chrono::system_clock::time_point threshold)
 {
+    NEW_LOG_BLOCK();
+
     const auto lastSetTime = mCacheListBuckets.clbGetLastSetTime(CONT_CALLER0);
 
     if (threshold < lastSetTime)
     {
         // キャッシュの有効期限内
 
-        //traceW(L"bucket cache is valid");
+        traceW(L"bucket cache is valid");
     }
     else
     {
-        NEW_LOG_BLOCK();
-
         // バケット・キャッシュを作成してから一定時間が経過
 
         traceW(L"RELOAD");
@@ -220,7 +209,7 @@ bool QueryBucket::qbReload(CALLER_ARG std::chrono::system_clock::time_point thre
 
         if (!this->qbListBuckets(CONT_CALLER nullptr, {}))
         {
-            traceW(L"fault: listBuckets");
+            errorW(L"fault: listBuckets");
             return false;
         }
     }

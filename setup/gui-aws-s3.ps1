@@ -583,17 +583,17 @@ region=${region}
 #bucket_filters=my-bucket-1 my-bucket-2*
 
 ; Delete the cache files after the upload is completed.
-; valid value: 0 or non-zero
-; default: 0 (Do not delete)
+; valid value: 0 (Do not delete), 1 (Delete after upload)
+; default: 0 
 #delete_after_upload=0
 
 ; Set the file as read-only.
-; valid value: 0 or non-zero
-; default: 0 (Read and write)
+; valid value: 0 (Read and write), 1 (Read only)
+; default: 0
 #readonly=0
 
 ;!
-;! Changing the following values will affect the response.
+;! WARNING: Changing the following settings may affect system behavior.
 ;!
 
 ; Bucket cache expiration period.
@@ -603,7 +603,7 @@ region=${region}
 
 ; Cache file retention period.
 ; valid range: 1 to 10080 (1 week)
-; default: 60 (1 hours)
+; default: 60
 #cache_file_retention_min=60
 
 ; Conditions for deleting a directory.
@@ -636,14 +636,24 @@ region=${region}
 ; default: 0 (Not strict)
 #strict_file_timestamp=0
 
-; The part size during multipart transfer.
-; valid range: 1 (1 MiB) to 1024 (1 GiB)
-;
-#transfer_part_size_mib=4
+; Specifies the number of threads used for file I/O operations.
+; valid range: 1 to 32
+; default: 4
+#file_io_threads=4
 
-; Files matching the following regex patterns will be ignored.
+; Specifies the size of data to be read during a transfer operation.
+; valid range: 5 (5 MiB) to 100 (100 MiB)
+; default: 10
+#transfer_read_size_mib=10
+
+; Specifies the size of data to be written during a transfer operation.
+; valid range: 5 (5 MiB) to 100 (100 MiB)
+; default: 10
+#transfer_write_size_mib=10
+
+; Files that match the following regex patterns will be ignored.
 ; default: Empty (Don't ignore)
-re_ignore_patterns=\b(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif)|\.DS_Store)$
+re_ignore_patterns=\\(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif))$
 
 ; ----------
 ; INFO

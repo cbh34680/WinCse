@@ -5,8 +5,12 @@
 
 #include <Windows.h>
 #include <iostream>
+#include <optional>
 
 static void setup_stdout();
+
+// [CPP/File.cpp]
+void t_CPP_File();
 
 // [WinCseLib/System.cpp]
 void t_WinCseLib_System_AbnormalEnd();
@@ -39,12 +43,22 @@ int wmain(int, wchar_t**)
 {
 	setup_stdout();
 
+    WCHAR curdir[MAX_PATH];
+    ::GetCurrentDirectoryW(_countof(curdir), curdir);
+
+    std::wcout << L"Current Directory=" << curdir << std::endl;
+
+#if 1
+    /* [CPP/File.cpp] */
+    t_CPP_File();
+#endif
+
 #if 0
 	/* [WinCseLib/System.cpp] */
     t_WinCseLib_System_AbnormalEnd();
 #endif
 
-#if 1
+#if 0
     /* [WinCseLib/Crypt.cpp] */
     t_WinCseLib_Crypt();
 #endif
@@ -58,7 +72,7 @@ int wmain(int, wchar_t**)
 #endif
 
 #if 0
-    /* [WinCseLib/String.cpp */
+    /* [WinCseLib/ObjectKey.cpp */
     t_WinCseLib_ObjectKey();
     t_WinCseLib_ObjectKey_fromPath();
     t_WinCseLib_ObjectKey_fromWinPath();

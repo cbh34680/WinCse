@@ -6,9 +6,6 @@ using namespace CSEDAS3;
 
 static bool decryptIfNecessaryW(const std::wstring& argSecretKey, std::wstring* pInOut);
 
-static PCWSTR CONFIGFILE_FNAME = L"WinCse.conf";
-
-
 CSDeviceBase::CSDeviceBase(const std::wstring& argIniSection,
     const std::map<std::wstring, IWorker*>& argWorkers)
     :
@@ -27,7 +24,7 @@ struct TimerTask : public IScheduledTask
     {
     }
 
-    bool shouldRun(int) const noexcept override
+    bool shouldRun(int) const override
     {
         // 1 分間隔で run() を実行
 
@@ -50,7 +47,7 @@ struct IdleTask : public IScheduledTask
     {
     }
 
-    bool shouldRun(int argTick) const noexcept override
+    bool shouldRun(int argTick) const override
     {
         // 10 分間隔で run() を実行
 
@@ -117,7 +114,7 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
             }
             catch (const std::regex_error& ex)
             {
-                traceA("what=%s", ex.what());
+                errorA("what=%s", ex.what());
                 return STATUS_INVALID_PARAMETER;
             }
 
@@ -147,15 +144,31 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
             }
             catch (const std::regex_error& ex)
             {
-                traceA("regex_error: %s", ex.what());
-                traceW(L"%s: ignored, set default patterns", re_ignore_patterns.c_str());
+                errorA("regex_error: %s", ex.what());
+                errorW(L"%s: ignored, set default patterns", re_ignore_patterns.c_str());
             }
         }
     }
 
-    // 読み取り専用
+#ifdef _DEBUG
+    if (ignoreFileNamePatterns)
+    {
+        traceW(L"re_ignore_patterns=[%s]", re_ignore_patterns.c_str());
 
-    const UINT32 defaultFileAttributes = GetIniBoolW(confPath, mIniSection, L"readonly", false) ? FILE_ATTRIBUTE_READONLY : 0;
+        const WCHAR* strs[] = {
+            LR"(C:\dir\Desktop.ini)",
+            LR"(C:\dir\folder.ico)",
+            LR"(C:\dir\folder.jpg)",
+            LR"(C:\dir\folder.jpeg)",
+            LR"(C:\dir\.DS_Store)",
+        };
+
+        for (const auto* str: strs)
+        {
+            traceW(L"str=[%s] %s", str, BOOL_CSTRW(std::regex_search(str, *ignoreFileNamePatterns)));
+        }
+    }
+#endif
 
     // AWS 接続リージョン
 
@@ -165,20 +178,20 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
     // 実行時変数
 
     auto runtimeEnv = std::make_unique<RuntimeEnv>(
-        //         ini-path     section         key                             default   min       max
+        //         ini-path     section         key                             default   min           max
         //----------------------------------------------------------------------------------------------------
-        GetIniIntW(confPath,    mIniSection,    L"bucket_cache_expiry_min",         20,   1,        1440),
+        GetIniIntW(confPath,    mIniSection,    L"bucket_cache_expiry_min",         20,     1,        1440),
         bucketFilters,
         clientGuid,
         STCTimeToWinFileTime100nsW(argWorkDir),
-        defaultFileAttributes,
         ignoreFileNamePatterns,
-        GetIniIntW(confPath,    mIniSection,    L"max_display_buckets",              8,   0, INT_MAX - 1),
-        GetIniIntW(confPath,    mIniSection,    L"max_display_objects",           1000,   0, INT_MAX - 1),
-        GetIniIntW(confPath,    mIniSection,    L"object_cache_expiry_min",          5,   1,          60),
+        GetIniIntW(confPath,    mIniSection,    L"max_display_buckets",              8,     0, INT_MAX - 1),
+        GetIniIntW(confPath,    mIniSection,    L"max_display_objects",           1000,     0, INT_MAX - 1),
+        GetIniIntW(confPath,    mIniSection,    L"object_cache_expiry_min",          5,     1,          60),
         region,
         GetIniBoolW(confPath,   mIniSection,    L"strict_bucket_region",        false),
-        GetIniBoolW(confPath,   mIniSection,    L"strict_file_timestamp",       false)
+        GetIniBoolW(confPath,   mIniSection,    L"strict_file_timestamp",       false),
+        GetIniIntW(confPath,	mIniSection,	L"transfer_write_size_mib",			10,     5,          100)
     );
 
     traceW(L"runtimeEnv=%s", runtimeEnv->str().c_str());
@@ -198,13 +211,13 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
     const auto lstatus = GetCryptKeyFromRegistryW(&regSecretKey);
     if (lstatus != ERROR_SUCCESS)
     {
-        traceW(L"fault: GetCryptKeyFromRegistry");
+        errorW(L"fault: GetCryptKeyFromRegistry");
         return STATUS_OBJECT_NAME_NOT_FOUND;
     }
 
     if (regSecretKey.length() < 32)
     {
-        traceW(L"%s: illegal data", regSecretKey.c_str());
+        errorW(L"%s: illegal data", regSecretKey.c_str());
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -216,13 +229,13 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
 
     if (!decryptIfNecessaryW(regSecretKey, &accessKeyId))
     {
-        traceW(L"%s: keyid decrypt fault", accessKeyId.c_str());
+        errorW(L"%s: keyid decrypt fault", accessKeyId.c_str());
         return STATUS_ENCRYPTION_FAILED;
     }
 
     if (!decryptIfNecessaryW(regSecretKey, &secretAccessKey))
     {
-        traceW(L"%s: secret decrypt fault", secretAccessKey.c_str());
+        errorW(L"%s: secret decrypt fault", secretAccessKey.c_str());
         return STATUS_ENCRYPTION_FAILED;
     }
 
@@ -230,12 +243,12 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
 
     // API 実行オブジェクト
 
-    auto execApi{ std::make_unique<ExecuteApi>(runtimeEnv.get(), region, accessKeyId, secretAccessKey) };
+    auto execApi{ std::make_unique<ExecuteApi>(getWorker(L"delayed"), runtimeEnv.get(), region, accessKeyId, secretAccessKey) };
     APP_ASSERT(execApi);
 
     if (!execApi->Ping(START_CALLER0))
     {
-        traceW(L"fault: Ping");
+        errorW(L"fault: Ping");
         return STATUS_NETWORK_ACCESS_DENIED;
     }
 
@@ -297,7 +310,7 @@ static bool decryptIfNecessaryA(const std::string& argSecretKey, std::string* pI
                 std::string concatStr;
                 if (!Base64DecodeA(concatB64Str, &concatStr))
                 {
-                    traceW(L"fault: Base64DecodeA");
+                    errorW(L"fault: Base64DecodeA");
                     return false;
                 }
 
@@ -307,7 +320,7 @@ static bool decryptIfNecessaryA(const std::string& argSecretKey, std::string* pI
                 {
                     // IV + データなので最低でも 16 + 1 byte は必要
 
-                    traceW(L"fault: concatBytes.size() < 17");
+                    errorW(L"fault: concatBytes.size() < 17");
                     return false;
                 }
 
@@ -327,7 +340,7 @@ static bool decryptIfNecessaryA(const std::string& argSecretKey, std::string* pI
 
                 if (!DecryptAES(aesKey, aesIV, encrypted, &decrypted))
                 {
-                    traceW(L"fault: DecryptAES");
+                    errorW(L"fault: DecryptAES");
                     return false;
                 }
 

@@ -3,26 +3,8 @@
 using namespace CSELIB;
 
 
-static FILEIO_LENGTH_T getFileSize(const std::filesystem::path& argPath)
+static bool syncFileTimes(const FSP_FSCTL_FILE_INFO& fileInfo, HANDLE hFile)
 {
-    WIN32_FILE_ATTRIBUTE_DATA cacheFileInfo{};
-
-    if (!::GetFileAttributesExW(argPath.c_str(), GetFileExInfoStandard, &cacheFileInfo))
-    {
-        return -1LL;
-    }
-
-    LARGE_INTEGER li{};
-    li.HighPart = cacheFileInfo.nFileSizeHigh;
-    li.LowPart = cacheFileInfo.nFileSizeLow;
-
-    return li.QuadPart;
-}
-
-static bool syncFileTimes(HANDLE hFile, const FSP_FSCTL_FILE_INFO& fileInfo)
-{
-    NEW_LOG_BLOCK();
-
     FILETIME ftCreation;
     FILETIME ftLastAccess;
     FILETIME ftLastWrite;
@@ -31,85 +13,25 @@ static bool syncFileTimes(HANDLE hFile, const FSP_FSCTL_FILE_INFO& fileInfo)
     ::GetSystemTimeAsFileTime(&ftLastAccess);
     WinFileTime100nsToWinFile(fileInfo.LastWriteTime, &ftLastWrite);
 
-    if (!::SetFileTime(hFile, &ftCreation, &ftLastAccess, &ftLastWrite))
-    {
-        traceW(L"fault: SetFileTime");
-        return false;
-    }
-
-    traceW(L"ftCreation=%s",  WinFileTimeToLocalTimeStringW(ftCreation).c_str());
-    traceW(L"ftLastAccess=%s", WinFileTimeToLocalTimeStringW(ftLastAccess).c_str());
-    traceW(L"ftLastWrite=%s", WinFileTimeToLocalTimeStringW(ftLastWrite).c_str());
-
-    return true;
+    return ::SetFileTime(hFile, &ftCreation, &ftLastAccess, &ftLastWrite);
 }
 
-class FilePart
+using ReadFilePartType = FilePart<FILEIO_LENGTH_T>;
+
+struct ReadFilePartTask : public IOnDemandTask
 {
-    EventHandle mDone;
-    CSELIB::FILEIO_LENGTH_T mResult = -1LL;
-
-public:
-    const CSELIB::FILEIO_OFFSET_T mOffset;
-    const CSELIB::FILEIO_LENGTH_T mLength;
-
-    std::atomic<bool> mInterrupt = false;
-
-    explicit FilePart(CSELIB::FILEIO_OFFSET_T argOffset, CSELIB::FILEIO_LENGTH_T argLength) noexcept
-        :
-        mOffset(argOffset),
-        mLength(argLength)
-    {
-        mDone = ::CreateEventW(NULL,
-            TRUE,				// 手動リセットイベント
-            FALSE,				// 初期状態：非シグナル状態
-            NULL);
-
-        APP_ASSERT(mDone.valid());
-    }
-
-    HANDLE getEvent() noexcept
-    {
-        return mDone.handle();
-    }
-
-    void setResult(CSELIB::FILEIO_LENGTH_T argResult) noexcept
-    {
-        mResult = argResult;
-        const auto b = ::SetEvent(mDone.handle());					// シグナル状態に設定
-        APP_ASSERT(b);
-    }
-
-    CSELIB::FILEIO_LENGTH_T getResult() const noexcept
-    {
-        return mResult;
-    }
-
-    bool isError() const noexcept
-    {
-        return mResult < 0;
-    }
-
-    ~FilePart()
-    {
-        mDone.close();
-    }
-};
-
-struct ReadPartTask : public IOnDemandTask
-{
-    ICSDevice* mDevice;
+    ICSDevice* mThat;
     const ObjectKey mObjKey;
     const std::filesystem::path mOutputPath;
-    std::shared_ptr<FilePart> mFilePart;
+    std::shared_ptr<ReadFilePartType> mFilePart;
 
-    ReadPartTask(
-        ICSDevice* argDevice,
+    ReadFilePartTask(
+        ICSDevice* argThat,
         const ObjectKey& argObjKey,
         const std::filesystem::path& argOutputPath,
-        std::shared_ptr<FilePart> argFilePart)
+        const std::shared_ptr<ReadFilePartType>& argFilePart)
         :
-        mDevice(argDevice),
+        mThat(argThat),
         mObjKey(argObjKey),
         mOutputPath(argOutputPath),
         mFilePart(argFilePart)
@@ -120,61 +42,56 @@ struct ReadPartTask : public IOnDemandTask
     {
         NEW_LOG_BLOCK();
 
-        CSELIB::FILEIO_LENGTH_T readBytes = -1LL;
+        FILEIO_LENGTH_T result = -1LL;
 
         try
         {
             if (mFilePart->mInterrupt)
             {
-                traceW(L"@%d Interruption request received", argThreadIndex);
+                errorW(L"@%d Interruption request received", argThreadIndex);
             }
             else
             {
                 traceW(L"@%d getObjectAndWriteFile", argThreadIndex);
 
-                readBytes = mDevice->getObjectAndWriteFile(START_CALLER mObjKey, mOutputPath, mFilePart->mOffset, mFilePart->mLength);
+                result = mThat->getObjectAndWriteFile(START_CALLER mObjKey, mOutputPath, mFilePart->mOffset, mFilePart->mLength);
             }
         }
         catch (const std::exception& ex)
         {
-            traceA("catch exception: what=[%s]", ex.what());
+            errorA("catch exception: what=[%s]", ex.what());
         }
         catch (...)
         {
-            traceW(L"catch unknown");
+            errorW(L"catch unknown");
         }
 
         // 結果を設定し、シグナル状態に変更
         // --> WaitForSingleObject で待機しているスレッドのロックが解除される
 
-        mFilePart->setResult(readBytes);
-    }
-
-    void cancelled(CALLER_ARG0) noexcept
-    {
-        NEW_LOG_BLOCK();
-
-        traceW(L"set Interrupt");
-
-        mFilePart->mInterrupt = true;
+        mFilePart->setResult(result);
     }
 };
 
 namespace CSEDRV
 {
 
-bool makeCacheFilePath(const std::filesystem::path& argDir, const std::wstring& argName, std::filesystem::path* pPath)
+bool resolveCacheFilePath(const std::filesystem::path& argDir, const std::wstring& argWinPath, std::filesystem::path* pPath)
 {
+    NEW_LOG_BLOCK();
+
     if (!std::filesystem::is_directory(argDir))
     {
+        errorW(L"fault: is_directory argDir=%s", argDir.c_str());
         return false;
     }
 
     std::wstring nameSha256;
 
-    const auto ntstatus = ComputeSHA256W(argName, &nameSha256);
+    const auto ntstatus = ComputeSHA256W(argWinPath, &nameSha256);
     if (!NT_SUCCESS(ntstatus))
     {
+        errorW(L"fault: ComputeSHA256W argWinPath=%s", argWinPath.c_str());
         return false;
     }
 
@@ -187,6 +104,7 @@ bool makeCacheFilePath(const std::filesystem::path& argDir, const std::wstring& 
 
     if (ec)
     {
+        errorW(L"fault: create_directory filePath=%s", filePath.c_str());
         return false;
     }
 
@@ -197,35 +115,7 @@ bool makeCacheFilePath(const std::filesystem::path& argDir, const std::wstring& 
     return true;
 }
 
-NTSTATUS updateFileInfo(HANDLE hFile, FSP_FSCTL_FILE_INFO* pFileInfo)
-{
-    NEW_LOG_BLOCK();
-
-    // ファイル・ハンドルの情報を取得
-
-    FSP_FSCTL_FILE_INFO fileInfo;
-
-    const auto ntstatus = GetFileInfoInternal(hFile, &fileInfo);
-    if (!NT_SUCCESS(ntstatus))
-    {
-        traceW(L"fault: WriteFile");
-        return ntstatus;
-    }
-
-    if (fileInfo.FileSize < pFileInfo->FileSize)
-    {
-        // ダウンロードされていない部分もあるので、サイズはリモートのものを採用
-
-        fileInfo.FileSize       = pFileInfo->FileSize;
-        fileInfo.AllocationSize = pFileInfo->AllocationSize;
-    }
-
-    *pFileInfo = fileInfo;
-
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS syncAttributes(const std::filesystem::path& cacheFilePath, const DirInfoPtr& remoteDirInfo)
+NTSTATUS syncAttributes(const DirEntryType& remoteDirEntry, const std::filesystem::path& cacheFilePath)
 {
     NEW_LOG_BLOCK();
 
@@ -240,8 +130,10 @@ NTSTATUS syncAttributes(const std::filesystem::path& cacheFilePath, const DirInf
 
     if (file.invalid())
     {
-        traceW(L"fault: CreateFileW");
-        return FspNtStatusFromWin32(::GetLastError());
+        const auto lerr = ::GetLastError();
+
+        errorW(L"fault: CreateFileW lerr=%lu cacheFilePath=%s", lerr, cacheFilePath.c_str());
+        return FspNtStatusFromWin32(lerr);
     }
 
     FSP_FSCTL_FILE_INFO localInfo;
@@ -249,12 +141,12 @@ NTSTATUS syncAttributes(const std::filesystem::path& cacheFilePath, const DirInf
 
     if (!NT_SUCCESS(ntstatus))
     {
-        traceW(L"fault: GetFileInfoInternal");
+        errorW(L"fault: GetFileInfoInternal file=%s", file.str().c_str());
         return ntstatus;
     }
 
-    if (localInfo.CreationTime  == remoteDirInfo->FileInfo.CreationTime &&
-        localInfo.LastWriteTime == remoteDirInfo->FileInfo.LastWriteTime)
+    if (localInfo.CreationTime  == remoteDirEntry->mFileInfo.CreationTime &&
+        localInfo.LastWriteTime == remoteDirEntry->mFileInfo.LastWriteTime)
     {
         // 二つのタイムスタンプが同じときは同期中と考える
 
@@ -266,30 +158,35 @@ NTSTATUS syncAttributes(const std::filesystem::path& cacheFilePath, const DirInf
 
         if (localInfo.FileSize > 0)
         {
-            // ファイルポインタを移動
-#if 0
+            // ファイルポインタを先頭に移動 (必要ないけど、念のため)
+
             if (::SetFilePointer(file.handle(), 0, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER)
             {
-                traceW(L"fault: SetFilePointer");
-                return FspNtStatusFromWin32(::GetLastError());
+                const auto lerr = ::GetLastError();
+
+                errorW(L"fault: SetFilePointer lerr=%lu file=%s", lerr, file.str().c_str());
+                return FspNtStatusFromWin32(lerr);
             }
-#endif
 
             // ファイルを切り詰める
 
             if (!::SetEndOfFile(file.handle()))
             {
-                traceW(L"fault: SetEndOfFile");
-                return FspNtStatusFromWin32(::GetLastError());
+                const auto lerr = ::GetLastError();
+
+                errorW(L"fault: SetEndOfFile lerr=%lu file=%s", lerr, file.str().c_str());
+                return FspNtStatusFromWin32(lerr);
             }
         }
 
         // タイムスタンプを同期
 
-        if (!syncFileTimes(file.handle(), remoteDirInfo->FileInfo))
+        if (!syncFileTimes(remoteDirEntry->mFileInfo, file.handle()))
         {
-            traceW(L"fault: syncFileTime");
-            return FspNtStatusFromWin32(::GetLastError());
+            const auto lerr = ::GetLastError();
+
+            errorW(L"fault: syncFileTime lerr=%lu file=%s", lerr, file.str().c_str());
+            return FspNtStatusFromWin32(lerr);
         }
     }
 
@@ -297,53 +194,110 @@ NTSTATUS syncAttributes(const std::filesystem::path& cacheFilePath, const DirInf
 
 }   // syncAttributes
 
-NTSTATUS syncContent(CSDriver* that, FileContext* ctx, FILEIO_OFFSET_T argReadOffset, FILEIO_LENGTH_T argReadLength)
+}   // namespace CSEDRV
+
+
+using namespace CSEDRV;
+
+
+NTSTATUS CSDriver::updateFileInfo(FileContext* ctx, FSP_FSCTL_FILE_INFO* pFileInfo, bool argRemoteSizeAware)
 {
     NEW_LOG_BLOCK();
 
-    if (ctx->mFileInfoRef->FileSize == 0)
+    // キャッシュファイルの情報を取得
+
+    FSP_FSCTL_FILE_INFO cacheFileInfo;
+
+    const auto ntstatus = GetFileInfoInternal(ctx->getWritableHandle(), &cacheFileInfo);
+    if (!NT_SUCCESS(ntstatus))
+    {
+        errorW(L"fault: GetFileInfoInternal ctx=%s", ctx->str().c_str());
+        return ntstatus;
+    }
+
+    const auto& dirEntry{ ctx->getDirEntry() };
+
+    if (argRemoteSizeAware)
+    {
+        if (cacheFileInfo.FileSize < dirEntry->mFileInfo.FileSize)
+        {
+            // ダウンロードされていない部分もあるので、サイズはリモートの情報を上書き
+
+            cacheFileInfo.FileSize       = dirEntry->mFileInfo.FileSize;
+            cacheFileInfo.AllocationSize = dirEntry->mFileInfo.AllocationSize;
+        }
+    }
+
+    // ctx を経由し、OpenDirEntry の mFileInfo を更新する
+
+    dirEntry->mFileInfo = cacheFileInfo;
+    *pFileInfo          = cacheFileInfo;
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS CSDriver::syncContent(FileContext* ctx, FILEIO_OFFSET_T argReadOffset, FILEIO_LENGTH_T argReadLength)
+{
+    NEW_LOG_BLOCK();
+
+    traceW(L"ctx=%s argReadOffset=%lld argReadLength=%lld", ctx->str().c_str(), argReadOffset, argReadLength);
+
+    if (argReadLength == 0)
+    {
+        traceW(L"Empty read");
+        return STATUS_SUCCESS;
+    }
+
+    const auto& fileInfo{ ctx->getDirEntry()->mFileInfo };
+
+    if (fileInfo.FileSize == 0)
     {
         traceW(L"Empty content");
         return STATUS_SUCCESS;
     }
 
-    // ファイル・ハンドルからローカル・キャッシュのファイル名を取得
+    // ファイル・ハンドルからローカルのファイル名を取得
 
-    std::filesystem::path cacheFilePath;
+    std::filesystem::path filePath;
 
-    if (!GetFileNameFromHandle(ctx->getHandle(), &cacheFilePath))
+    if (!GetFileNameFromHandle(ctx->getHandle(), &filePath))
     {
-        traceW(L"fault: GetFileNameFromHandle");
+        const auto lerr = ::GetLastError();
+
+        errorW(L"fault: GetFileNameFromHandle lerr=%lu", lerr);
+        return FspNtStatusFromWin32(lerr);
+    }
+
+    traceW(L"filePath=%s", filePath.c_str());
+
+    // ファイルサイズを取得
+
+    const auto fileSize = GetFileSize(filePath);
+    if (fileSize < 0)
+    {
+        errorW(L"fault: getFileSize");
         return FspNtStatusFromWin32(::GetLastError());
     }
 
-    traceW(L"cacheFilePath=%s", cacheFilePath.c_str());
+    traceW(L"fileSize=%lld", fileSize);
 
-    // キャッシュ・ファイルのサイズを取得
+    // ファイルサイズとリモートの属性情報を比較
 
-    const auto cacheFileSize = getFileSize(cacheFilePath);
-    if (cacheFileSize < 0)
-    {
-        traceW(L"fault: getFileSize");
-        return FspNtStatusFromWin32(::GetLastError());
-    }
-
-    traceW(L"cacheFileSize=%lld", cacheFileSize);
-
-    // リモートの属性情報とファイル・サイズを比較
-
-    if (cacheFileSize >= (FILEIO_LENGTH_T)ctx->mFileInfoRef->FileSize)
+    if (fileSize >= (FILESIZE_T)fileInfo.FileSize)
     {
         // 全てダウンロード済なので OK
+        // 
+        // --> ファイルを切り詰めた場合はディレクトリエントリも変更している
 
         traceW(L"All content has been downloaded");
         return STATUS_SUCCESS;
     }
 
-    // Read する範囲とファイル・サイズを比較
+    // ファイル・サイズと Read 対象範囲を比較
 
-    const FILEIO_LENGTH_T fileSizeToRead = argReadOffset + argReadLength;
-    if (cacheFileSize >= fileSizeToRead)
+    FILEIO_LENGTH_T fileSizeToRead = argReadOffset + argReadLength;
+
+    if (fileSize >= fileSizeToRead)
     {
         // Read 範囲のデータは存在するので OK
 
@@ -355,124 +309,164 @@ NTSTATUS syncContent(CSDriver* that, FileContext* ctx, FILEIO_OFFSET_T argReadOf
 
     // Read 範囲のデータが不足しているのでダウンロードを実施
 
-    //const auto BYTE_PART_SIZE = CSELIB::FILESIZE_1MiBll * that->mRuntimeEnv->TransferPerSizeMib;
-    const auto BYTE_PART_SIZE = CSELIB::FILESIZE_1Bll   * 10;
+    APP_ASSERT(fileSize < static_cast<FILESIZE_T>(fileInfo.FileSize));
+    APP_ASSERT(fileSize < fileSizeToRead);
 
-    traceW(L"BYTE_PART_SIZE=%lld", BYTE_PART_SIZE);
+    // マルチパート処理ののパートサイズ
 
-    // 必要となるファイル・サイズから既に存在するサイズを引く
-    // --> 現在のキャッシュ・ファイルに追加するので、既存ファイルのサイズが開始点となる
+#if 0
+    traceW(L"!!");
+    traceW(L"!! WARNING: PART SIZE !!");
+    traceW(L"!!");
 
-    const auto requiredSizeBytes = min(fileSizeToRead, (FILEIO_LENGTH_T)ctx->mFileInfoRef->FileSize) - cacheFileSize;
+    const auto PART_SIZE_BYTE = ILESIZE_1Bll * 10;
+
+#else
+    auto PART_SIZE_BYTE = FILESIZE_1MiBll * mRuntimeEnv->TransferReadSizeMib;
+
+    if (argReadOffset == 0 && fileSizeToRead <= FILESIZE_1MiBll)
+    {
+        // エクスプローラでプロパティを開くとメタデータが読み取られることに対応
+        // --> 先頭の 1MiB までの Read の場合はパートサイズを 1MiB に設定
+
+        PART_SIZE_BYTE = FILESIZE_1MiBll;
+    }
+
+#endif
+    traceW(L"PART_SIZE_BYTE=%lld", PART_SIZE_BYTE);
+
+    const auto& objKey{ ctx->getObjectKey() };
+
+    // アライメントサイズに調整
+
+    auto alignedFileSizeToRead = ALIGN_TO_UNIT(fileSizeToRead, PART_SIZE_BYTE);
+
+    if (static_cast<FILESIZE_T>(fileInfo.FileSize) < alignedFileSizeToRead)
+    {
+        // リモートのサイズを Read 対象の上限とする
+
+        alignedFileSizeToRead = fileInfo.FileSize;
+    }
+
+    APP_ASSERT(alignedFileSizeToRead <= static_cast<FILESIZE_T>(fileInfo.FileSize));
+
+    // 各変数の値の関係性
+    // 
+    // [fileSize] < [fileSizeToRead] <= [alignedFileSizeToRead] <= [fileInfo.FileSize]
+
+    // 必要となるサイズ
+
+    const auto requiredSizeBytes = alignedFileSizeToRead - fileSize;
 
     traceW(L"requiredSizeBytes=%lld", requiredSizeBytes);
 
     // 分割取得する領域を作成
 
-    const auto numParts = (int)((requiredSizeBytes + BYTE_PART_SIZE - 1) / BYTE_PART_SIZE);
+    const auto partCount = UNIT_COUNT(requiredSizeBytes, PART_SIZE_BYTE);
 
-    traceW(L"numParts=%d", numParts);
+    std::list<std::shared_ptr<ReadFilePartType>> fileParts;
 
-    std::list<std::shared_ptr<FilePart>> fileParts;
-
-    for (int i=0; i<numParts; i++)
+    auto remaining = requiredSizeBytes;
+        
+    for (int i=0; i<partCount; i++)
     {
         // 分割サイズごとに FilePart を作成
-        // このとき、実際のファイル・サイズより大きな範囲を SetRange に指定することになるが
-        // レスポンスされるのはファイル・サイズまでなので問題はない
 
-        const auto partOffset = cacheFileSize + BYTE_PART_SIZE * i;
+        const auto partNumber = i + 1;
+        const auto partOffset = fileSize + PART_SIZE_BYTE * i;
+        const auto partLength = min(PART_SIZE_BYTE, remaining);
 
-        traceW(L"partOffset[%d]=%lld", i, partOffset);
+        fileParts.emplace_back(std::make_shared<ReadFilePartType>(partNumber, partOffset, partLength, -1LL));
 
-        fileParts.emplace_back(std::make_shared<FilePart>(partOffset, (ULONG)BYTE_PART_SIZE));
+        remaining -= partLength;
     }
 
-    // マルチパートの読み込みを遅延タスクに登録
-
-    auto* const worker = that->getWorker(L"delayed");
-
-    for (auto& filePart: fileParts)
+    if (fileParts.size() == 1)
     {
-        auto task{ new ReadPartTask{ that->mDevice, *ctx->mOptObjKey, cacheFilePath, filePart } };
-        APP_ASSERT(task);
+        const auto& filePart{ *fileParts.begin() };
 
-        worker->addTask(task);
-    }
+        // 一度で全て読めてしまうので複雑なことはしない
 
-    // タスクの完了を待機
+        const auto readBytes = mDevice->getObjectAndWriteFile(START_CALLER objKey, filePath, filePart->mOffset, filePart->mLength);
 
-    FILEIO_LENGTH_T sumReadBytes = 0;
-    bool errorExists = false;
-
-    for (auto& filePart: fileParts)
-    {
-        traceW(L"wait: mOffset=%lld", filePart->mOffset);
-
-        const auto reason = ::WaitForSingleObject(filePart->getEvent(), INFINITE);
-        APP_ASSERT(reason == WAIT_OBJECT_0);
-
-        if (filePart->isError())
+        if (filePart->mLength != readBytes)
         {
-            // エラーがあるパートを発見
+            errorW(L"fault: getObjectAndWriteFile mLength=%lld readBytes=%lld", filePart->mLength, readBytes);
 
-            traceW(L"isError: mOffset=%lld", filePart->mOffset);
+            return FspNtStatusFromWin32(ERROR_IO_DEVICE);
+        }
+    }
+    else
+    {
+        // マルチパートの読み込みを遅延タスクに登録
 
-            errorExists = true;
-            break;
+        auto* const worker = this->getWorker(L"delayed");
+
+        for (const auto& filePart: fileParts)
+        {
+            traceW(L"addTask filePart=%s", filePart->str().c_str());
+
+            worker->addTask(new ReadFilePartTask{ mDevice, objKey, filePath, filePart });
         }
 
-        // パートごとに読み取ったサイズを集計
+        // タスクの完了を待機
 
-        const auto readBytes = filePart->getResult();
+        FILEIO_LENGTH_T sumReadBytes = 0;
 
-        traceW(L"readBytes=%lld", readBytes);
-
-        sumReadBytes += readBytes;
-    }
-
-    if (errorExists)
-    {
-        // マルチパートの一部にエラーが存在したので、全ての遅延タスクを中断して終了
-
-        for (auto& filePart: fileParts)
+        for (const auto& filePart: fileParts)
         {
-            // 全てのパートに中断フラグを立てる
+            // パートごとに読み取ったサイズを集計
 
-            traceW(L"set mInterrupt mOffset=%lld", filePart->mOffset);
+            const auto result = filePart->getResult();
 
-            filePart->mInterrupt = true;
-        }
+            traceW(L"getResult filePart=%s result=%lld", filePart->str().c_str(), result);
 
-        for (auto& filePart: fileParts)
-        {
-            // タスクの完了を待機
-
-            const auto reason = ::WaitForSingleObject(filePart->getEvent(), INFINITE);
-            APP_ASSERT(reason == WAIT_OBJECT_0);
-
-            if (filePart->isError())
+            if (result != filePart->mLength)
             {
-                traceW(L"isError: mOffset=%lld result=%lld", filePart->mOffset, filePart->getResult());
+                sumReadBytes = -1LL;
+
+                errorW(L"fault: mPartNumber=%d", filePart->mPartNumber);
+                break;
             }
+
+            sumReadBytes += result;
         }
 
-        traceW(L"error exists");
-        return FspNtStatusFromWin32(ERROR_IO_DEVICE);
-    }
+        if (sumReadBytes < requiredSizeBytes)
+        {
+            // マルチパートの一部にエラーが存在したので、全ての遅延タスクを中断して終了
 
-    // Read 範囲を満たしているかチェック
+            errorW(L"The data is insufficient sumReadBytes=%lld", sumReadBytes);
 
-    if (sumReadBytes < requiredSizeBytes)
-    {
-        traceW(L"The data is insufficient");
-        return FspNtStatusFromWin32(ERROR_IO_DEVICE);
+            for (auto& filePart: fileParts)
+            {
+                // 全てのパートに中断フラグを立てる
+
+                traceW(L"set mInterrupt mPartNumber=%lld", filePart->mPartNumber);
+
+                filePart->mInterrupt = true;
+            }
+
+            for (auto& filePart: fileParts)
+            {
+                // タスクの完了を待機
+
+                const auto result = filePart->getResult();
+                if (result != filePart->mLength)
+                {
+                    errorW(L"fault: mPartNumber=%d", filePart->mPartNumber);
+                }
+            }
+
+            traceW(L"error exists");
+            return FspNtStatusFromWin32(ERROR_IO_DEVICE);
+        }
     }
 
     // タイムスタンプを同期
 
     FileHandle file = ::CreateFileW(
-        cacheFilePath.c_str(),
+        filePath.c_str(),
         FILE_WRITE_ATTRIBUTES,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         NULL,
@@ -483,21 +477,22 @@ NTSTATUS syncContent(CSDriver* that, FileContext* ctx, FILEIO_OFFSET_T argReadOf
 
     if (file.invalid())
     {
-        traceW(L"fault: CreateFileW");
-        return FspNtStatusFromWin32(::GetLastError());
+        const auto lerr = ::GetLastError();
+
+        errorW(L"fault: CreateFileW lerr=%lu filePath=%s", lerr, filePath.c_str());
+        return FspNtStatusFromWin32(lerr);
     }
 
-    if (!syncFileTimes(file.handle(), *ctx->mFileInfoRef))
+    if (!syncFileTimes(fileInfo, file.handle()))
     {
-        traceW(L"fault: syncFileTime");
         const auto lerr = ::GetLastError();
+
+        errorW(L"fault: syncFileTime file=%s", file.str().c_str());
         return FspNtStatusFromWin32(lerr);
     }
 
     return STATUS_SUCCESS;
 
 }   // syncContent
-
-}   // namespace CSEDRV
 
 // EOF

@@ -168,7 +168,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Crypt.cpp" />
-    <ClCompile Include="DirInfo.cpp" />
+    <ClCompile Include="DirEntry.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="FileUtils.cpp" />
     <ClCompile Include="Logger.cpp" />
@@ -179,7 +179,7 @@
     <ClCompile Include="WinFsp_c.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="DirInfo.hpp" />
+    <ClInclude Include="DirEntry.hpp" />
     <ClInclude Include="ICSDevice.hpp" />
     <ClInclude Include="ILogger.hpp" />
     <ClInclude Include="internal_define_alloc.h" />

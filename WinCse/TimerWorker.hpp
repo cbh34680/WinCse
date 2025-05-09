@@ -8,12 +8,12 @@ namespace CSEDRV
 class TimerWorker final : public ScheduledWorker
 {
 protected:
-	int getThreadPriority() const noexcept override
+	int getThreadPriority() const override
 	{
 		return THREAD_PRIORITY_LOWEST;
 	}
 
-	DWORD getTimePeriodMillis() const noexcept override
+	DWORD getTimePeriodMillis() const override
 	{
 		return CSELIB::TIMEMILLIS_1MINu;
 	}

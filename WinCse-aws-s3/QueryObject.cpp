@@ -4,23 +4,23 @@ using namespace CSELIB;
 using namespace CSEDAS3;
 
 
-bool QueryObject::qoHeadObjectFromCache(CALLER_ARG const ObjectKey& argObjKey, DirInfoPtr* pDirInfo) const noexcept
+bool QueryObject::qoHeadObjectFromCache(CALLER_ARG const ObjectKey& argObjKey, DirEntryType* pDirEntry) const
 {
-    return mCacheHeadObject.coGet(CONT_CALLER argObjKey, pDirInfo);
+    return mCacheHeadObject.coGet(CONT_CALLER argObjKey, pDirEntry);
 }
 
-bool QueryObject::qoIsInNegativeCache(CALLER_ARG const ObjectKey& argObjKey) const noexcept
+bool QueryObject::qoIsInNegativeCache(CALLER_ARG const ObjectKey& argObjKey) const
 {
     return mCacheHeadObject.coIsNegative(CONT_CALLER argObjKey); 
 }
 
-void QueryObject::qoReportCache(CALLER_ARG FILE* fp) const noexcept
+void QueryObject::qoReportCache(CALLER_ARG FILE* fp) const
 {
     mCacheHeadObject.coReport(CONT_CALLER fp);
     mCacheListObjects.coReport(CONT_CALLER fp);
 }
 
-int QueryObject::qoDeleteOldCache(CALLER_ARG std::chrono::system_clock::time_point threshold) noexcept
+int QueryObject::qoDeleteOldCache(CALLER_ARG std::chrono::system_clock::time_point threshold)
 {
     const auto delHead = mCacheHeadObject.coDeleteByTime(CONT_CALLER threshold);
     const auto delList = mCacheListObjects.coDeleteByTime(CONT_CALLER threshold);
@@ -28,14 +28,14 @@ int QueryObject::qoDeleteOldCache(CALLER_ARG std::chrono::system_clock::time_poi
     return delHead + delList;
 }
 
-int QueryObject::qoClearCache(CALLER_ARG0) noexcept
+int QueryObject::qoClearCache(CALLER_ARG0)
 {
     const auto now{ std::chrono::system_clock::now() };
 
     return this->qoDeleteOldCache(CONT_CALLER now);
 }
 
-int QueryObject::qoDeleteCache(CALLER_ARG const ObjectKey& argObjKey) noexcept
+int QueryObject::qoDeleteCache(CALLER_ARG const ObjectKey& argObjKey)
 {
     const auto delHead = mCacheHeadObject.coDeleteByKey(CONT_CALLER argObjKey);
     const auto delList = mCacheListObjects.coDeleteByKey(CONT_CALLER argObjKey);
@@ -43,9 +43,12 @@ int QueryObject::qoDeleteCache(CALLER_ARG const ObjectKey& argObjKey) noexcept
     return delHead + delList;
 }
 
-bool QueryObject::qoHeadObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoPtr* pDirInfo) noexcept
+bool QueryObject::qoHeadObject(CALLER_ARG const ObjectKey& argObjKey, DirEntryType* pDirEntry)
 {
+    NEW_LOG_BLOCK();
     APP_ASSERT(!argObjKey.isBucket());
+
+    traceW(L"argObjKey=%s", argObjKey.c_str());
 
     // ネガティブ・キャッシュを調べる
 
@@ -58,52 +61,53 @@ bool QueryObject::qoHeadObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoPtr
 
     // ポジティブ・キャッシュを調べる
 
-    DirInfoPtr dirInfo;
+    DirEntryType dirEntry;
 
-    if (mCacheHeadObject.coGet(CONT_CALLER argObjKey, &dirInfo))
+    if (mCacheHeadObject.coGet(CONT_CALLER argObjKey, &dirEntry))
     {
         // ポジティブ・キャッシュ中に見つかった
     }
     else
     {
-        NEW_LOG_BLOCK();
-
         // HeadObject API の実行
 
-        if (!mExecuteApi->HeadObject(CONT_CALLER argObjKey, &dirInfo))
+        if (!mExecuteApi->HeadObject(CONT_CALLER argObjKey, &dirEntry))
         {
             // ネガティブ・キャッシュに登録
 
-            traceW(L"fault: headObject");
+            // 存在チェックも兼ねているので、ここは traceW() のまま
+            traceW(L"not found: headObject argObjKey=%s", argObjKey.c_str());
 
             mCacheHeadObject.coAddNegative(CONT_CALLER argObjKey);
 
             return false;
         }
 
-        traceW(L"success: HeadObject");
-
         // キャッシュにコピー
 
-        traceW(L"add argObjKey=%s", argObjKey.c_str());
+        traceW(L"coSet argObjKey=%s dirEntry=%s", argObjKey.c_str(), dirEntry->str().c_str());
 
-        mCacheHeadObject.coSet(CONT_CALLER argObjKey, dirInfo);
+        mCacheHeadObject.coSet(CONT_CALLER argObjKey, dirEntry);
     }
 
-    APP_ASSERT(dirInfo);
+    APP_ASSERT(dirEntry);
 
-    if (pDirInfo)
+    if (pDirEntry)
     {
-        *pDirInfo = std::move(dirInfo);
+        *pDirEntry = std::move(dirEntry);
     }
 
     return true;
 }
 
-bool QueryObject::qoHeadObjectOrListObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoPtr* pDirInfo) noexcept
+bool QueryObject::qoHeadObjectOrListObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryType* pDirEntry)
 {
+    NEW_LOG_BLOCK();
+
     APP_ASSERT(argObjKey.isObject());
     APP_ASSERT(argObjKey.meansDir());
+
+    traceW(L"argObjKey=%s", argObjKey.c_str());
 
     // ネガティブ・キャッシュを調べる
 
@@ -116,23 +120,11 @@ bool QueryObject::qoHeadObjectOrListObjects(CALLER_ARG const ObjectKey& argObjKe
 
     // ポジティブ・キャッシュを調べる
 
-    DirInfoPtr dirInfo;
+    DirEntryType dirEntry;
 
-    if (mCacheHeadObject.coGet(CONT_CALLER argObjKey, &dirInfo))
+    if (!mCacheHeadObject.coGet(CONT_CALLER argObjKey, &dirEntry))
     {
-        // ポジティブ・キャッシュ中に見つかった
-    }
-    else
-    {
-        NEW_LOG_BLOCK();
-
-        if (mExecuteApi->HeadObject(CONT_CALLER argObjKey, &dirInfo))
-        {
-            // 空のディレクトリ・オブジェクト(ex. "dir/") が存在する状況
-
-            traceW(L"success: HeadObject");
-        }
-        else
+        if (!mExecuteApi->HeadObject(CONT_CALLER argObjKey, &dirEntry))
         {
             // 下位の層にオブジェクトが存在するが、自層に空のディレクトリ・オブジェクト
             // は存在しない状況
@@ -149,36 +141,37 @@ bool QueryObject::qoHeadObjectOrListObjects(CALLER_ARG const ObjectKey& argObjKe
             std::wstring parentDir;
             std::wstring searchName;
 
-            const auto b = SplitObjectKey(argObjKey.str(), &parentDir, &searchName);
-            APP_ASSERT(b);
+            if (!SplitObjectKey(argObjKey.str(), &parentDir, &searchName))
+            {
+                errorW(L"fault: SplitObjectKey argObjKey=%s", argObjKey.c_str());
+                return false;
+            }
 
             APP_ASSERT(!parentDir.empty());
             APP_ASSERT(!searchName.empty());
             APP_ASSERT(searchName.back() == L'/');
 
-            const auto optParentDir{ ObjectKey::fromPath(parentDir) };
-
-            if (!optParentDir)      // コンパイラの警告抑止
+            const auto optParentDir{ ObjectKey::fromObjectPath(parentDir) };
+            if (!optParentDir)
             {
-                APP_ASSERT(0);
-
+                traceW(L"fault: fromObjectPath parentDir=%s", parentDir.c_str());
                 return false;
             }
 
-            DirInfoPtrList dirInfoList;
+            DirEntryListType dirEntryList;
 
             // 親ディレクトリのキャッシュから調べる
             // --> 通常はここにあるはず
 
-            if (!mCacheListObjects.coGet(CONT_CALLER *optParentDir, &dirInfoList))
+            if (!mCacheListObjects.coGet(CONT_CALLER *optParentDir, &dirEntryList))
             {
                 // 存在しない場合は親のディレクトリに対して ListObjectsV2() API を実行する
 
-                if (!mExecuteApi->ListObjectsV2(CONT_CALLER *optParentDir, true, 0, &dirInfoList))
+                if (!mExecuteApi->ListObjects(CONT_CALLER *optParentDir, &dirEntryList))
                 {
                     // エラーの時はネガティブ・キャッシュに登録
 
-                    traceW(L"fault: ListObjectsV2");
+                    errorW(L"fault: ListObjects optParentDir=%s", optParentDir->c_str());
 
                     mCacheHeadObject.coAddNegative(CONT_CALLER argObjKey);
 
@@ -188,50 +181,47 @@ bool QueryObject::qoHeadObjectOrListObjects(CALLER_ARG const ObjectKey& argObjKe
 
             // 親ディレクトリのリストから名前の一致するものを探す
 
-            for (const auto& it: dirInfoList)
+            const auto it = std::find_if(dirEntryList.cbegin(), dirEntryList.cend(), [&searchName](const auto& item)
             {
-                if (it->FileName == searchName)
-                {
-                    // TODO: 引数の FileAttributes をチェック
+                return item->mName == searchName;
+            });
 
-                    dirInfo = makeDirInfoOfDir(it->FileName, it->FileInfo.LastWriteTime, it->FileInfo.FileAttributes | mRuntimeEnv->DefaultFileAttributes);
-                    break;
-                }
-            }
-
-            if (!dirInfo)
+            if (it == dirEntryList.cend())
             {
                 // 見つからなかったらネガティブ・キャッシュに登録
 
-                traceW(L"not found in Parent CommonPrefix");
+                traceW(L"fault: not found in Parent CommonPrefix argObjKey=%s", argObjKey.c_str());
 
                 mCacheHeadObject.coAddNegative(CONT_CALLER argObjKey);
 
                 return false;
             }
+
+            dirEntry = *it;
         }
 
-        APP_ASSERT(dirInfo);
+        APP_ASSERT(dirEntry);
 
         // キャッシュにコピー
 
-        traceW(L"add argObjKey=%s", argObjKey.c_str());
+        traceW(L"coSet argObjKey=%s dirEntry=%s", argObjKey.c_str(), dirEntry->str().c_str());
 
-        mCacheHeadObject.coSet(CONT_CALLER argObjKey, dirInfo);
+        mCacheHeadObject.coSet(CONT_CALLER argObjKey, dirEntry);
     }
 
-    APP_ASSERT(dirInfo);
+    APP_ASSERT(dirEntry);
 
-    if (pDirInfo)
+    if (pDirEntry)
     {
-        *pDirInfo = std::move(dirInfo);
+        *pDirEntry = std::move(dirEntry);
     }
 
     return true;
 }
 
-bool QueryObject::qoListObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoPtrList* pDirInfoList) noexcept
+bool QueryObject::qoListObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryListType* pDirEntryList)
 {
+    NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.meansDir());
 
     // ネガティブ・キャッシュを調べる
@@ -245,9 +235,9 @@ bool QueryObject::qoListObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoPt
 
     // ポジティブ・キャッシュを調べる
 
-    DirInfoPtrList dirInfoList;
+    DirEntryListType dirEntryList;
 
-    if (mCacheListObjects.coGet(CONT_CALLER argObjKey, &dirInfoList))
+    if (mCacheListObjects.coGet(CONT_CALLER argObjKey, &dirEntryList))
     {
         // ポジティブ・キャッシュに見つかった
     }
@@ -255,12 +245,11 @@ bool QueryObject::qoListObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoPt
     {
         // ポジティブ・キャッシュ中に見つからない
 
-        if (!mExecuteApi->ListObjectsV2(CONT_CALLER argObjKey, true, 0, &dirInfoList))
+        if (!mExecuteApi->ListObjects(CONT_CALLER argObjKey, &dirEntryList))
         {
             // ネガティブ・キャッシュに登録
 
-            NEW_LOG_BLOCK();
-            traceW(L"fault: ListObjectsV2");
+            errorW(L"fault: ListObjects argObjKey=%s", argObjKey.c_str());
 
             mCacheListObjects.coAddNegative(CONT_CALLER argObjKey);
 
@@ -269,15 +258,14 @@ bool QueryObject::qoListObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoPt
 
         // ポジティブ・キャッシュにコピー
 
-        NEW_LOG_BLOCK();
-        traceW(L"add argObjKey=%s", argObjKey.c_str());
+        traceW(L"coSet argObjKey=%s dirEntryList.size=%zu", argObjKey.c_str(), dirEntryList.size());
 
-        mCacheListObjects.coSet(CONT_CALLER argObjKey, dirInfoList);
+        mCacheListObjects.coSet(CONT_CALLER argObjKey, dirEntryList);
     }
 
-    if (pDirInfoList)
+    if (pDirEntryList)
     {
-        *pDirInfoList = std::move(dirInfoList);
+        *pDirEntryList = std::move(dirEntryList);
     }
 
     return true;

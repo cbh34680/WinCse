@@ -12,27 +12,27 @@ struct RuntimeEnv final
 		const std::list<std::wregex>&		argBucketFilters,
 		const std::wstring&					argClientGuid,
 		CSELIB::FILETIME_100NS_T			argDefaultCommonPrefixTime,
-		UINT32								argDefaultFileAttributes,
 		const std::optional<std::wregex>&	argIgnoreFileNamePatterns,
 		int									argMaxDisplayBuckets,
 		int									argMaxDisplayObjects,
 		int									argObjectCacheExpiryMin,
 		const								std::wstring argClientRegion,
 		bool								argStrictBucketRegion,
-		bool								argStrictFileTimestamp) noexcept
+		bool								argStrictFileTimestamp,
+		int									argTransferWriteSizeMib)
 		:
 		BucketCacheExpiryMin				(argBucketCacheExpiryMin),
 		BucketFilters						(argBucketFilters),
 		ClientGuid							(argClientGuid),
 		DefaultCommonPrefixTime				(argDefaultCommonPrefixTime),
-		DefaultFileAttributes				(argDefaultFileAttributes),
 		IgnoreFileNamePatterns				(argIgnoreFileNamePatterns),
 		MaxDisplayBuckets					(argMaxDisplayBuckets),
 		MaxDisplayObjects					(argMaxDisplayObjects),
 		ObjectCacheExpiryMin				(argObjectCacheExpiryMin),
 		ClientRegion						(argClientRegion),
 		StrictBucketRegion					(argStrictBucketRegion),
-		StrictFileTimestamp					(argStrictFileTimestamp)
+		StrictFileTimestamp					(argStrictFileTimestamp),
+		TransferWriteSizeMib				(argTransferWriteSizeMib)
 	{
 	}
 
@@ -40,7 +40,6 @@ struct RuntimeEnv final
 	const std::list<std::wregex>			BucketFilters;
 	const std::wstring						ClientGuid;
 	const CSELIB::FILETIME_100NS_T			DefaultCommonPrefixTime;
-	const UINT32							DefaultFileAttributes;
 	const std::optional<std::wregex>		IgnoreFileNamePatterns;
 	const int								MaxDisplayBuckets;
 	const int								MaxDisplayObjects;
@@ -48,8 +47,9 @@ struct RuntimeEnv final
 	const std::wstring						ClientRegion;
 	const bool								StrictBucketRegion;
 	const bool								StrictFileTimestamp;
+	const int								TransferWriteSizeMib;
 
-	std::wstring str() const noexcept;
+	std::wstring str() const;
 };
 
 }	// namespace CSEDAS3

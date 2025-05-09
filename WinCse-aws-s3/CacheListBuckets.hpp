@@ -8,7 +8,7 @@ namespace CSEDAS3
 class CacheListBuckets final
 {
 private:
-	CSELIB::DirInfoPtrList							mList;
+	CSELIB::DirEntryListType						mList;
 	std::map<std::wstring, std::wstring>			mBucketRegions;
 
 	mutable std::mutex								mGuard;
@@ -25,15 +25,15 @@ private:
 	mutable int										mCountSetNegative = 0;
 
 public:
-	std::chrono::system_clock::time_point clbGetLastSetTime(CALLER_ARG0) const noexcept;
-	void clbClear(CALLER_ARG0) noexcept;
-	bool clbEmpty(CALLER_ARG0) const noexcept;
-	void clbSet(CALLER_ARG const CSELIB::DirInfoPtrList& argDirInfoList) noexcept;
-	void clbGet(CALLER_ARG CSELIB::DirInfoPtrList* pDirInfoList) const noexcept;
-	bool clbFind(CALLER_ARG const std::wstring& argBucketName, CSELIB::DirInfoPtr* pDirInfo) const noexcept;
-	bool clbGetBucketRegion(CALLER_ARG const std::wstring& argBucketName, std::wstring* pBucketRegion) const noexcept;
-	void clbAddBucketRegion(CALLER_ARG const std::wstring& argBucketName, const std::wstring& argBucketRegion) noexcept;
-	void clbReport(CALLER_ARG FILE* fp) const noexcept;
+	std::chrono::system_clock::time_point clbGetLastSetTime(CALLER_ARG0) const;
+	void clbClear(CALLER_ARG0);
+	bool clbEmpty(CALLER_ARG0) const;
+	void clbSet(CALLER_ARG const CSELIB::DirEntryListType& argDirEntryList);
+	void clbGet(CALLER_ARG CSELIB::DirEntryListType* pDirEntryList) const;
+	bool clbFind(CALLER_ARG const std::wstring& argBucketName, CSELIB::DirEntryType* pDirEntry) const;
+	bool clbGetBucketRegion(CALLER_ARG const std::wstring& argBucketName, std::wstring* pBucketRegion) const;
+	void clbAddBucketRegion(CALLER_ARG const std::wstring& argBucketName, const std::wstring& argBucketRegion);
+	void clbReport(CALLER_ARG FILE* fp) const;
 };
 
 }	// namespace CSEDAS3

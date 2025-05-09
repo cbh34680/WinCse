@@ -110,25 +110,25 @@ struct FatalError : public std::exception
 	const std::string	mWhat;
 	const NTSTATUS		mNtstatus;
 
-	FatalError(const std::string& argWhat, DWORD argLastError) noexcept
+	FatalError(const std::string& argWhat, DWORD argLastError)
 		:
 		mWhat(argWhat), mNtstatus(FspNtStatusFromWin32(argLastError))
 	{
 	}
 
-	FatalError(const std::string& argWhat, NTSTATUS argNtstatus) noexcept
+	FatalError(const std::string& argWhat, NTSTATUS argNtstatus)
 		:
 		mWhat(argWhat),
 		mNtstatus(argNtstatus)
 	{
 	}
 
-	FatalError(const std::string& argWhat) noexcept
+	FatalError(const std::string& argWhat)
 		: mWhat(argWhat), mNtstatus(STATUS_UNSUCCESSFUL)
 	{
 	}
 
-	const char* what() const noexcept override
+	const char* what() const override
 	{
 		return mWhat.c_str();
 	}

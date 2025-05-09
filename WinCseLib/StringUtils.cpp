@@ -6,18 +6,8 @@
 
 namespace CSELIB {
 
-bool MeansHiddenFile(const std::wstring& argFileName)
-{
-	if (argFileName.empty())
-	{
-		return false;
-	}
-
-	return (argFileName != L"." && argFileName != L".." && argFileName.at(0) == L'.');
-}
-
 // wstring から string への変換
-std::string WC2MB(const std::wstring& wstr) noexcept(false)
+std::string WC2MB(const std::wstring& wstr)
 {
 	LastErrorBackup _backup;
 
@@ -51,7 +41,7 @@ std::string WC2MB(const std::wstring& wstr) noexcept(false)
 }
 
 // string から wstring への変換
-std::wstring MB2WC(const std::string& str) noexcept(false)
+std::wstring MB2WC(const std::string& str)
 {
 	LastErrorBackup _backup;
 
@@ -168,15 +158,15 @@ bool SplitObjectKey(const std::wstring& argKey, std::wstring* pParentDir /* null
 	return true;
 }
 
-std::wstring FileTypeToStr(FileTypeEnum argFileType)
+std::wstring FileTypeEnumToStringW(FileTypeEnum argFileType)
 {
 	switch (argFileType)
 	{
 		case FileTypeEnum::None:			return L"None";
-		case FileTypeEnum::RootDirectory:	return L"RootDirectory";
+		case FileTypeEnum::Root:			return L"Root";
 		case FileTypeEnum::Bucket:			return L"Bucket";
-		case FileTypeEnum::DirectoryObject:	return L"DirectoryObject";
-		case FileTypeEnum::FileObject:		return L"FileObject";
+		case FileTypeEnum::Directory:		return L"Directory";
+		case FileTypeEnum::File:			return L"File";
 
 		default:
 		{
@@ -184,7 +174,53 @@ std::wstring FileTypeToStr(FileTypeEnum argFileType)
 		}
 	}
 
-	return L"";
+	return L"@";
+}
+
+#define ADDSTR_IF_FLAG_ON(fa, name)	if ((fa) & FILE_ATTRIBUTE_ ## name) strs.push_back(L#name)
+
+std::wstring FileAttributesToStringW(DWORD dwFlagsAndAttributes)
+{
+	std::list<std::wstring> strs;
+
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, READONLY);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, HIDDEN);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, SYSTEM);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, DIRECTORY);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, ARCHIVE);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, DEVICE);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, NORMAL);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, TEMPORARY);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, SPARSE_FILE);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, REPARSE_POINT);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, COMPRESSED);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, OFFLINE);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, NOT_CONTENT_INDEXED);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, ENCRYPTED);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, INTEGRITY_STREAM);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, VIRTUAL);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, NO_SCRUB_DATA);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, EA);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, PINNED);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, UNPINNED);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, RECALL_ON_OPEN);
+	ADDSTR_IF_FLAG_ON(dwFlagsAndAttributes, RECALL_ON_DATA_ACCESS);
+
+	return JoinStrings(strs, L',', true);
+}
+
+std::wstring FileInfoToStringW(const FSP_FSCTL_FILE_INFO& argFileInfo)
+{
+	std::wstringstream ss;
+
+	ss << L"FileAttributes=" << argFileInfo.FileAttributes << L' ';
+	ss << L"FileSize=" << argFileInfo.FileSize << L' ';
+	ss << L"CreationTime=" << WinFileTime100nsToLocalTimeStringW(argFileInfo.CreationTime) << L' ';
+	ss << L"LastAccessTime=" << WinFileTime100nsToLocalTimeStringW(argFileInfo.LastAccessTime) << L' ';
+	ss << L"LastWriteTime=" << WinFileTime100nsToLocalTimeStringW(argFileInfo.LastWriteTime) << L' ';
+	ss << L"ChangeTime=" << WinFileTime100nsToLocalTimeStringW(argFileInfo.ChangeTime) << L' ';
+
+	return ss.str();
 }
 
 // 文字列のハッシュ値を算出

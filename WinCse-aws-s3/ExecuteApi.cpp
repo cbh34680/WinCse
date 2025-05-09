@@ -1,17 +1,18 @@
 #include "ExecuteApi.hpp"
 #include "aws_sdk_s3.h"
-#include <fstream>
 
 using namespace CSELIB;
 using namespace CSEDAS3;
 
 
 ExecuteApi::ExecuteApi(
+    IWorker* argDelayedWorker,
     const RuntimeEnv* argRuntimeEnv,
     const std::wstring& argRegion,
     const std::wstring& argAccessKeyId,
-    const std::wstring& argSecretAccessKey) noexcept
+    const std::wstring& argSecretAccessKey)
     :
+    mDelayedWorker(argDelayedWorker),
     mRuntimeEnv(argRuntimeEnv)
 {
     NEW_LOG_BLOCK();
@@ -27,6 +28,8 @@ ExecuteApi::ExecuteApi(
     if (argRegion.empty())
     {
         // とりあえずデフォルト・リージョンとして設定しておく
+
+        traceA("argRegion empty, set default");
 
         region = AWS_DEFAULT_REGION;
     }
@@ -51,6 +54,8 @@ ExecuteApi::ExecuteApi(
     else
     {
         client = new Aws::S3::S3Client(config);
+
+        traceW(L"no credentials");
     }
 
     APP_ASSERT(client);
@@ -74,28 +79,33 @@ ExecuteApi::~ExecuteApi()
     }
 }
 
-bool ExecuteApi::isInBucketFilters(const std::wstring& arg) const noexcept
+bool ExecuteApi::isInBucketFilters(const std::wstring& argBucket) const
 {
-    if (mRuntimeEnv->BucketFilters.empty())
+    const auto& filters{ mRuntimeEnv->BucketFilters };
+
+    if (filters.empty())
     {
         return true;
     }
 
-    const auto it = std::find_if(mRuntimeEnv->BucketFilters.cbegin(), mRuntimeEnv->BucketFilters.cend(), [&arg](const auto& re)
+    const auto it = std::find_if(filters.cbegin(), filters.cend(), [&argBucket](const auto& item)
     {
-        return std::regex_match(arg, re);
+        return std::regex_match(argBucket, item);
     });
 
-    return it != mRuntimeEnv->BucketFilters.cend();
+    return it != filters.cend();
 }
 
-bool ExecuteApi::shouldIgnoreFileName(const std::wstring& arg) const noexcept
+bool ExecuteApi::shouldIgnoreFileName(const std::filesystem::path& argWinPath) const
 {
+    APP_ASSERT(!argWinPath.empty());
+    APP_ASSERT(argWinPath.wstring().at(0) == L'\\');
+
     // リストの最大数に関連するので、API 実行結果を生成するときにもチェックが必要
 
     if (mRuntimeEnv->IgnoreFileNamePatterns)
     {
-        return std::regex_search(arg, *mRuntimeEnv->IgnoreFileNamePatterns);
+        return std::regex_search(argWinPath.wstring(), *mRuntimeEnv->IgnoreFileNamePatterns);
     }
 
     // 正規表現が設定されていない
@@ -113,28 +123,28 @@ bool ExecuteApi::Ping(CALLER_ARG0) const
     const auto outcome = mS3Client->ListBuckets();
     if (!outcomeIsSuccess(outcome))
     {
-        traceW(L"fault: ListBuckets");
+        errorW(L"fault: ListBuckets");
         return false;
     }
 
     return true;
 }
 
-bool ExecuteApi::ListBuckets(CALLER_ARG CSELIB::DirInfoPtrList* pDirInfoList) const noexcept
+bool ExecuteApi::ListBuckets(CALLER_ARG DirEntryListType* pDirEntryList) const
 {
     NEW_LOG_BLOCK();
-    APP_ASSERT(pDirInfoList);
+    APP_ASSERT(pDirEntryList);
 
     Aws::S3::Model::ListBucketsRequest request;
 
     const auto outcome = mS3Client->ListBuckets(request);
     if (!outcomeIsSuccess(outcome))
     {
-        traceW(L"fault: ListBuckets");
+        errorW(L"fault: ListBuckets");
         return false;
     }
 
-    DirInfoPtrList dirInfoList;
+    DirEntryListType dirEntryList;
 
     const auto& result = outcome.GetResult();
 
@@ -157,56 +167,43 @@ bool ExecuteApi::ListBuckets(CALLER_ARG CSELIB::DirInfoPtrList* pDirInfoList) co
 
         const auto creationDate = UtcMillisToWinFileTime100ns(creationDateMillis);
 
-        FSP_FSCTL_FILE_INFO fileInfo{};
+        auto dirEntry{ DirectoryEntry::makeBucketEntry(bucketName, creationDate) };
+        APP_ASSERT(dirEntry);
 
-        // バケットはディレクトリ属性で登録
-
-        fileInfo.FileAttributes = FILE_ATTRIBUTE_DIRECTORY | mRuntimeEnv->DefaultFileAttributes;
-
-        // 各種 FILETIME にはバケットの CreationDate の値を設定
-
-        fileInfo.CreationTime = creationDate;
-        fileInfo.LastAccessTime = creationDate;
-        fileInfo.LastWriteTime = creationDate;
-
-        const auto dirInfo{ allocBasicDirInfo(bucketName + L'/', FileTypeEnum::Bucket, fileInfo) };
-        APP_ASSERT(dirInfo);
-
-        dirInfoList.emplace_back(dirInfo);
+        dirEntryList.emplace_back(std::move(dirEntry));
 
         // 最大バケット表示数の確認
 
         if (mRuntimeEnv->MaxDisplayBuckets > 0)
         {
-            if (dirInfoList.size() >= mRuntimeEnv->MaxDisplayBuckets)
+            if (dirEntryList.size() >= mRuntimeEnv->MaxDisplayBuckets)
             {
                 break;
             }
         }
     }
 
-    *pDirInfoList = std::move(dirInfoList);
+    *pDirEntryList = std::move(dirEntryList);
 
     return true;
 }
 
-bool ExecuteApi::GetBucketRegion(CALLER_ARG
-    const std::wstring& argBucketName, std::wstring* pBucketRegion) const noexcept
+bool ExecuteApi::GetBucketRegion(CALLER_ARG const std::wstring& argBucket, std::wstring* pRegion) const
 {
     NEW_LOG_BLOCK();
-    APP_ASSERT(pBucketRegion);
+    APP_ASSERT(pRegion);
 
-    //traceW(L"do GetBucketLocation()");
+    traceW(L"argBucket=%s", argBucket.c_str());
 
     namespace mapper = Aws::S3::Model::BucketLocationConstraintMapper;
 
     Aws::S3::Model::GetBucketLocationRequest request;
-    request.SetBucket(WC2MB(argBucketName));
+    request.SetBucket(WC2MB(argBucket));
 
     const auto outcome = mS3Client->GetBucketLocation(request);
     if (!outcomeIsSuccess(outcome))
     {
-        traceW(L"fault: GetBucketLocation");
+        errorW(L"fault: GetBucketLocation argBucket=%s", argBucket.c_str());
         return false;
     }
 
@@ -221,18 +218,17 @@ bool ExecuteApi::GetBucketRegion(CALLER_ARG
         return false;
     }
 
-    *pBucketRegion = MB2WC(mapper::GetNameForBucketLocationConstraint(location));
+    *pRegion = MB2WC(mapper::GetNameForBucketLocationConstraint(location));
 
-    //traceW(L"success, region is %s", bucketRegion.c_str());
+    traceW(L"bucketRegion=%s", pRegion->c_str());
 
     return true;
 }
 
-bool ExecuteApi::HeadObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoPtr* pDirInfo) const noexcept
+bool ExecuteApi::HeadObject(CALLER_ARG const ObjectKey& argObjKey, DirEntryType* pDirEntry) const
 {
     NEW_LOG_BLOCK();
-    APP_ASSERT(pDirInfo);
-    //APP_ASSERT(argObjKey.meansFile());
+    APP_ASSERT(pDirEntry);
 
     traceW(L"argObjKey=%s", argObjKey.c_str());
 
@@ -245,57 +241,27 @@ bool ExecuteApi::HeadObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoPtr* p
     {
         // HeadObject の実行時エラー、またはオブジェクトが見つからない
 
-        traceW(L"fault: HeadObject");
+        traceW(L"fault: HeadObject argObjKey=%s", argObjKey.c_str());
         return false;
     }
 
     std::wstring filename;
     if (!SplitObjectKey(argObjKey.key(), nullptr, &filename))
     {
-        traceW(L"fault: SplitObjectKey");
+        errorW(L"fault: SplitObjectKey argObjKey=%s", argObjKey.c_str());
         return false;
     }
 
     const auto& result = outcome.GetResult();
 
-    // ファイルサイズ
-
-    const auto fileSize = result.GetContentLength();
-
-    // ファイル属性
-
-    UINT32 fileAttributes = mRuntimeEnv->DefaultFileAttributes;
-
-    if (argObjKey.meansDir())
-    {
-        // ディレクトリ
-
-        fileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
-    }
-
-    if (argObjKey.meansHidden())
-    {
-        // 隠しファイル
-
-        fileAttributes |= FILE_ATTRIBUTE_HIDDEN;
-    }
-
-    if (fileAttributes == 0)
-    {
-        // レギュラー・ファイル
-
-        fileAttributes = FILE_ATTRIBUTE_NORMAL;
-    }
-
-    // 各種 FILETIME
-
     const auto lastModifiedMillis = result.GetLastModified().Millis();
     traceW(L"argObjKey=%s, LastModified=%s", argObjKey.c_str(), UtcMillisToLocalTimeStringW(lastModifiedMillis).c_str());
     const auto lastModified = UtcMillisToWinFileTime100ns(lastModifiedMillis);
 
-    auto creationTime   = lastModified;
-    auto lastAccessTime = lastModified;
-    auto lastWriteTime  = lastModified;
+    auto dirEntry = argObjKey.meansDir()
+        ? DirectoryEntry::makeDirectoryEntry(filename, lastModified)
+        : DirectoryEntry::makeFileEntry(filename, result.GetContentLength(), lastModified);
+    APP_ASSERT(dirEntry);
 
     // メタ・データを FILETIME に反映
 
@@ -303,32 +269,30 @@ bool ExecuteApi::HeadObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoPtr* p
 
     if (metadata.find("wincse-creation-time") != metadata.cend())
     {
-        creationTime = std::stoull(metadata.at("wincse-creation-time"));
+        dirEntry->mFileInfo.CreationTime = std::stoull(metadata.at("wincse-creation-time"));
+    }
+
+    if (metadata.find("wincse-last-access-time") != metadata.cend())
+    {
+        dirEntry->mFileInfo.LastAccessTime = std::stoull(metadata.at("wincse-last-access-time"));
     }
 
     if (metadata.find("wincse-last-write-time") != metadata.cend())
     {
-        lastWriteTime = std::stoull(metadata.at("wincse-last-write-time"));
+        dirEntry->mFileInfo.LastWriteTime = std::stoull(metadata.at("wincse-last-write-time"));
     }
 
-    FSP_FSCTL_FILE_INFO fileInfo{};
-    fileInfo.FileAttributes = fileAttributes;
-    fileInfo.FileSize       = fileSize;
-    fileInfo.CreationTime   = creationTime;
-    fileInfo.LastAccessTime = lastAccessTime;
-    fileInfo.LastWriteTime  = lastWriteTime;
-
-    auto dirInfo = allocBasicDirInfo(filename, argObjKey.toFileType(), fileInfo);
-    APP_ASSERT(dirInfo);
-
-    dirInfo->mUserProperties.insert({ L"wincse-last-modified", std::to_wstring(lastModified) });
-
-    if (metadata.find("wincse-client-guid") != metadata.cend())
+    if (metadata.find("wincse-change-time") != metadata.cend())
     {
-        dirInfo->mUserProperties.insert({ L"wincse-client-guid", MB2WC(metadata.at("wincse-client-guid")) });
+        dirEntry->mFileInfo.ChangeTime = std::stoull(metadata.at("wincse-change-time"));
     }
 
-    *pDirInfo = std::move(dirInfo);
+    dirEntry->mUserProperties.insert({ L"wincse-last-modified", std::to_wstring(lastModified) });
+    dirEntry->mUserProperties.insert({ L"wincse-etag", MB2WC(result.GetETag()) });
+
+    traceW(L"dirEntry=%s", dirEntry->str().c_str());
+
+    *pDirEntry = std::move(dirEntry);
 
     return true;
 }
@@ -337,29 +301,19 @@ bool ExecuteApi::HeadObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoPtr* p
 // ListObjectsV2 API を実行し結果を引数のポインタの指す変数に保存する
 // 引数の条件に合致するオブジェクトが見つからないときは false を返却
 //
-bool ExecuteApi::ListObjectsV2(CALLER_ARG const ObjectKey& argObjKey,
-    bool argDelimiter, int argLimit, DirInfoPtrList* pDirInfoList) const noexcept
+bool ExecuteApi::ListObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryListType* pDirEntryList) const
 {
     NEW_LOG_BLOCK();
-    APP_ASSERT(pDirInfoList);
+    APP_ASSERT(pDirEntryList);
+    APP_ASSERT(argObjKey.meansDir());
 
-    traceW(L"argObjKey=%s, argDelimiter=%s, argLimit=%d",
-        argObjKey.c_str(), BOOL_CSTRW(argDelimiter), argLimit);
+    traceW(L"argObjKey=%s", argObjKey.c_str());
 
-    DirInfoPtrList dirInfoList;
+    DirEntryListType dirEntryList;
 
     Aws::S3::Model::ListObjectsV2Request request;
     request.SetBucket(argObjKey.bucketA());
-
-    if (argDelimiter)
-    {
-        request.WithDelimiter("/");
-    }
-
-    if (argLimit > 0)
-    {
-        request.SetMaxKeys(argLimit);
-    }
+    request.WithDelimiter("/");
 
     const auto argKeyLen = argObjKey.key().length();
     if (argObjKey.isObject())
@@ -382,7 +336,7 @@ bool ExecuteApi::ListObjectsV2(CALLER_ARG const ObjectKey& argObjKey,
         const auto outcome = mS3Client->ListObjectsV2(request);
         if (!outcomeIsSuccess(outcome))
         {
-            traceW(L"fault: ListObjectsV2");
+            errorW(L"fault: ListObjectsV2 argObjKey=%s", argObjKey.c_str());
 
             return false;
         }
@@ -413,61 +367,54 @@ bool ExecuteApi::ListObjectsV2(CALLER_ARG const ObjectKey& argObjKey,
 
         for (const auto& it : result.GetCommonPrefixes())
         {
-            const auto fullPath{ MB2WC(it.GetPrefix()) };
-            //traceW(L"GetCommonPrefixes: %s", fullPath.c_str());
+            const auto keyFull{ MB2WC(it.GetPrefix()) };
+
+            if (keyFull == argObjKey.key())
+            {
+                // 引数のディレクトリ名と同じ(= "." と同義)は無視
+                // --> ここは通過しないが、念のため
+
+                continue;
+            }
 
             // Prefix 部分を取り除く
             // 
-            // "dir/"           --> ""
-            // "dir/file1.txt"  --> "file1.txt"
+            // "dir/"           --> ""              ... 上記で除かれている
+            // "dir/subdir/"    --> "subdir/"       ... 以降はこちらが対象
 
-            auto key{ fullPath.substr(argKeyLen) };
+            const auto key{ keyFull.substr(argKeyLen) };
 
-            auto chkKey{ key };
-            if (!chkKey.empty())
-            {
-                // CommonPrefixes(=ディレクトリ) なので、"/" 終端されている
+            // CommonPrefixes(=ディレクトリ) なので、"/" 終端されている
 
-                APP_ASSERT(chkKey.back() == L'/');
+            APP_ASSERT(!key.empty());
+            APP_ASSERT(key != L"/");
+            APP_ASSERT(key.back() == L'/');
 
-                chkKey.pop_back();
-            }
+            const auto keyWinPath{ argObjKey.append(key).toWinPath() };
 
-            if (chkKey.empty())
-            {
-                // ファイル名が空("") のものはディレクトリ・オブジェクトとして扱う
-
-                key = L".";
-            }
-
-            if (this->shouldIgnoreFileName(chkKey))
+            if (this->shouldIgnoreFileName(keyWinPath))
             {
                 // 無視するファイル名はスキップ
+
+                traceW(L"ignore keyWinPath=%s", keyWinPath.wstring().c_str());
 
                 continue;
             }
 
             // ディレクトリと同じファイル名は無視するために保存
 
-            dirNames.insert(chkKey);
-
-            APP_ASSERT(!key.empty());
+            dirNames.insert(key.substr(0, key.length() - 1));
 
             // CommonPrefix なので、ディレクトリ・オブジェクトとして登録
 
-            dirInfoList.push_back(this->makeDirInfoOfDir_2(key, commonPrefixTime));
+            auto dirEntry{ DirectoryEntry::makeDirectoryEntry(key, commonPrefixTime) };
+            APP_ASSERT(dirEntry);
 
-            if (argLimit > 0)
-            {
-                if (dirInfoList.size() >= argLimit)
-                {
-                    goto exit;
-                }
-            }
+            dirEntryList.push_back(std::move(dirEntry));
 
             if (mRuntimeEnv->MaxDisplayObjects > 0)
             {
-                if (dirInfoList.size() >= mRuntimeEnv->MaxDisplayObjects)
+                if (dirEntryList.size() >= mRuntimeEnv->MaxDisplayObjects)
                 {
                     traceW(L"warning: over max-objects(%d)", mRuntimeEnv->MaxDisplayObjects);
 
@@ -480,101 +427,55 @@ bool ExecuteApi::ListObjectsV2(CALLER_ARG const ObjectKey& argObjKey,
 
         for (const auto& it : result.GetContents())
         {
-            bool isDir = false;
+            const auto keyFull{ MB2WC(it.GetKey()) };
 
-            const auto fullPath{ MB2WC(it.GetKey()) };
-            //traceW(L"GetContents: %s", fullPath.c_str());
+            if (keyFull == argObjKey.key())
+            {
+                // 引数のディレクトリ名と同じ(= "." と同義)は無視
+
+                continue;
+            }
 
             // Prefix 部分を取り除く
             // 
-            // "dir/"           --> ""
-            // "dir/file1.txt"  --> "file1.txt"
+            // "dir/"           --> ""              ... 上記で除かれている
+            // "dir/file1.txt"  --> "file1.txt"     ... 以降はこちらが対象
 
-            auto key{ fullPath.substr(argKeyLen) };
-            if (!key.empty())
-            {
-                if (key.back() == L'/')
-                {
-                    key.pop_back();
-                    isDir = true;
-                }
-            }
-
-            if (key.empty())
-            {
-                // ファイル名が空("") のものはディレクトリ・オブジェクトとして扱う
-
-                isDir = true;
-                key = L".";
-            }
+            const auto key{ keyFull.substr(argKeyLen) };
 
             APP_ASSERT(!key.empty());
+            APP_ASSERT(key.back() != L'/');
 
             if (dirNames.find(key) != dirNames.cend())
             {
                 // ディレクトリと同じ名前のファイルは無視
 
+                traceW(L"exists same name of dir key=%s", key.c_str());
+
                 continue;
             }
 
-            if (this->shouldIgnoreFileName(key))
+            const auto keyWinPath{ argObjKey.append(key).toWinPath() };
+
+            if (this->shouldIgnoreFileName(keyWinPath))
             {
                 // 無視するファイル名はスキップ
 
+                traceW(L"ignore keyWinPath=%s", keyWinPath.wstring().c_str());
+
                 continue;
-            }
-
-            FSP_FSCTL_FILE_INFO fileInfo{};
-
-            UINT32 fileAttributes = mRuntimeEnv->DefaultFileAttributes;
-
-            if (MeansHiddenFile(key))
-            {
-                // ".", ".." 以外で先頭が "." で始まっているものは隠しファイルの扱い
-
-                fileAttributes |= FILE_ATTRIBUTE_HIDDEN;
-            }
-
-            if (isDir)
-            {
-                fileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
-            }
-            else
-            {
-                fileInfo.FileSize = it.GetSize();
-            }
-
-            fileInfo.FileAttributes |= fileAttributes;
-
-            if (fileInfo.FileAttributes == 0)
-            {
-                fileInfo.FileAttributes = FILE_ATTRIBUTE_NORMAL;
             }
 
             const auto lastModified = UtcMillisToWinFileTime100ns(it.GetLastModified().Millis());
 
-            fileInfo.CreationTime = lastModified;
-            fileInfo.LastAccessTime = lastModified;
-            fileInfo.LastWriteTime = lastModified;
+            auto dirEntry = DirectoryEntry::makeFileEntry(key, it.GetSize(), lastModified);
+            APP_ASSERT(dirEntry);
 
-            auto dirInfo = allocBasicDirInfo(key, isDir ? FileTypeEnum::DirectoryObject : FileTypeEnum::FileObject, fileInfo);
-            APP_ASSERT(dirInfo);
-
-            dirInfoList.emplace_back(dirInfo);
-
-            if (argLimit > 0)
-            {
-                if (dirInfoList.size() >= argLimit)
-                {
-                    // 結果リストが引数で指定した limit に到達
-
-                    goto exit;
-                }
-            }
+            dirEntryList.emplace_back(std::move(dirEntry));
 
             if (mRuntimeEnv->MaxDisplayObjects > 0)
             {
-                if (dirInfoList.size() >= mRuntimeEnv->MaxDisplayObjects)
+                if (dirEntryList.size() >= mRuntimeEnv->MaxDisplayObjects)
                 {
                     // 結果リストが ini ファイルで指定した最大値に到達
 
@@ -589,17 +490,20 @@ bool ExecuteApi::ListObjectsV2(CALLER_ARG const ObjectKey& argObjKey,
     } while (!continuationToken.empty());
 
 exit:
-    *pDirInfoList = std::move(dirInfoList);
+    traceW(L"dirEntryList.size=%zu", dirEntryList.size());
+
+    *pDirEntryList = std::move(dirEntryList);
 
     return true;
 }
 
-bool ExecuteApi::DeleteObjects(CALLER_ARG
-    const std::wstring& argBucket, const std::list<std::wstring>& argKeys) const noexcept
+bool ExecuteApi::DeleteObjects(CALLER_ARG const std::wstring& argBucket, const std::list<std::wstring>& argKeys) const
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(!argBucket.empty());
     APP_ASSERT(!argKeys.empty());
+
+    traceW(L"DeleteObjects argBucket=%s argKeys=%s", argBucket.c_str(), JoinStrings(argKeys, L',', true).c_str());
 
     Aws::S3::Model::Delete delete_objects;
 
@@ -610,8 +514,6 @@ bool ExecuteApi::DeleteObjects(CALLER_ARG
         delete_objects.AddObjects(obj);
     }
 
-    traceW(L"DeleteObjects bucket=%s keys=%s", argBucket.c_str(), JoinStrings(argKeys, L',', false).c_str());
-
     Aws::S3::Model::DeleteObjectsRequest request;
     request.SetBucket(WC2MB(argBucket));
     request.SetDelete(delete_objects);
@@ -620,14 +522,14 @@ bool ExecuteApi::DeleteObjects(CALLER_ARG
 
     if (!outcomeIsSuccess(outcome))
     {
-        traceW(L"fault: DeleteObjects");
+        errorW(L"fault: DeleteObjects argBucket=%s argKeys=%s", argBucket.c_str(), JoinStrings(argKeys, L',', true).c_str());
         return false;
     }
 
     return true;
 }
 
-bool ExecuteApi::DeleteObject(CALLER_ARG const ObjectKey& argObjKey) const noexcept
+bool ExecuteApi::DeleteObject(CALLER_ARG const ObjectKey& argObjKey) const
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.isObject());
@@ -641,101 +543,40 @@ bool ExecuteApi::DeleteObject(CALLER_ARG const ObjectKey& argObjKey) const noexc
 
     if (!outcomeIsSuccess(outcome))
     {
-        traceW(L"fault: DeleteObject");
+        errorW(L"fault: DeleteObject argObjKey=%s", argObjKey.c_str());
         return false;
     }
 
     return true;
 }
 
-bool ExecuteApi::PutObject(CALLER_ARG const ObjectKey& argObjKey,
-    const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath) const noexcept
+bool ExecuteApi::PutObject(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath)
 {
-    NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.isObject());
 
-    traceW(L"argObjKey=%s, argSourcePath=%s", argObjKey.c_str(), argSourcePath);
+    // パートサイズを超えたらマルチパート・アップロード
 
-    Aws::S3::Model::PutObjectRequest request;
-    request.SetBucket(argObjKey.bucketA());
-    request.SetKey(argObjKey.keyA());
+    const auto PART_SIZE_BYTE = FILESIZE_1MiBll * mRuntimeEnv->TransferWriteSizeMib;
 
-    if (FA_IS_DIR(argFileInfo.FileAttributes))
+    if (static_cast<FILESIZE_T>(argFileInfo.FileSize) <= PART_SIZE_BYTE || !argSourcePath)
     {
-        // ディレクトリの場合は空のコンテンツ
-
-        APP_ASSERT(!argSourcePath);
+        return this->uploadSimple(CONT_CALLER argObjKey, argFileInfo, argSourcePath);
     }
     else
     {
-        // ファイルの場合はローカル・キャッシュの内容をアップロードする
-
-        const Aws::String filePath{ WC2MB(argSourcePath) };
-
-        std::shared_ptr<Aws::IOStream> inputData = Aws::MakeShared<Aws::FStream>(
-            __FUNCTION__,
-            filePath.c_str(),
-            std::ios_base::in | std::ios_base::binary
-        );
-
-        if (!inputData->good())
-        {
-            const auto lerr = ::GetLastError();
-
-            traceW(L"fault: inputData->good, fail=%s bad=%s, eof=%s, lerr=%lu",
-                BOOL_CSTRW(inputData->fail()), BOOL_CSTRW(inputData->bad()), BOOL_CSTRW(inputData->eof()), lerr);
-
-            return false;
-        }
-
-        request.SetBody(inputData);
+        return this->uploadMultipart(CONT_CALLER argObjKey, argFileInfo, argSourcePath);
     }
-
-    const auto creationTime{ std::to_string(argFileInfo.CreationTime) };
-    const auto lastWriteTime{ std::to_string(argFileInfo.LastWriteTime) };
-    const auto clientGuid{ WC2MB(mRuntimeEnv->ClientGuid) };
-
-    request.AddMetadata("wincse-creation-time", creationTime.c_str());
-    request.AddMetadata("wincse-last-write-time", lastWriteTime.c_str());
-    request.AddMetadata("wincse-client-guid", clientGuid.c_str());
-
-    traceA("creationTime=%s, lastWriteTime=%s, ClientGuid=%s",
-        creationTime.c_str(), lastWriteTime.c_str(), clientGuid.c_str());
-
-#if _DEBUG
-    if (argSourcePath)
-    {
-        request.AddMetadata("wincse-debug-source-path", WC2MB(argSourcePath).c_str());
-    }
-
-    request.AddMetadata("wincse-debug-creation-time", WinFileTime100nsToLocalTimeStringA(argFileInfo.CreationTime).c_str());
-    request.AddMetadata("wincse-debug-last-write-time", WinFileTime100nsToLocalTimeStringA(argFileInfo.LastWriteTime).c_str());
-    request.AddMetadata("wincse-debug-last-access-time", WinFileTime100nsToLocalTimeStringA(argFileInfo.LastAccessTime).c_str());
-#endif
-
-    traceW(L"PutObject argObjKey=%s, argSourcePath=%s", argObjKey.c_str(), argSourcePath);
-
-    const auto outcome = mS3Client->PutObject(request);
-
-    if (!outcomeIsSuccess(outcome))
-    {
-        traceW(L"fault: PutObject");
-        return false;
-    }
-
-    traceW(L"success");
-
-    return true;
 }
 
-static FILEIO_LENGTH_T writeObjectResultToFile(CALLER_ARG const Aws::S3::Model::GetObjectResult& argResult,
-    const std::filesystem::path& argOutputPath, FILEIO_LENGTH_T argOffset)
+static FILEIO_LENGTH_T writeFileFromStream(CALLER_ARG
+    const Aws::IOStream& argInputStream, FILEIO_LENGTH_T argInputLength,
+    const std::filesystem::path& argOutputPath, FILEIO_OFFSET_T argOutputOffset)
 {
     NEW_LOG_BLOCK();
 
     // ファイルを開き argOffset の位置にポインタを移動
 
-    FileHandle hFile = ::CreateFileW
+    FileHandle file = ::CreateFileW
     (
         argOutputPath.c_str(),
         GENERIC_WRITE,
@@ -746,81 +587,90 @@ static FILEIO_LENGTH_T writeObjectResultToFile(CALLER_ARG const Aws::S3::Model::
         NULL
     );
 
-    if (hFile.invalid())
+    if (file.invalid())
     {
         const auto lerr = ::GetLastError();
-        traceW(L"fault: CreateFileW lerr=%lu", lerr);
+        errorW(L"fault: CreateFileW lerr=%lu argOutputPath=%s argOffset=%lld", lerr, argOutputPath.c_str(), argOutputOffset);
 
         return -1LL;
     }
 
     LARGE_INTEGER li{};
-    li.QuadPart = argOffset;
+    li.QuadPart = argOutputOffset;
 
-    if (::SetFilePointerEx(hFile.handle(), li, NULL, FILE_BEGIN) == 0)
+    if (::SetFilePointerEx(file.handle(), li, NULL, FILE_BEGIN) == 0)
     {
         const auto lerr = ::GetLastError();
-        traceW(L"fault: SetFilePointerEx lerr=%lu", lerr);
+        errorW(L"fault: SetFilePointerEx lerr=%lu file=%s", lerr, file.str().c_str());
 
         return -1LL;
     }
 
     // 取得した内容をファイルに出力
 
-    const auto pbuf = argResult.GetBody().rdbuf();
-    const auto contentLen = argResult.GetContentLength();               // ファイルサイズ
+    auto* pbuf = argInputStream.rdbuf();
+    auto remainingTotal = argInputLength;
 
-    std::vector<char> vbuffer(min(contentLen, FILESIZE_1KiBu * 64));    // 64Kib
+    //std::vector<char> vBuffer(min(argInputLength, FILESIZE_1KiBu * 64));    // 64Kib
+    //auto* buffer = vBuffer.data();
+    //const FILEIO_LENGTH_T bufferSize = vBuffer.size();
 
-    auto remainingTotal = contentLen;
+    static thread_local char buffer[FILEIO_BUFFER_SIZE];
+    const FILEIO_LENGTH_T bufferSize = _countof(buffer);
 
     while (remainingTotal > 0)
     {
         // バッファにデータを読み込む
 
-        char* buffer = vbuffer.data();
-        const std::streamsize bytesRead = pbuf->sgetn(buffer, min(remainingTotal, (FILEIO_LENGTH_T)vbuffer.size()));
-        if (bytesRead <= 0)
+        if (!argInputStream.good())
         {
-            traceW(L"fault: Read error");
-
+            errorW(L"fault: no good");
             return -1LL;
         }
 
-        //traceW(L"%lld bytes read", bytesRead);
+        const auto bytesRead = pbuf->sgetn(buffer, min(remainingTotal, bufferSize));
+        if (bytesRead <= 0)
+        {
+            errorW(L"fault: sgetn");
+            return -1LL;
+        }
+
+        traceW(L"bytesRead=%lld", bytesRead);
 
         // ファイルにデータを書き込む
 
-        char* pos = buffer;
+        auto* pos = buffer;
         auto remainingWrite = bytesRead;
 
         while (remainingWrite > 0)
         {
-            //traceW(L"%lld bytes remaining", remainingWrite);
+            traceW(L"remainingWrite=%lld", remainingWrite);
 
-            DWORD bytesWritten = 0;
-            if (!::WriteFile(hFile.handle(), pos, (DWORD)remainingWrite, &bytesWritten, NULL))
+            DWORD bytesWritten;
+            if (!::WriteFile(file.handle(), pos, static_cast<DWORD>(remainingWrite), &bytesWritten, NULL))
             {
                 const auto lerr = ::GetLastError();
-                traceW(L"fault: WriteFile lerr=%lu", lerr);
+                errorW(L"fault: WriteFile lerr=%lu", lerr);
 
                 return -1LL;
             }
 
-            //traceW(L"%lld bytes written", bytesWritten);
-
             pos += bytesWritten;
             remainingWrite -= bytesWritten;
+
+            traceW(L"bytesWritten=%lu remainingWrite=%lld", bytesWritten, remainingWrite);
         }
 
         remainingTotal -= bytesRead;
+
+        traceW(L"remainingTotal=%lld", remainingTotal);
     }
 
-    return contentLen;
+    return argInputLength;
 }
 
 FILEIO_LENGTH_T ExecuteApi::GetObjectAndWriteFile(CALLER_ARG const ObjectKey& argObjKey,
-    const std::filesystem::path& argOutputPath, FILEIO_OFFSET_T argOffset, FILEIO_LENGTH_T argLength) const noexcept
+    const std::filesystem::path& argOutputPath, FILEIO_LENGTH_T argOffset, FILEIO_LENGTH_T argLength) const
 {
     NEW_LOG_BLOCK();
 
@@ -843,15 +693,17 @@ FILEIO_LENGTH_T ExecuteApi::GetObjectAndWriteFile(CALLER_ARG const ObjectKey& ar
     const auto outcome = mS3Client->GetObject(request);
     if (!outcomeIsSuccess(outcome))
     {
-        traceW(L"fault: GetObject");
+        errorW(L"fault: GetObject argObjKey=%s", argObjKey.c_str());
         return -1LL;
     }
 
     const auto& result = outcome.GetResult();
 
+    traceW(L"ETag=%s", result.GetETag().c_str());
+
     // result の内容をファイルに出力する
 
-    return writeObjectResultToFile(CONT_CALLER result, argOutputPath, argOffset);
+    return writeFileFromStream(CONT_CALLER result.GetBody(), result.GetContentLength(), argOutputPath, argOffset);
 }
 
 // EOF

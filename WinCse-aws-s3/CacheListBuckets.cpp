@@ -6,7 +6,7 @@ using namespace CSEDAS3;
 
 #define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ mGuard }
 
-std::chrono::system_clock::time_point CacheListBuckets::clbGetLastSetTime(CALLER_ARG0) const noexcept
+std::chrono::system_clock::time_point CacheListBuckets::clbGetLastSetTime(CALLER_ARG0) const
 {
     THREAD_SAFE();
 
@@ -15,7 +15,7 @@ std::chrono::system_clock::time_point CacheListBuckets::clbGetLastSetTime(CALLER
     return lastSetTime;
 }
 
-bool CacheListBuckets::clbEmpty(CALLER_ARG0) const noexcept
+bool CacheListBuckets::clbEmpty(CALLER_ARG0) const
 {
     THREAD_SAFE();
 
@@ -24,33 +24,33 @@ bool CacheListBuckets::clbEmpty(CALLER_ARG0) const noexcept
     return listIsEmpty;
 }
 
-void CacheListBuckets::clbSet(CALLER_ARG const DirInfoPtrList& argDirInfoList) noexcept
+void CacheListBuckets::clbSet(CALLER_ARG const DirEntryListType& argDirEntryList)
 {
     THREAD_SAFE();
     NEW_LOG_BLOCK();
 
-    traceW(L"* argDirInfoList.size()=%zu", argDirInfoList.size());
+    traceW(L"* argDirEntryList.size()=%zu", argDirEntryList.size());
 
     mLastSetTime = std::chrono::system_clock::now();
     mLastSetCallChain = CALL_CHAIN();
     mCountSet++;
 
-    mList = argDirInfoList;
+    mList = argDirEntryList;
 }
 
-void CacheListBuckets::clbGet(CALLER_ARG CSELIB::DirInfoPtrList* pDirInfoList) const noexcept
+void CacheListBuckets::clbGet(CALLER_ARG DirEntryListType* pDirEntryList) const
 {
     THREAD_SAFE();
-    APP_ASSERT(pDirInfoList);
+    APP_ASSERT(pDirEntryList);
 
     mLastGetTime = std::chrono::system_clock::now();
     mLastGetCallChain = CALL_CHAIN();
     mCountGet++;
 
-    *pDirInfoList = mList;
+    *pDirEntryList = mList;
 }
 
-void CacheListBuckets::clbClear(CALLER_ARG0) noexcept
+void CacheListBuckets::clbClear(CALLER_ARG0)
 {
     THREAD_SAFE();
     NEW_LOG_BLOCK();
@@ -71,18 +71,15 @@ void CacheListBuckets::clbClear(CALLER_ARG0) noexcept
     mCountClear++;
 }
 
-bool CacheListBuckets::clbFind(CALLER_ARG const std::wstring& argBucketName, DirInfoPtr* pDirInfo) const noexcept
+bool CacheListBuckets::clbFind(CALLER_ARG const std::wstring& argBucketName, DirEntryType* pDirEntry) const
 {
     THREAD_SAFE();
-    APP_ASSERT(pDirInfo);
     APP_ASSERT(!argBucketName.empty());
     APP_ASSERT(argBucketName.back() != L'/');
 
-    const auto it = std::find_if(mList.cbegin(), mList.cend(), [&argBucketName](const auto& dirInfo)
+    const auto it = std::find_if(mList.cbegin(), mList.cend(), [&argBucketName](const auto& item)
     {
-        // バケット名なので "/" 終端ではない名前と比較
-
-        return argBucketName == dirInfo->FileNameBuf;
+        return argBucketName == item->mName;
     });
 
     if (it == mList.cend())
@@ -94,17 +91,18 @@ bool CacheListBuckets::clbFind(CALLER_ARG const std::wstring& argBucketName, Dir
     mLastGetCallChain = CALL_CHAIN();
     mCountGet++;
 
-    if (pDirInfo)
+    if (pDirEntry)
     {
-        *pDirInfo = *it;
+        *pDirEntry = *it;
     }
 
     return true;
 }
 
-bool CacheListBuckets::clbGetBucketRegion(CALLER_ARG const std::wstring& argBucketName, std::wstring* pBucketRegion) const noexcept
+bool CacheListBuckets::clbGetBucketRegion(CALLER_ARG const std::wstring& argBucketName, std::wstring* pBucketRegion) const
 {
     THREAD_SAFE();
+    APP_ASSERT(pBucketRegion);
     APP_ASSERT(!argBucketName.empty());
 
     const auto it{ mBucketRegions.find(argBucketName) };
@@ -113,16 +111,12 @@ bool CacheListBuckets::clbGetBucketRegion(CALLER_ARG const std::wstring& argBuck
         return false;
     }
 
-    if (pBucketRegion)
-    {
-        *pBucketRegion = it->second;
-    }
+    *pBucketRegion = it->second;
 
     return true;
 }
 
-void CacheListBuckets::clbAddBucketRegion(CALLER_ARG
-    const std::wstring& argBucketName, const std::wstring& argBucketRegion) noexcept
+void CacheListBuckets::clbAddBucketRegion(CALLER_ARG const std::wstring& argBucketName, const std::wstring& argBucketRegion)
 {
     THREAD_SAFE();
     NEW_LOG_BLOCK();
@@ -142,7 +136,7 @@ void CacheListBuckets::clbAddBucketRegion(CALLER_ARG
 #define INDENT4         L"\t\t\t\t"
 #define INDENT5         L"\t\t\t\t\t"
 
-void CacheListBuckets::clbReport(CALLER_ARG FILE* fp) const noexcept
+void CacheListBuckets::clbReport(CALLER_ARG FILE* fp) const
 {
     THREAD_SAFE();
 
@@ -163,7 +157,7 @@ void CacheListBuckets::clbReport(CALLER_ARG FILE* fp) const noexcept
 
     for (const auto& it: mList)
     {
-        fwprintf(fp, INDENT2 L"%s"                      LN, it->FileName.c_str());
+        fwprintf(fp, INDENT2 L"%s"                      LN, it->mName.c_str());
     }
 
     fwprintf(fp, INDENT1 L"[Region Map]"                LN);

@@ -30,14 +30,16 @@ private:
 	FileContextSweeper								mFileContextSweeper;
 
 protected:
-	explicit CSDriverBase(const std::wstring& argCSDeviceType, const std::wstring& argIniSection, const std::map<std::wstring, CSELIB::IWorker*>& argWorkers, CSELIB::ICSDevice* argCSDevice, WINCSE_DRIVER_STATS* argStats) noexcept;
+	explicit CSDriverBase(const std::wstring& argCSDeviceType, const std::wstring& argIniSection, const std::map<std::wstring, CSELIB::IWorker*>& argWorkers, CSELIB::ICSDevice* argCSDevice, WINCSE_DRIVER_STATS* argStats);
 
-	CSELIB::IWorker* getWorker(const std::wstring& argName) const noexcept
+	CSELIB::IWorker* getWorker(const std::wstring& argName) const
 	{
 		APP_ASSERT(mWorkers.find(argName) != mWorkers.cend());
 
 		return mWorkers.at(argName);
 	}
+
+	void applyDefaultFileAttributes(FSP_FSCTL_FILE_INFO* pFileInfo) const;
 
 public:
 	void onIdle();
@@ -80,21 +82,21 @@ protected:
 
 	virtual NTSTATUS GetSecurityByName(const std::filesystem::path& argWinPath, PUINT32 pFileAttributes, PSECURITY_DESCRIPTOR argSecurityDescriptor, PSIZE_T argSecurityDescriptorSize) = 0;
 	virtual NTSTATUS Open(const std::filesystem::path& argWinPath, UINT32 argCreateOptions, UINT32 argGrantedAccess, FileContext** pFileContext, FSP_FSCTL_FILE_INFO* pFileInfo) = 0;
-	virtual NTSTATUS Create(const std::filesystem::path& argWinPath, UINT32 argCreateOptions, UINT32 argGrantedAccess, UINT32 argFileAttributes, PSECURITY_DESCRIPTOR argSecurityDescriptor, UINT64 argAllocationSize, FileContext** argFileContext, FSP_FSCTL_FILE_INFO* argFileInfo) = 0;
+	virtual NTSTATUS Create(const std::filesystem::path& argWinPath, UINT32 argCreateOptions, UINT32 argGrantedAccess, UINT32 argFileAttributes, PSECURITY_DESCRIPTOR argSecurityDescriptor, UINT64 argAllocationSize, FileContext** pFileContext, FSP_FSCTL_FILE_INFO* pFileInfo) = 0;
 	virtual VOID	 Close(FileContext* ctx) = 0;
-	virtual VOID	 Cleanup(FileContext* ctx, PWSTR argFileName, ULONG argFlags) = 0;
+	virtual VOID	 Cleanup(FileContext* ctx, PCWSTR argWinPath, ULONG argFlags) = 0;
 	virtual NTSTATUS Flush(FileContext* ctx, FSP_FSCTL_FILE_INFO* pFileInfo) = 0;
 	virtual NTSTATUS GetFileInfo(FileContext* ctx, FSP_FSCTL_FILE_INFO* pFileInfo) = 0;
 	virtual NTSTATUS GetSecurity(FileContext* ctx, PSECURITY_DESCRIPTOR argSecurityDescriptor, PSIZE_T pSecurityDescriptorSize) = 0;
-	virtual NTSTATUS Overwrite(FileContext* argFileContext, UINT32 argFileAttributes, BOOLEAN argReplaceFileAttributes, UINT64 argAllocationSize, FSP_FSCTL_FILE_INFO* argFileInfo) = 0;
+	virtual NTSTATUS Overwrite(FileContext* ctx, UINT32 argFileAttributes, BOOLEAN argReplaceFileAttributes, UINT64 argAllocationSize, FSP_FSCTL_FILE_INFO* pFileInfo) = 0;
 	virtual NTSTATUS Read(FileContext* ctx, PVOID argBuffer, UINT64 argOffset, ULONG argLength, PULONG argBytesTransferred) = 0;
-	virtual NTSTATUS ReadDirectory(FileContext* ctx, PWSTR argPattern, PWSTR argMarker, PVOID argBuffer, ULONG argBufferLength, PULONG argBytesTransferred) = 0;
-	virtual NTSTATUS Rename(FileContext* argFileContext, PWSTR argFileName, PWSTR argNewFileName, BOOLEAN argReplaceIfExists) = 0;
-	virtual NTSTATUS SetBasicInfo(FileContext* argFileContext, UINT32 argFileAttributes, UINT64 argCreationTime, UINT64 argLastAccessTime, UINT64 argLastWriteTime, UINT64 argChangeTime, FSP_FSCTL_FILE_INFO* argFileInfo) = 0;
+	virtual NTSTATUS ReadDirectory(FileContext* ctx, PCWSTR argPattern, PWSTR argMarker, PVOID argBuffer, ULONG argBufferLength, PULONG argBytesTransferred) = 0;
+	virtual NTSTATUS Rename(FileContext* ctx, const std::filesystem::path& argSrcWinPath, const std::filesystem::path& argDstWinPath, BOOLEAN argReplaceIfExists) = 0;
+	virtual NTSTATUS SetBasicInfo(FileContext* ctx, UINT32 argFileAttributes, UINT64 argCreationTime, UINT64 argLastAccessTime, UINT64 argLastWriteTime, UINT64 argChangeTime, FSP_FSCTL_FILE_INFO* pFileInfo) = 0;
 	virtual NTSTATUS SetFileSize(FileContext* ctx, UINT64 argNewSize, BOOLEAN argSetAllocationSize, FSP_FSCTL_FILE_INFO* pFileInfo) = 0;
 	virtual NTSTATUS SetSecurity(FileContext* argFileContext, SECURITY_INFORMATION argSecurityInformation, PSECURITY_DESCRIPTOR argModificationDescriptor) = 0;
 	virtual NTSTATUS Write(FileContext* ctx, PVOID argBuffer, UINT64 argOffset, ULONG argLength, BOOLEAN argWriteToEndOfFile, BOOLEAN argConstrainedIo, PULONG argBytesTransferred, FSP_FSCTL_FILE_INFO* pFileInfo) = 0;
-	virtual NTSTATUS SetDelete(FileContext* ctx, PWSTR argFileName, BOOLEAN argDeleteFile) = 0;
+	virtual NTSTATUS SetDelete(FileContext* ctx, PCWSTR argFileName, BOOLEAN argDeleteFile) = 0;
 };
 
 }	// namespace CSELIB

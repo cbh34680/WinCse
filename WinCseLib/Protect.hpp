@@ -37,7 +37,7 @@ class ProtectedShare final
 
 	template<typename T> friend class UnprotectedShare;
 
-	ProtectedShare(T* argV) noexcept
+	ProtectedShare(T* argV)
 		:
 		mV(argV)
 	{
@@ -46,7 +46,7 @@ class ProtectedShare final
 		mV->mMutex.lock();
 	}
 
-	void unlock() noexcept
+	void unlock()
 	{
 		if (mV)
 		{
@@ -62,12 +62,12 @@ public:
 		unlock();
 	}
 
-	T* operator->() noexcept
+	T* operator->()
 	{
 		return mV;
 	}
 
-	const T* operator->() const noexcept
+	const T* operator->() const
 	{
 		return mV;
 	}
@@ -82,7 +82,7 @@ class UnprotectedShare final
 
 public:
 	template <typename... ArgsT>
-	UnprotectedShare(ShareStore<T>* argShareStore, const std::wstring& argName, ArgsT... args) noexcept
+	UnprotectedShare(ShareStore<T>* argShareStore, const std::wstring& argName, ArgsT... args)
 		:
 		mShareStore(argShareStore),
 		mName(argName)
@@ -121,7 +121,7 @@ public:
 		}
 	}
 
-	ProtectedShare<T> lock() const noexcept
+	ProtectedShare<T> lock() const
 	{
 		return ProtectedShare<T>(this->mV);
 	}

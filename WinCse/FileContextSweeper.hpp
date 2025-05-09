@@ -13,8 +13,8 @@ private:
 	mutable std::mutex		mGuard;
 
 public:
-	void add(FileContext* ctx) noexcept;
-	void remove(FileContext* ctx) noexcept;
+	void add(FileContext* ctx);
+	void remove(FileContext* ctx);
 
 	~FileContextSweeper();
 };

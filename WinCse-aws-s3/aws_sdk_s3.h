@@ -23,6 +23,14 @@
 #include <aws/s3/model/PutObjectRequest.h>
 #include <aws/s3/model/DeleteObjectRequest.h>
 #include <aws/s3/model/DeleteObjectsRequest.h>
+
+// Multipart upload
+#include <aws/s3/model/CreateMultipartUploadRequest.h>
+#include <aws/s3/model/CompletedPart.h>
+#include <aws/s3/model/UploadPartRequest.h>
+#include <aws/s3/model/AbortMultipartUploadRequest.h>
+#include <aws/s3/model/CompletedMultipartUpload.h>
+#include <aws/s3/model/CompleteMultipartUploadRequest.h>
 #pragma warning(pop)
 
 #undef USE_IMPORT_EXPORT

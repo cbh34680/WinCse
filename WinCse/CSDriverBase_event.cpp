@@ -41,7 +41,7 @@ void CSDriverBase::onIdle()
             else
             {
                 const auto lerr = ::GetLastError();
-                traceW(L"--> Remove error, lerr=%lu", lerr);
+                errorW(L"--> Remove error, lerr=%lu", lerr);
             }
         }
     });
@@ -68,7 +68,7 @@ void CSDriverBase::onIdle()
             {
                 const auto lerr = ::GetLastError();
 
-                traceW(L"--> Remove error, lerr=%lu", lerr);
+                errorW(L"--> Remove error, lerr=%lu", lerr);
             }
             else
             {
@@ -94,8 +94,6 @@ bool CSDriverBase::onNotif(const std::wstring& argNotifName)
 
         std::wostringstream ss;
 
-        ss << mRuntimeEnv->CacheReportDir;
-        ss << L'\\';
         ss << L"report";
         ss << L'-';
         ss << std::setw(4) << std::setfill(L'0') << st.wYear;
@@ -106,8 +104,8 @@ bool CSDriverBase::onNotif(const std::wstring& argNotifName)
         ss << std::setw(2) << std::setfill(L'0') << st.wMinute;
         ss << std::setw(2) << std::setfill(L'0') << st.wSecond;
         ss << L".log";
-
-        const auto path{ ss.str() };
+        
+        const auto path{ (mRuntimeEnv->CacheReportDir / ss.str()).wstring() };
 
         FILE* fp = nullptr;
         if (_wfopen_s(&fp, path.c_str(), L"wt") == 0)

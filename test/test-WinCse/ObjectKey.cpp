@@ -1,9 +1,12 @@
 #include "WinCseLib.h"
 #include <iostream>
 
+using namespace CSELIB;
+
+
 void t_WinCseLib_ObjectKey()
 {
-    const auto optBucket{ CSELIB::ObjectKey::fromWinPath(L"\\bucket") };
+    const auto optBucket{ ObjectKey::fromWinPath(L"\\bucket") };
     if (optBucket)
     {
         std::wcout << optBucket->append(L"file.txt").str() << std::endl;
@@ -14,7 +17,7 @@ void t_WinCseLib_ObjectKey()
     std::wcout << L"done." << std::endl;
 }
 
-static void checkObjectKey(const CSELIB::ObjectKey& objKey)
+static void checkObjectKey(const ObjectKey& objKey)
 {
     std::wcout << L"isBucket: ";
     std::wcout << BOOL_CSTRW(objKey.isBucket());
@@ -60,12 +63,8 @@ static void checkObjectKey(const CSELIB::ObjectKey& objKey)
     std::cout << objKey.strA();
     std::cout << std::endl;
 
-    std::wcout << "append(.): ";
-    std::wcout << objKey.append(L".").str();
-    std::wcout << std::endl;
-
-    std::wcout << "append(..): ";
-    std::wcout << objKey.append(L"..").str();
+    std::wcout << "append(ZZZ): ";
+    std::wcout << objKey.append(L"ZZZ").str();
     std::wcout << std::endl;
 
     std::wcout << L"toDir: ";
@@ -94,7 +93,7 @@ static void checkObjectKey(const CSELIB::ObjectKey& objKey)
 
     std::wcout << L"equal?: ";
     const auto winPath{ objKey.toWinPath() };
-    const auto optCheckWinKey{ CSELIB::ObjectKey::fromWinPath(winPath) };
+    const auto optCheckWinKey{ ObjectKey::fromWinPath(winPath) };
     if (optCheckWinKey)
     {
         const auto& checkObjKey{ *optCheckWinKey };
@@ -138,7 +137,7 @@ void t_WinCseLib_ObjectKey_fromPath()
         std::wcout << L"# [" << str << L"]" << std::endl;
         std::wcout << std::endl;
 
-        auto optObjKey{ CSELIB::ObjectKey::fromPath(str) };
+        auto optObjKey{ ObjectKey::fromObjectPath(str) };
         if (!optObjKey)
         {
             std::wcout << L"INVALID" << std::endl;
@@ -175,7 +174,7 @@ void t_WinCseLib_ObjectKey_fromWinPath()
         std::wcout << L"# [" << str << L"]" << std::endl;
         std::wcout << std::endl;
 
-        auto optObjKey{ CSELIB::ObjectKey::fromWinPath(str) };
+        auto optObjKey{ ObjectKey::fromWinPath(str) };
         if (!optObjKey)
         {
             std::wcout << L"INVALID" << std::endl;

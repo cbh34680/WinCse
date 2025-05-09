@@ -4,9 +4,6 @@ using namespace CSELIB;
 using namespace CSEDRV;
 
 
-#define RETURN_ERROR_IF_READONLY()		if (mRuntimeEnv->ReadOnly) { return STATUS_ACCESS_DENIED; }
-
-
 NTSTATUS CSDriverBase::RelayGetSecurityByName(PCWSTR argFileName, PUINT32 argFileAttributes, PSECURITY_DESCRIPTOR argSecurityDescriptor, PSIZE_T argSecurityDescriptorSize)
 {
     StatsIncr(RelayGetSecurityByName);
@@ -23,16 +20,33 @@ NTSTATUS CSDriverBase::RelayGetSecurityByName(PCWSTR argFileName, PUINT32 argFil
     return ntstatus;
 }
 
-#define FLAG_NAME(name)                 FCTX_FLAGS_ ## name
-#define SET_FLAG(ctx, name)             (ctx)->mFlags |= FLAG_NAME(name)
-#define SET_FLAG_S(s, ctx, name)        if (NT_SUCCESS((s))) SET_FLAG(ctx, name)
+#define RETURN_IF_READONLY()		if (mRuntimeEnv->ReadOnly) return STATUS_ACCESS_DENIED
+
+#define FLAG_NAME(name)             FCTX_FLAGS_ ## name
+
+#define SET_FLAG(ctx, name)         (ctx)->mFlags |= FLAG_NAME(name)
+#define SET_FLAG_IF(s, ctx, name)   if (NT_SUCCESS((s))) SET_FLAG(ctx, name)
+
+#define SET_DEFAULT_FA_IF(s, p)     if (NT_SUCCESS((s))) this->applyDefaultFileAttributes(p)
+
+#define RETURN_IF_NOT_ALLOWED_VOID(ctx, ...) \
+do { \
+    const FileTypeEnum arr[] = { __VA_ARGS__ }; \
+    if (std::find(std::begin(arr), std::end(arr), (ctx)->getDirEntry()->mFileType) == std::end(arr)) \
+        return; \
+} while (0)
+
+#define RETURN_IF_NOT_ALLOWED(ctx, ...) \
+do { \
+    const FileTypeEnum arr[] = { __VA_ARGS__ }; \
+    if (std::find(std::begin(arr), std::end(arr), (ctx)->getDirEntry()->mFileType) == std::end(arr)) \
+        return STATUS_ACCESS_DENIED; \
+} while (0)
 
 
 NTSTATUS CSDriverBase::RelayOpen(PCWSTR argWinPath, UINT32 argCreateOptions, UINT32 argGrantedAccess, IFileContext** argFileContext, FSP_FSCTL_FILE_INFO* argFileInfo)
 {
     StatsIncr(RelayOpen);
-
-    APP_ASSERT(!mDevice->shouldIgnoreFileName(argWinPath));
 
     NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
 
@@ -43,6 +57,8 @@ NTSTATUS CSDriverBase::RelayOpen(PCWSTR argWinPath, UINT32 argCreateOptions, UIN
         ntstatus = this->Open(argWinPath, argCreateOptions, argGrantedAccess, (FileContext**)argFileContext, argFileInfo);
     }
 
+    SET_DEFAULT_FA_IF(ntstatus, argFileInfo);
+
     if (NT_SUCCESS(ntstatus))
     {
         FileContext* ctx = dynamic_cast<FileContext*>(*argFileContext);
@@ -50,7 +66,7 @@ NTSTATUS CSDriverBase::RelayOpen(PCWSTR argWinPath, UINT32 argCreateOptions, UIN
 
         mFileContextSweeper.add(ctx);
 
-        SET_FLAG_S(ntstatus, ctx, OPEN);
+        SET_FLAG_IF(ntstatus, ctx, OPEN);
     }
 
     return ntstatus;
@@ -59,7 +75,7 @@ NTSTATUS CSDriverBase::RelayOpen(PCWSTR argWinPath, UINT32 argCreateOptions, UIN
 NTSTATUS CSDriverBase::RelayCreate(PCWSTR argFileName, UINT32 argCreateOptions, UINT32 argGrantedAccess, UINT32 argFileAttributes, PSECURITY_DESCRIPTOR argSecurityDescriptor, UINT64 argAllocationSize, IFileContext** argFileContext, FSP_FSCTL_FILE_INFO* argFileInfo)
 {
     StatsIncr(RelayCreate);
-    RETURN_ERROR_IF_READONLY();
+    RETURN_IF_READONLY();
 
     NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
 
@@ -70,6 +86,8 @@ NTSTATUS CSDriverBase::RelayCreate(PCWSTR argFileName, UINT32 argCreateOptions, 
         ntstatus = this->Create(argFileName, argCreateOptions, argGrantedAccess, argFileAttributes, argSecurityDescriptor, argAllocationSize, (FileContext**)argFileContext, argFileInfo);
     }
 
+    SET_DEFAULT_FA_IF(ntstatus, argFileInfo);
+
     if (NT_SUCCESS(ntstatus))
     {
         FileContext* ctx = dynamic_cast<FileContext*>(*argFileContext);
@@ -77,7 +95,7 @@ NTSTATUS CSDriverBase::RelayCreate(PCWSTR argFileName, UINT32 argCreateOptions, 
 
         mFileContextSweeper.add(ctx);
 
-        SET_FLAG_S(ntstatus, ctx, CREATE);
+        SET_FLAG_IF(ntstatus, ctx, CREATE);
     }
 
     return ntstatus;
@@ -94,7 +112,7 @@ VOID CSDriverBase::RelayClose(IFileContext* argFileContext)
 
     SET_FLAG(ctx, CLOSE);
 
-    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->mWinPath };
+    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->getWinPath() };
     {
         const auto safeShare{ unsafeShare.lock() };
 
@@ -111,7 +129,9 @@ VOID CSDriverBase::RelayCleanup(IFileContext* argFileContext, PWSTR argFileName,
     FileContext* ctx = dynamic_cast<FileContext*>(argFileContext);
     APP_ASSERT(ctx);
 
-    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->mWinPath };
+    RETURN_IF_NOT_ALLOWED_VOID(ctx, FileTypeEnum::Directory, FileTypeEnum::File);
+
+    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->getWinPath() };
     {
         const auto safeShare{ unsafeShare.lock() };
 
@@ -128,16 +148,19 @@ NTSTATUS CSDriverBase::RelayFlush(IFileContext* argFileContext, FSP_FSCTL_FILE_I
     FileContext* ctx = dynamic_cast<FileContext*>(argFileContext);
     APP_ASSERT(ctx);
 
+    RETURN_IF_NOT_ALLOWED(ctx, FileTypeEnum::File);
+
     NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
 
-    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->mWinPath };
+    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->getWinPath() };
     {
         const auto safeShare{ unsafeShare.lock() };
 
         ntstatus = this->Flush(ctx, argFileInfo);
     }
 
-    SET_FLAG_S(ntstatus, ctx, FLUSH);
+    SET_DEFAULT_FA_IF(ntstatus, argFileInfo);
+    SET_FLAG_IF(ntstatus, ctx, FLUSH);
 
     return ntstatus;
 }
@@ -151,14 +174,15 @@ NTSTATUS CSDriverBase::RelayGetFileInfo(IFileContext* argFileContext, FSP_FSCTL_
 
     NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
 
-    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->mWinPath };
+    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->getWinPath() };
     {
         const auto safeShare{ unsafeShare.lock() };
 
         ntstatus = this->GetFileInfo(ctx, argFileInfo);
     }
 
-    SET_FLAG_S(ntstatus, ctx, GET_FILE_INFO);
+    SET_DEFAULT_FA_IF(ntstatus, argFileInfo);
+    SET_FLAG_IF(ntstatus, ctx, GET_FILE_INFO);
 
     return ntstatus;
 }
@@ -172,14 +196,14 @@ NTSTATUS CSDriverBase::RelayGetSecurity(IFileContext* argFileContext, PSECURITY_
 
     NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
 
-    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->mWinPath };
+    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->getWinPath() };
     {
         const auto safeShare{ unsafeShare.lock() };
 
         ntstatus = this->GetSecurity(ctx, argSecurityDescriptor, argSecurityDescriptorSize);
     }
 
-    SET_FLAG_S(ntstatus, ctx, GET_SECURITY);
+    SET_FLAG_IF(ntstatus, ctx, GET_SECURITY);
 
     return ntstatus;
 }
@@ -187,21 +211,24 @@ NTSTATUS CSDriverBase::RelayGetSecurity(IFileContext* argFileContext, PSECURITY_
 NTSTATUS CSDriverBase::RelayOverwrite(IFileContext* argFileContext, UINT32 argFileAttributes, BOOLEAN argReplaceFileAttributes, UINT64 argAllocationSize, FSP_FSCTL_FILE_INFO* argFileInfo)
 {
     StatsIncr(RelayOverwrite);
-    RETURN_ERROR_IF_READONLY();
+    RETURN_IF_READONLY();
 
     FileContext* ctx = dynamic_cast<FileContext*>(argFileContext);
     APP_ASSERT(ctx);
 
+    RETURN_IF_NOT_ALLOWED(ctx, FileTypeEnum::File);
+
     NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
 
-    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->mWinPath };
+    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->getWinPath() };
     {
         const auto safeShare{ unsafeShare.lock() };
 
         ntstatus = this->Overwrite(ctx, argFileAttributes, argReplaceFileAttributes, argAllocationSize, argFileInfo);
     }
 
-    SET_FLAG_S(ntstatus, ctx, OVERWRITE);
+    SET_DEFAULT_FA_IF(ntstatus, argFileInfo);
+    SET_FLAG_IF(ntstatus, ctx, OVERWRITE);
 
     return ntstatus;
 }
@@ -213,16 +240,18 @@ NTSTATUS CSDriverBase::RelayRead(IFileContext* argFileContext, PVOID argBuffer, 
     FileContext* ctx = dynamic_cast<FileContext*>(argFileContext);
     APP_ASSERT(ctx);
 
+    RETURN_IF_NOT_ALLOWED(ctx, FileTypeEnum::File);
+
     NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
 
-    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->mWinPath };
+    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->getWinPath() };
     {
         const auto safeShare{ unsafeShare.lock() };
 
         ntstatus = this->Read(ctx, argBuffer, argOffset, argLength, argBytesTransferred);
     }
 
-    SET_FLAG_S(ntstatus, ctx, READ);
+    SET_FLAG_IF(ntstatus, ctx, READ);
 
     return ntstatus;
 }
@@ -234,12 +263,14 @@ NTSTATUS CSDriverBase::RelayReadDirectory(IFileContext* argFileContext, PWSTR ar
     FileContext* ctx = dynamic_cast<FileContext*>(argFileContext);
     APP_ASSERT(ctx);
 
+    RETURN_IF_NOT_ALLOWED(ctx, FileTypeEnum::Root, FileTypeEnum::Bucket, FileTypeEnum::Directory);
+
     // ReadDirectory() では ctx->mWinPath 以外に、ディレクトリの中のファイルを
     // 扱うため、ここで排他制御せずファイル名ごとに関数内部で排他制御している
 
     NTSTATUS ntstatus = this->ReadDirectory(ctx, argPattern, argMarker, argBuffer, argBufferLength, argBytesTransferred);
 
-    SET_FLAG_S(ntstatus, ctx, READ_DIRECTORY);
+    SET_FLAG_IF(ntstatus, ctx, READ_DIRECTORY);
 
     return ntstatus;
 }
@@ -247,21 +278,28 @@ NTSTATUS CSDriverBase::RelayReadDirectory(IFileContext* argFileContext, PWSTR ar
 NTSTATUS CSDriverBase::RelayRename(IFileContext* argFileContext, PWSTR argFileName, PWSTR argNewFileName, BOOLEAN argReplaceIfExists)
 {
     StatsIncr(RelayRename);
-    RETURN_ERROR_IF_READONLY();
+    RETURN_IF_READONLY();
 
     FileContext* ctx = dynamic_cast<FileContext*>(argFileContext);
     APP_ASSERT(ctx);
 
+    RETURN_IF_NOT_ALLOWED(ctx, FileTypeEnum::Directory, FileTypeEnum::File);
+
     NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
 
-    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->mWinPath };
+    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->getWinPath() };
     {
         const auto safeShare{ unsafeShare.lock() };
 
-        ntstatus = this->Rename(ctx, argFileName, argNewFileName, argReplaceIfExists);
+        UnprotectedShare<FileNameGuard> unsafeShare2{ &mFileNameGuard, argNewFileName };
+        {
+            const auto safeShare2{ unsafeShare2.lock() };
+
+            ntstatus = this->Rename(ctx, argFileName, argNewFileName, argReplaceIfExists);
+        }
     }
 
-    SET_FLAG_S(ntstatus, ctx, RENAME);
+    SET_FLAG_IF(ntstatus, ctx, RENAME);
 
     return ntstatus;
 }
@@ -269,21 +307,24 @@ NTSTATUS CSDriverBase::RelayRename(IFileContext* argFileContext, PWSTR argFileNa
 NTSTATUS CSDriverBase::RelaySetBasicInfo(IFileContext* argFileContext, UINT32 argFileAttributes, UINT64 argCreationTime, UINT64 argLastAccessTime, UINT64 argLastWriteTime, UINT64 argChangeTime, FSP_FSCTL_FILE_INFO* argFileInfo)
 {
     StatsIncr(RelaySetBasicInfo);
-    RETURN_ERROR_IF_READONLY();
+    RETURN_IF_READONLY();
 
     FileContext* ctx = dynamic_cast<FileContext*>(argFileContext);
     APP_ASSERT(ctx);
 
+    RETURN_IF_NOT_ALLOWED(ctx, FileTypeEnum::Directory, FileTypeEnum::File);
+
     NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
 
-    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->mWinPath };
+    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->getWinPath() };
     {
         const auto safeShare{ unsafeShare.lock() };
 
         ntstatus = this->SetBasicInfo(ctx, argFileAttributes, argCreationTime, argLastAccessTime, argLastWriteTime, argChangeTime, argFileInfo);
     }
 
-    SET_FLAG_S(ntstatus, ctx, SET_BASIC_INFO);
+    SET_DEFAULT_FA_IF(ntstatus, argFileInfo);
+    SET_FLAG_IF(ntstatus, ctx, SET_BASIC_INFO);
 
     return ntstatus;
 }
@@ -291,21 +332,24 @@ NTSTATUS CSDriverBase::RelaySetBasicInfo(IFileContext* argFileContext, UINT32 ar
 NTSTATUS CSDriverBase::RelaySetFileSize(IFileContext* argFileContext, UINT64 argNewSize, BOOLEAN argSetAllocationSize, FSP_FSCTL_FILE_INFO* argFileInfo)
 {
     StatsIncr(RelaySetFileSize);
-    RETURN_ERROR_IF_READONLY();
+    RETURN_IF_READONLY();
 
     FileContext* ctx = dynamic_cast<FileContext*>(argFileContext);
     APP_ASSERT(ctx);
 
+    RETURN_IF_NOT_ALLOWED(ctx, FileTypeEnum::File);
+
     NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
 
-    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->mWinPath };
+    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->getWinPath() };
     {
         const auto safeShare{ unsafeShare.lock() };
 
         ntstatus = this->SetFileSize(ctx, argNewSize, argSetAllocationSize, argFileInfo);
     }
 
-    SET_FLAG_S(ntstatus, ctx, SET_FILE_SIZE);
+    SET_DEFAULT_FA_IF(ntstatus, argFileInfo);
+    SET_FLAG_IF(ntstatus, ctx, SET_FILE_SIZE);
 
     return ntstatus;
 }
@@ -313,21 +357,23 @@ NTSTATUS CSDriverBase::RelaySetFileSize(IFileContext* argFileContext, UINT64 arg
 NTSTATUS CSDriverBase::RelaySetSecurity(IFileContext* argFileContext, SECURITY_INFORMATION argSecurityInformation, PSECURITY_DESCRIPTOR argModificationDescriptor)
 {
     StatsIncr(RelaySetSecurity);
-    RETURN_ERROR_IF_READONLY();
+    RETURN_IF_READONLY();
 
     FileContext* ctx = dynamic_cast<FileContext*>(argFileContext);
     APP_ASSERT(ctx);
 
+    RETURN_IF_NOT_ALLOWED(ctx, FileTypeEnum::Directory, FileTypeEnum::File);
+
     NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
 
-    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->mWinPath };
+    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->getWinPath() };
     {
         const auto safeShare{ unsafeShare.lock() };
 
         ntstatus = this->SetSecurity(ctx, argSecurityInformation, argModificationDescriptor);
     }
 
-    SET_FLAG_S(ntstatus, ctx, SET_SECURITY);
+    SET_FLAG_IF(ntstatus, ctx, SET_SECURITY);
 
     return ntstatus;
 }
@@ -335,21 +381,24 @@ NTSTATUS CSDriverBase::RelaySetSecurity(IFileContext* argFileContext, SECURITY_I
 NTSTATUS CSDriverBase::RelayWrite(IFileContext* argFileContext, PVOID argBuffer, UINT64 argOffset, ULONG argLength, BOOLEAN argWriteToEndOfFile, BOOLEAN argConstrainedIo, PULONG argBytesTransferred, FSP_FSCTL_FILE_INFO* argFileInfo)
 {
     StatsIncr(RelayWrite);
-    RETURN_ERROR_IF_READONLY();
+    RETURN_IF_READONLY();
 
     FileContext* ctx = dynamic_cast<FileContext*>(argFileContext);
     APP_ASSERT(ctx);
 
+    RETURN_IF_NOT_ALLOWED(ctx, FileTypeEnum::File);
+
     NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
 
-    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->mWinPath };
+    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->getWinPath() };
     {
         const auto safeShare{ unsafeShare.lock() };
 
         ntstatus = this->Write(ctx, argBuffer, argOffset, argLength, argWriteToEndOfFile, argConstrainedIo, argBytesTransferred, argFileInfo);
     }
 
-    SET_FLAG_S(ntstatus, ctx, WRITE);
+    SET_DEFAULT_FA_IF(ntstatus, argFileInfo);
+    SET_FLAG_IF(ntstatus, ctx, WRITE);
 
     return ntstatus;
 }
@@ -357,21 +406,23 @@ NTSTATUS CSDriverBase::RelayWrite(IFileContext* argFileContext, PVOID argBuffer,
 NTSTATUS CSDriverBase::RelaySetDelete(IFileContext* argFileContext, PWSTR argFileName, BOOLEAN argDeleteFile)
 {
     StatsIncr(RelaySetDelete);
-    RETURN_ERROR_IF_READONLY();
+    RETURN_IF_READONLY();
 
     FileContext* ctx = dynamic_cast<FileContext*>(argFileContext);
     APP_ASSERT(ctx);
 
+    RETURN_IF_NOT_ALLOWED(ctx, FileTypeEnum::Directory, FileTypeEnum::File);
+
     NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
 
-    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->mWinPath };
+    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, ctx->getWinPath() };
     {
         const auto safeShare{ unsafeShare.lock() };
 
         ntstatus = this->SetDelete(ctx, argFileName, argDeleteFile);
     }
 
-    SET_FLAG_S(ntstatus, ctx, SET_DELETE);
+    SET_FLAG_IF(ntstatus, ctx, SET_DELETE);
 
     return ntstatus;
 }

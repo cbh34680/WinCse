@@ -15,28 +15,23 @@ void CSDeviceBase::printReport(FILE* fp)
 
 void CSDeviceBase::onTimer()
 {
-    //NEW_LOG_BLOCK();
+    NEW_LOG_BLOCK();
 
     // TimerTask から呼び出され、メモリの古いものを削除
 
     const auto now{ std::chrono::system_clock::now() };
 
+    traceW(L"qoDeleteOldCache");
+
     const auto num = mQueryObject->qoDeleteOldCache(START_CALLER
         now - std::chrono::minutes(mRuntimeEnv->ObjectCacheExpiryMin));
 
-    if (num > 0)
-    {
-        NEW_LOG_BLOCK();
-
-        traceW(L"delete %d records", num);
-
-        //traceW(L"done.");
-    }
+    traceW(L"delete %d records", num);
 }
 
 void CSDeviceBase::onIdle()
 {
-    //NEW_LOG_BLOCK();
+    NEW_LOG_BLOCK();
 
     // IdleTask から呼び出され、メモリやファイルの古いものを削除
 
@@ -46,6 +41,8 @@ void CSDeviceBase::onIdle()
 
     // バケット・キャッシュの再作成
 
+    traceW(L"qbReload");
+
     mQueryBucket->qbReload(START_CALLER
         now - std::chrono::minutes(mRuntimeEnv->BucketCacheExpiryMin));
 }
@@ -53,6 +50,8 @@ void CSDeviceBase::onIdle()
 bool CSDeviceBase::onNotif(const std::wstring& argNotifName)
 {
     NEW_LOG_BLOCK();
+
+    traceW(L"argNotifName=%s", argNotifName.c_str());
 
     if (argNotifName == L"Global\\WinCse-util-awss3-clear-cache")
     {

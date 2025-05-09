@@ -3,89 +3,49 @@
 using namespace CSELIB;
 
 
-ObjectKey::ObjectKey(const std::wstring& argBucket, const std::wstring& argKey) noexcept
+ObjectKey::ObjectKey(const std::wstring& argBucket, const std::wstring& argKey)
 	:
 	mBucket(argBucket),
 	mKey(argKey)
 {
-	APP_ASSERT(!argBucket.empty());
+	APP_ASSERT(!mBucket.empty());
 
-	mHasKey = mMeansDir = mMeansFile = mDotEntries = false;
+	// フラグのパターン
+	// 
+	// !mHasKey &&  mMeansDir	... "bucket"				--> バケット
+	// !mHasKey && !mMeansDir	... ---
+	//  mHasKey &&  mMeansDir	... "bucket/dir/"			--> オブジェクト
+	//  mHasKey && !mMeansDir	... "bucket/dir/file.txt"	--> 〃
 
-	mHasBucket = !mBucket.empty();
-	if (mHasBucket)
+	mHasKey = !mKey.empty();
+
+	if (mHasKey)
 	{
-		//
-		// キーがある  (mHasKey)
-		//		キーが ".", ".." のどちらか					== ディレクトリ (ドット・エントリ)
-		//		最後が "/"			(ex. bucket/key/)		== ディレクトリ
-		//      最後が "/" ではない	(ex. bucket/key.txt)
-		//			最後が "/.", "/.." のどちらか			== ディレクトリ (ドット・エントリ)
-		// 			それ以外								== ファイル
-		// 
-		// キーがない (!mHasKey)
-		//							(ex. bucket)			== ディレクトリ
-		//
+		// キーがある場合は最後の文字が "/" かどうかによりファイルかディレクトリかを判断する
 
-		mHasKey = !mKey.empty();
-		if (mHasKey)
-		{
-			if (mKey == L"." || mKey == L"..")
-			{
-				// ".", ".." はドット・エントリのディレクトリ
+		APP_ASSERT(mKey != L"." && mKey != L".." && mKey != L"/");
 
-				mMeansDir = mDotEntries = true;
-			}
-			else
-			{
-				if (mKey.back() == L'/')
-				{
-					// 最後が "/" で終わっていたら通常のディレクトリ
+		mMeansDir = mKey.back() == L'/';
+		
+	}
+	else
+	{
+		// キーがない(=バケット) はディレクトリ
 
-					mMeansDir = true;
-				}
-				else
-				{
-					const auto keyLen = mKey.length();
-
-					if (keyLen >= 2 && mKey.substr(keyLen - 2) == L"/.")
-					{
-						// 最後が "/." で終わっていたらドット・エントリのディレクトリ
-
-						mMeansDir = mDotEntries = true;
-					}
-					else if (keyLen >= 3 && mKey.substr(keyLen - 3) == L"/..")
-					{
-						// 最後が "/.." で終わっていたらドット・エントリのディレクトリ
-
-						mMeansDir = mDotEntries = true;
-					}
-				}
-			}
-
-			mMeansFile = !mMeansDir;
-		}
-		else
-		{
-			// キーがない(=バケット) はディレクトリ
-
-			mMeansDir = true;
-		}
-
-		APP_ASSERT(!(mMeansDir && mMeansFile));
+		mMeansDir = true;
 	}
 
-	mBucketKey = mBucket + L'/' + mKey;
+	mObjectPath = mBucket + L'/' + mKey;
 }
 
-bool ObjectKey::meansHidden() const noexcept
+bool ObjectKey::meansHidden() const
 {
 	if (mHasKey)
 	{
 		std::wstring filename;
 		if (SplitObjectKey(mKey, nullptr, &filename))
 		{
-			return MeansHiddenFile(filename);
+			return filename.at(0) == L'.';
 		}
 	}
 
@@ -94,13 +54,11 @@ bool ObjectKey::meansHidden() const noexcept
 
 std::string ObjectKey::bucketA() const { return WC2MB(mBucket); }
 std::string ObjectKey::keyA() const { return WC2MB(mKey); }
-std::string ObjectKey::strA() const { return WC2MB(mBucketKey); }
+std::string ObjectKey::strA() const { return WC2MB(mObjectPath); }
 
 std::optional<ObjectKey> ObjectKey::toParentDir() const
 {
-	//
 	// キーがあった場合は "/" で分割した親ディレクトリを返す
-	//
 
 	if (mHasKey)
 	{
@@ -114,7 +72,7 @@ std::optional<ObjectKey> ObjectKey::toParentDir() const
 	return std::nullopt;
 }
 
-FileTypeEnum ObjectKey::toFileType() const noexcept
+FileTypeEnum ObjectKey::toFileType() const
 {
 	if (isBucket())
 	{
@@ -122,71 +80,39 @@ FileTypeEnum ObjectKey::toFileType() const noexcept
 	}
 	else if (meansDir())
 	{
-		return FileTypeEnum::DirectoryObject;
+		return FileTypeEnum::Directory;
 	}
 	else if (meansFile())
 	{
-		return FileTypeEnum::FileObject;
+		return FileTypeEnum::File;
 	}
 
-	APP_ASSERT(0);
-
-	return FileTypeEnum::None;
+	throw FatalError(__FUNCTION__);
 }
 
-ObjectKey ObjectKey::append(const std::wstring& arg) const noexcept
+ObjectKey ObjectKey::toFile() const
 {
-	if (this->meansDir())
+	if (mHasKey && mMeansDir)
 	{
-		// ".", ".." には結合させない
+		APP_ASSERT(mKey.back() == L'/');
 
-		APP_ASSERT(this->meansRegularDir());
-	}
-
-	return ObjectKey{ mBucket, mKey + arg };
-}
-
-ObjectKey ObjectKey::toFile() const noexcept
-{
-	//
-	// キーの後ろから "/" を削除したものを返却する
-	// キーがない場合は自分のコピーを返す			--> バケット名のみの場合
-	// そもそもファイルの場合もコピーを返す
-	//
-
-	if (mHasKey)
-	{
-		if (this->meansRegularDir())
-		{
-			APP_ASSERT(mKey.back() == L'/');
-
-			return ObjectKey{ mBucket, mKey.substr(0, mKey.size() - 1) };
-		}
+		return ObjectKey{ mBucket, mKey.substr(0, mKey.size() - 1) };
 	}
 
 	return *this;
 }
 
-ObjectKey ObjectKey::toDir() const noexcept
+ObjectKey ObjectKey::toDir() const
 {
-	//
-	// キーの後ろに "/" を付与したものを返却する
-	// キーがない場合は自分のコピーを返す			--> バケット名のみの場合
-	// そもそもディレクトリの場合もコピーを返す
-	//
-
-	if (mHasKey)
+	if (!mMeansDir)
 	{
-		if (this->meansFile())
-		{
-			return ObjectKey{ mBucket, mKey + L'/' };
-		}
+		return ObjectKey{ mBucket, mKey + L'/' };
 	}
 
 	return *this;
 }
 
-std::filesystem::path ObjectKey::toWinPath() const noexcept
+std::filesystem::path ObjectKey::toWinPath() const
 {
 	auto ret{ std::wstring{ L'\\' } + mBucket };
 
@@ -216,7 +142,7 @@ std::filesystem::path ObjectKey::toWinPath() const noexcept
 }
 
 template <wchar_t setV>
-std::optional<ObjectKey> ObjectKey::fromXPath(const std::wstring& argPath) noexcept
+std::optional<ObjectKey> ObjectKey::fromXPath(const std::wstring& argPath)
 {
 	// パス文字列をバケット名とキーに分割
 
@@ -282,10 +208,12 @@ std::optional<ObjectKey> ObjectKey::fromXPath(const std::wstring& argPath) noexc
 		}
 	}
 
+	APP_ASSERT(!bucket.empty());
+
 	return ObjectKey{ bucket, key };
 }
 
-std::optional<ObjectKey> ObjectKey::fromPath(const std::wstring& argPath) noexcept
+std::optional<ObjectKey> ObjectKey::fromObjectPath(const std::wstring& argPath)
 {
 	if (argPath.empty())
 	{
@@ -300,7 +228,7 @@ std::optional<ObjectKey> ObjectKey::fromPath(const std::wstring& argPath) noexce
 	return fromXPath<L'/'>(argPath);
 }
 
-std::optional<ObjectKey> ObjectKey::fromWinPath(const std::filesystem::path& argWinPath) noexcept
+std::optional<ObjectKey> ObjectKey::fromWinPath(const std::filesystem::path& argWinPath)
 {
 	if (argWinPath.empty())
 	{

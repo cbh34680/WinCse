@@ -10,7 +10,7 @@ public:
 	virtual ~ITask() = default;
 
 	virtual void run(int argThreadIndex) = 0;
-	virtual void cancelled() noexcept { }
+	virtual void cancelled() { }
 };
 
 struct IWorker : public ICSService
@@ -24,7 +24,7 @@ struct IOnDemandTask : public ITask
 
 struct IScheduledTask : public ITask
 {
-	virtual bool shouldRun(int argTick) const noexcept = 0;
+	virtual bool shouldRun(int argTick) const = 0;
 };
 
 template<typename T>

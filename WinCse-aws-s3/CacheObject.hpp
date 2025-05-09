@@ -3,20 +3,20 @@
 #include "CSDeviceCommon.h"
 
 // HeadObject, ListObjectsV2 から取得したデータをキャッシュする
-// どちらも型が異なるだけ (DirInfoPtr, DirInfoPtrList) なのでテンプレートにして
+// どちらも型が異なるだけ (DirEntryType, DirEntryListType) なのでテンプレートにして
 // このファイルの最後でそれぞれの型のクラスを実体化させている
 //
 // HeadObject の場合
 //  [map]
 //      キー      値
 //      ----------------------------
-//      ObjectKey DirInfoPtr
+//      ObjectKey DirEntryType
 //
 // ListObjectsV2 の場合
 //  [map]
 //      キー      値
 //      ----------------------------
-//      ObjectKey DirInfoPtrList
+//      ObjectKey DirEntryListType
 
 #pragma warning(push)
 #pragma warning(disable : 4100)
@@ -46,7 +46,7 @@ public:
         mutable std::chrono::system_clock::time_point   mLastAccessTime;
         mutable int                                     mRefCount = 0;
 
-        CacheValue(CALLER_ARG0) noexcept
+        CacheValue(CALLER_ARG0)
 		{
 			mCreateCallChain = mLastAccessCallChain = CALL_CHAIN();
 			mCreateTime = mLastAccessTime = std::chrono::system_clock::now();
@@ -58,7 +58,7 @@ public:
 	{
 		T mV;
 
-        explicit PositiveValue(CALLER_ARG const T& argV) noexcept
+        explicit PositiveValue(CALLER_ARG const T& argV)
             :
             CacheValue(CONT_CALLER0),
             mV(argV)
@@ -79,9 +79,7 @@ protected:
     mutable int                                 mUpdNegative = 0;
 
     template <typename CacheDataT>
-    int deleteBy(
-        const std::function<bool(const typename CacheDataT::iterator&)>& shouldErase,
-        CacheDataT& cache) const noexcept
+    int deleteBy(const std::function<bool(const typename CacheDataT::iterator&)>& shouldErase, CacheDataT& cache) const
     {
         int count = 0;
 
@@ -105,9 +103,9 @@ public:
     // 以降は THREAD_SAFE() マクロによる修飾が必要
     // --> report() の実装時には同様のマクロを定義するか、std::lock_guard を使用する
 
-    virtual void coReport(CALLER_ARG FILE* fp) const noexcept = 0;
+    virtual void coReport(CALLER_ARG FILE* fp) const = 0;
 
-    int coDeleteByTime(CALLER_ARG std::chrono::system_clock::time_point threshold) noexcept
+    int coDeleteByTime(CALLER_ARG std::chrono::system_clock::time_point threshold)
     {
         THREAD_SAFE();
 
@@ -131,7 +129,7 @@ public:
         return sum;
     }
 
-    int coDeleteByKey(CALLER_ARG const CSELIB::ObjectKey& argObjKey) noexcept
+    int coDeleteByKey(CALLER_ARG const CSELIB::ObjectKey& argObjKey)
     {
         THREAD_SAFE();
 
@@ -184,7 +182,7 @@ public:
         return sum;
     }
 
-    void coClear(CALLER_ARG0) noexcept
+    void coClear(CALLER_ARG0)
     {
         THREAD_SAFE();
 
@@ -194,7 +192,7 @@ public:
 
     // ----------------------- Positive
 
-    bool coGet(CALLER_ARG const CSELIB::ObjectKey& argObjKey, T* pV) const noexcept
+    bool coGet(CALLER_ARG const CSELIB::ObjectKey& argObjKey, T* pV) const
     {
         THREAD_SAFE();
 
@@ -219,7 +217,7 @@ public:
         return true;
     }
 
-    void coSet(CALLER_ARG const CSELIB::ObjectKey& argObjKey, const T& argV) noexcept
+    void coSet(CALLER_ARG const CSELIB::ObjectKey& argObjKey, const T& argV)
     {
         THREAD_SAFE();
         NEW_LOG_BLOCK();
@@ -242,7 +240,7 @@ public:
 
     // ----------------------- Negative
 
-    bool coIsNegative(CALLER_ARG const CSELIB::ObjectKey& argObjKey) const noexcept
+    bool coIsNegative(CALLER_ARG const CSELIB::ObjectKey& argObjKey) const
     {
         THREAD_SAFE();
 
@@ -262,7 +260,7 @@ public:
         return true;
     }
 
-    void coAddNegative(CALLER_ARG const CSELIB::ObjectKey& argObjKey) noexcept
+    void coAddNegative(CALLER_ARG const CSELIB::ObjectKey& argObjKey)
     {
         THREAD_SAFE();
         NEW_LOG_BLOCK();
@@ -291,16 +289,16 @@ public:
 namespace CSEDAS3
 {
 
-class CacheHeadObject final : public ObjectCacheTmpl<CSELIB::DirInfoPtr>
+class CacheHeadObject final : public ObjectCacheTmpl<CSELIB::DirEntryType>
 {
 public:
-    void coReport(CALLER_ARG FILE* fp) const noexcept override;
+    void coReport(CALLER_ARG FILE* fp) const override;
 };
 
-class CacheListObjects final : public ObjectCacheTmpl<CSELIB::DirInfoPtrList>
+class CacheListObjects final : public ObjectCacheTmpl<CSELIB::DirEntryListType>
 {
 public:
-    void coReport(CALLER_ARG FILE* fp) const noexcept override;
+    void coReport(CALLER_ARG FILE* fp) const override;
 };
 
 }	// namespace CSEDAS3

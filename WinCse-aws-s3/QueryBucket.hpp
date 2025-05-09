@@ -16,20 +16,20 @@ private:
 	CacheListBuckets		mCacheListBuckets;
 
 public:
-	QueryBucket(const RuntimeEnv* argRuntimeEnv, ExecuteApi* argExecuteApi) noexcept
+	QueryBucket(const RuntimeEnv* argRuntimeEnv, ExecuteApi* argExecuteApi)
 		:
 		mRuntimeEnv(argRuntimeEnv),
 		mExecuteApi(argExecuteApi)
 	{
 	}
 
-	void qbClearCache(CALLER_ARG0) noexcept;
-	void qbReportCache(CALLER_ARG FILE* fp) const noexcept;
+	void qbClearCache(CALLER_ARG0);
+	void qbReportCache(CALLER_ARG FILE* fp) const;
 
-	std::wstring qbGetBucketRegion(CALLER_ARG const std::wstring& argBucketName) noexcept;
-	bool qbHeadBucket(CALLER_ARG const std::wstring& bucketName, CSELIB::DirInfoPtr* pDirInfo) noexcept;
-	bool qbListBuckets(CALLER_ARG CSELIB::DirInfoPtrList* pDirInfoList, const std::set<std::wstring>& options) noexcept;
-	bool qbReload(CALLER_ARG std::chrono::system_clock::time_point threshold) noexcept;
+	std::wstring qbGetBucketRegion(CALLER_ARG const std::wstring& argBucketName);
+	bool qbHeadBucket(CALLER_ARG const std::wstring& bucketName, CSELIB::DirEntryType* pDirEntry);
+	bool qbListBuckets(CALLER_ARG CSELIB::DirEntryListType* pDirEntryList, const std::set<std::wstring>& options);
+	bool qbReload(CALLER_ARG std::chrono::system_clock::time_point threshold);
 };
 
 }	// namespace CSEDAS3

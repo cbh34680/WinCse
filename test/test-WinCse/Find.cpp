@@ -4,17 +4,17 @@
 
 using namespace CSELIB;
 
-void t_WinCseLib_aws_s3_FEP(std::initializer_list<std::function<void(CSELIB::ICSDevice*)>> callbacks);
+void t_WinCseLib_aws_s3_FEP(std::initializer_list<std::function<void(ICSDevice*)>> callbacks);
 
-static void printDirInfoList(ICSDevice* device, const std::optional<ObjectKey> optParent, const DirInfoPtrList& dirInfoList)
+static void printDirEntryList(ICSDevice* device, const std::optional<ObjectKey> optParent, const DirEntryListType& dirEntryList)
 {
-    for (auto& dirInfo: dirInfoList)
+    for (auto& dirEntry: dirEntryList)
     {
-        const auto objKey{ optParent ? optParent->append(dirInfo->FileName) : *ObjectKey::fromPath(dirInfo->FileName) };
+        const auto objKey{ optParent ? optParent->append(dirEntry->mName) : *ObjectKey::fromObjectPath(dirEntry->mName) };
         const auto objKeyFileType = objKey.toFileType();
 
-        const auto dirInfoFileType = dirInfo->FileType;
-        APP_ASSERT(dirInfoFileType == objKeyFileType);
+        const auto dirEntryFileType = dirEntry->mFileType;
+        APP_ASSERT(dirEntryFileType == objKeyFileType);
 
         std::wcout << objKey.str() << L" ";
 
@@ -28,13 +28,13 @@ static void printDirInfoList(ICSDevice* device, const std::optional<ObjectKey> o
         {
             if (objKey.meansDir())
             {
-                APP_ASSERT(objKeyFileType == FileTypeEnum::DirectoryObject);
+                APP_ASSERT(objKeyFileType == FileTypeEnum::Directory);
 
                 std::wcout << L"[Dir] ";
             }
             else if (objKey.meansFile())
             {
-                APP_ASSERT(objKeyFileType == FileTypeEnum::FileObject);
+                APP_ASSERT(objKeyFileType == FileTypeEnum::File);
 
                 std::wcout << L"[File] ";
             }
@@ -44,11 +44,6 @@ static void printDirInfoList(ICSDevice* device, const std::optional<ObjectKey> o
             }
         }
 
-        if (objKey.isDotEntries())
-        {
-            std::wcout << L"{dot} ";
-        }
-
         if (objKey.meansHidden())
         {
             std::wcout << L"{hidden} ";
@@ -56,31 +51,31 @@ static void printDirInfoList(ICSDevice* device, const std::optional<ObjectKey> o
 
         std::wcout << std::endl;
 
-        if (objKey.meansRegularDir())
+        if (objKey.meansDir())
         {
-            DirInfoPtrList subDirInfoList;
+            DirEntryListType subDirEntryList;
 
-            if (!device->listDisplayObjects(START_CALLER objKey, &subDirInfoList))
+            if (!device->listObjects(START_CALLER objKey, &subDirEntryList))
             {
                 std::wcerr << L"fault: listDisplayObjects" << std::endl;
                 return;
             }
 
-            printDirInfoList(device, objKey, subDirInfoList);
+            printDirEntryList(device, objKey, subDirEntryList);
         }
     }
 }
 
 static void listStart(ICSDevice* device)
 {
-    DirInfoPtrList buckets;
+    DirEntryListType buckets;
 
     if (!device->listBuckets(START_CALLER &buckets))
     {
         std::wcerr << L"fault: listBuckets" << std::endl;
     }
 
-    printDirInfoList(device, std::nullopt, buckets);
+    printDirEntryList(device, std::nullopt, buckets);
 
     std::wcout << L"done." << std::endl;
 }

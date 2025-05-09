@@ -10,28 +10,26 @@ class ObjectKey final
 private:
 	std::wstring	mBucket;
 	std::wstring	mKey;
-	std::wstring	mBucketKey;
-	bool			mHasBucket = false;
+	std::wstring	mObjectPath;
+
 	bool			mHasKey = false;
 	bool			mMeansDir = false;
-	bool			mMeansFile = false;
-	bool			mDotEntries = false;
 
 	ObjectKey() = delete;		// hidden
 
-	WINCSELIB_API explicit ObjectKey(const std::wstring& argBucket, const std::wstring& argKey) noexcept;
+	WINCSELIB_API explicit ObjectKey(const std::wstring& argBucket, const std::wstring& argKey);
 
 public:
 	// unorderd_map のキーになるために必要
 
-	bool operator==(const ObjectKey& other) const noexcept
+	bool operator==(const ObjectKey& other) const
 	{
 		return mBucket == other.mBucket && mKey == other.mKey;
 	}
 
 	// map のキーになるために必要
 
-	bool operator<(const ObjectKey& other) const noexcept
+	bool operator<(const ObjectKey& other) const
 	{
 		if (mBucket < other.mBucket) {			// bucket
 			return true;
@@ -49,7 +47,7 @@ public:
 		return false;
 	}
 
-	bool operator>(const ObjectKey& other) const noexcept
+	bool operator>(const ObjectKey& other) const
 	{
 		if (this->operator<(other)) {
 			return false;
@@ -61,35 +59,42 @@ public:
 		return true;
 	}
 
-	const std::wstring& bucket() const noexcept { return mBucket; }
-	const std::wstring& key() const noexcept { return mKey; }
-	const std::wstring& str() const noexcept { return mBucketKey; }
-	PCWSTR c_str() const noexcept { return mBucketKey.c_str(); }
-	bool isBucket() const noexcept { return mHasBucket && !mHasKey; }
-	bool isObject() const noexcept { return mHasKey; }
-	bool meansDir() const noexcept { return mMeansDir; }
-	bool meansFile() const noexcept { return mMeansFile; }
-	bool isDotEntries() const noexcept { return mDotEntries; }
-	bool meansRegularDir() const noexcept { return mMeansDir && !mDotEntries; }
+	const std::wstring& bucket() const { return mBucket; }
+	const std::wstring& key() const { return mKey; }
+	const std::wstring& str() const { return mObjectPath; }
+	PCWSTR c_str() const { return mObjectPath.c_str(); }
+	bool isBucket() const { return !mHasKey; }
+	bool isObject() const { return mHasKey; }
+	bool meansDir() const { return mMeansDir; }
+	bool meansFile() const { return !mMeansDir; }
 
-	WINCSELIB_API bool meansHidden() const noexcept;
-	WINCSELIB_API FileTypeEnum toFileType() const noexcept;
+	ObjectKey append(const std::wstring& arg) const
+	{
+		return ObjectKey{ mBucket, mKey + arg };
+	}
+
+	WINCSELIB_API bool meansHidden() const;
+	WINCSELIB_API FileTypeEnum toFileType() const;
 	WINCSELIB_API std::string bucketA() const;
 	WINCSELIB_API std::string keyA() const;
 	WINCSELIB_API std::string strA() const;
-	WINCSELIB_API ObjectKey append(const std::wstring& arg) const noexcept;
-	WINCSELIB_API ObjectKey toFile() const noexcept;
-	WINCSELIB_API ObjectKey toDir() const noexcept;
-	WINCSELIB_API std::filesystem::path toWinPath() const noexcept;
+	WINCSELIB_API ObjectKey toFile() const;
+	WINCSELIB_API ObjectKey toDir() const;
+	WINCSELIB_API std::filesystem::path toWinPath() const;
 	WINCSELIB_API std::optional<ObjectKey> toParentDir() const;
 
 private:
 	template <wchar_t setV>
-	WINCSELIB_API static std::optional<ObjectKey> fromXPath(const std::wstring& argPath) noexcept;
+	WINCSELIB_API static std::optional<ObjectKey> fromXPath(const std::wstring& argPath);
 
 public:
-	WINCSELIB_API static std::optional<ObjectKey> fromPath(const std::wstring& argPath) noexcept;
-	WINCSELIB_API static std::optional<ObjectKey> fromWinPath(const std::filesystem::path& argWinPath) noexcept;
+	static std::optional<ObjectKey> fromObjectPath(const std::wstring& argBucket, const std::wstring& argKey)
+	{
+		return fromObjectPath(argBucket + L'/' + argKey);
+	}
+
+	WINCSELIB_API static std::optional<ObjectKey> fromObjectPath(const std::wstring& argPath);
+	WINCSELIB_API static std::optional<ObjectKey> fromWinPath(const std::filesystem::path& argWinPath);
 };
 
 }	// namespace CSELIB
@@ -101,7 +106,7 @@ namespace std
 template <>
 struct hash<CSELIB::ObjectKey>
 {
-	size_t operator()(const CSELIB::ObjectKey& that) const noexcept
+	size_t operator()(const CSELIB::ObjectKey& that) const
 	{
 		return hash<wstring>()(that.bucket()) ^ (hash<wstring>()(that.key()) << 1);
 	}

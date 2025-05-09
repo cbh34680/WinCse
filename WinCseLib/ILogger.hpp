@@ -8,9 +8,13 @@ struct ILogger
 {
 	virtual ~ILogger() = default;
 
-	virtual PCWSTR getOutputDirectory() const noexcept = 0;
-	virtual void traceA_impl(int indent, PCSTR, int, PCSTR, PCSTR format, ...) const noexcept = 0;
-	virtual void traceW_impl(int indent, PCWSTR, int, PCWSTR, PCWSTR format, ...) const noexcept = 0;
+	virtual PCWSTR getOutputDirectory() const = 0;
+
+	virtual void writeToTraceLog(std::optional<std::wstring> argText) = 0;
+	virtual void writeToErrorLog(std::optional<std::wstring> argText) = 0;
+
+	virtual std::optional<std::wstring> makeTextW(int argIndent, PCWSTR argPath, int argLine, PCWSTR argFunc, DWORD argLastError, PCWSTR argFormat, ...) const = 0;
+	virtual std::optional<std::wstring> makeTextA(int argIndent, PCSTR argPath, int argLine, PCSTR argFunc, DWORD argLastError, PCSTR argFormat, ...) const = 0;
 };
 
 WINCSELIB_API ILogger* CreateLogger(PCWSTR argTraceLogDir);

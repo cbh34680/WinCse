@@ -6,23 +6,31 @@ namespace CSELIB {
 
 struct ICSDevice : public ICSService
 {
-	virtual bool shouldIgnoreFileName(const std::wstring& arg) = 0;
+	virtual bool shouldIgnoreFileName(const std::filesystem::path& argWinPath) = 0;
 	virtual void printReport(FILE* fp) = 0;
 
-	virtual bool headBucket(CALLER_ARG const std::wstring& argBucket, DirInfoPtr* pDirInfo) = 0;
-	virtual bool listBuckets(CALLER_ARG DirInfoPtrList* pDirInfoList) = 0;
-	virtual bool headObject(CALLER_ARG const ObjectKey& argObjKey, DirInfoPtr* pDirInfo) = 0;
-	virtual bool listObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoPtrList* pDirInfoList) = 0;
+	virtual bool headBucket(CALLER_ARG const std::wstring& argBucket, DirEntryType* pDirEntry) = 0;
+	virtual bool listBuckets(CALLER_ARG DirEntryListType* pDirEntryList) = 0;
+	virtual bool headObject(CALLER_ARG const ObjectKey& argObjKey, DirEntryType* pDirEntry) = 0;
 
-	virtual bool listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirInfoPtrList* pDirInfoList)
+	virtual bool headObjectAsDirectory(CALLER_ARG const ObjectKey& argObjKey, DirEntryType* pDirEntry)
 	{
-		APP_ASSERT(pDirInfoList);
+		return this->headObject(CONT_CALLER argObjKey.toDir(), pDirEntry);
+	}
 
-		return this->listObjects(CONT_CALLER argObjKey, pDirInfoList);
+	virtual bool listObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryListType* pDirEntryList) = 0;
+
+	virtual bool listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryListType* pDirEntryList)
+	{
+		APP_ASSERT(pDirEntryList);
+
+		return this->listObjects(CONT_CALLER argObjKey, pDirEntryList);
 	}
 
 	virtual CSELIB::FILEIO_LENGTH_T getObjectAndWriteFile(CALLER_ARG const ObjectKey& argObjKey, const std::filesystem::path& argOutputPath, CSELIB::FILEIO_OFFSET_T argOffset, CSELIB::FILEIO_LENGTH_T argLength) = 0;
 	virtual bool putObject(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath) = 0;
+	virtual bool deleteObject(CALLER_ARG const ObjectKey& argObjKey) = 0;
+	virtual bool deleteObjects(CALLER_ARG const std::wstring& argBucket, const std::list<std::wstring>& argKeys) = 0;
 };
 
 } // namespace CSELIB

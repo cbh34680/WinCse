@@ -19,8 +19,8 @@ private:
 	mutable std::mutex									mGuard;
 
 protected:
-	void listen(int argThreadIndex) noexcept;
-	std::unique_ptr<CSELIB::IOnDemandTask> dequeueTask() noexcept;
+	void listen(int argThreadIndex);
+	std::unique_ptr<CSELIB::IOnDemandTask> dequeueTask();
 
 public:
 	DelayedWorker(const std::wstring& argIniSection);

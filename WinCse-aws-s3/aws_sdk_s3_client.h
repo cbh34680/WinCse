@@ -14,6 +14,8 @@
 #pragma warning(push, 0)
 #include <aws/core/Aws.h>
 #include <aws/s3/S3Client.h>
+
+#include <aws/s3/model/CompletedPart.h>
 #pragma warning(pop)
 
 #undef USE_IMPORT_EXPORT
