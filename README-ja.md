@@ -1,4 +1,4 @@
-# WinCse ・ Windows Cloud Storage Explorer
+# WinCse &middot; Windows Cloud Storage Explorer
 
 WinCse は、AWS S3 バケットを Windows Explorer に統合するアプリケーションで、S3 バケットをローカルのファイルシステムのように扱うことができます。
 
