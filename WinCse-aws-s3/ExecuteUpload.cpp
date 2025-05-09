@@ -100,7 +100,7 @@ static std::shared_ptr<Aws::StringStream> makeStreamFromFile(CALLER_ARG const st
     return stream;
 }
 
-static Aws::Map<Aws::String, Aws::String> makeUploadMetadata(CALLER_ARG const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath)
+static Aws::Map<Aws::String, Aws::String> makeUploadMetadata(CALLER_ARG const FSP_FSCTL_FILE_INFO& argFileInfo)
 {
     NEW_LOG_BLOCK();
 
@@ -120,17 +120,10 @@ static Aws::Map<Aws::String, Aws::String> makeUploadMetadata(CALLER_ARG const FS
         creationTime.c_str(), lastAccessTime.c_str(), lastWriteTime.c_str(), changeTime.c_str());
 
 #ifdef _DEBUG
-
-    if (argSourcePath)
-    {
-        metadata["wincse-debug-source-path"] = WC2MB(argSourcePath).c_str();
-    }
-
     metadata["wincse-debug-creation-time"]      = WinFileTime100nsToLocalTimeStringA(argFileInfo.CreationTime).c_str();
     metadata["wincse-debug-last-access-time"]   = WinFileTime100nsToLocalTimeStringA(argFileInfo.LastAccessTime).c_str();
     metadata["wincse-debug-last-write-time"]    = WinFileTime100nsToLocalTimeStringA(argFileInfo.LastWriteTime).c_str();
     metadata["wincse-debug-change-time"]        = WinFileTime100nsToLocalTimeStringA(argFileInfo.ChangeTime).c_str();
-
 #endif
 
     return metadata;
@@ -171,7 +164,7 @@ bool ExecuteApi::uploadSimple(CALLER_ARG const ObjectKey& argObjKey, const FSP_F
         request.SetBody(body);
     }
 
-    const auto metadata{ makeUploadMetadata(CONT_CALLER argFileInfo, argInputPath) };
+    const auto metadata{ makeUploadMetadata(CONT_CALLER argFileInfo) };
     request.SetMetadata(metadata);
 
     traceW(L"PutObject argObjKey=%s, argInputPath=%s", argObjKey.c_str(), argInputPath);
@@ -183,10 +176,6 @@ bool ExecuteApi::uploadSimple(CALLER_ARG const ObjectKey& argObjKey, const FSP_F
         errorW(L"fault: PutObject argObjKey=%s", argObjKey.c_str());
         return false;
     }
-
-    const auto& result{ outcome.GetResult() };
-
-    traceW(L"success ETag=%s", result.GetETag().c_str());
 
     return true;
 }
@@ -340,7 +329,7 @@ bool ExecuteApi::uploadMultipart(CALLER_ARG const ObjectKey& argObjKey, const FS
 
     // メタデータを設定
 
-    const auto metadata{ makeUploadMetadata(CONT_CALLER argFileInfo, argSourcePath) };
+    const auto metadata{ makeUploadMetadata(CONT_CALLER argFileInfo) };
     createRequest.SetMetadata(metadata);
 
     const auto createOutcome = mS3Client->CreateMultipartUpload(createRequest);
@@ -431,9 +420,7 @@ bool ExecuteApi::uploadMultipart(CALLER_ARG const ObjectKey& argObjKey, const FS
         return false;
     }
 
-    const auto& completeResult{ completeOutcome.GetResult() };
-
-    traceW(L"Upload completed successfully. ETag=%s", completeResult.GetETag().c_str());
+    traceW(L"Upload completed successfully.");
 
     return true;
 }

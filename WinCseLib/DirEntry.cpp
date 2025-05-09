@@ -86,7 +86,7 @@ const std::wstring DirectoryEntry::str() const
 
 	for (const auto& it: mUserProperties)
 	{
-		ss << L' P.' << it.first << L'=' << it.second;
+		ss << L" P." << it.first << L"=" << it.second;
 	}
 
 	return ss.str();

@@ -697,9 +697,7 @@ FILEIO_LENGTH_T ExecuteApi::GetObjectAndWriteFile(CALLER_ARG const ObjectKey& ar
         return -1LL;
     }
 
-    const auto& result = outcome.GetResult();
-
-    traceW(L"ETag=%s", result.GetETag().c_str());
+    const auto& result{ outcome.GetResult() };
 
     // result の内容をファイルに出力する
 
