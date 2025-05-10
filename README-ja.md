@@ -4,11 +4,11 @@ WinCse ‚ÍAAWS S3 ƒoƒPƒbƒg‚ð Windows Explorer ‚É“‡‚·‚éƒAƒvƒŠƒP[ƒVƒ‡ƒ“‚ÅAS3 ƒ
 
 ## Žå‚È‹@”\
 - Windows ƒtƒ@ƒCƒ‹‹¤—L‚Ì‚æ‚¤‚ÈŠ´Šo‚Å S3 ã‚Ìƒtƒ@ƒCƒ‹‚ð‘€ì‚Å‚«‚Ü‚·B
-- ƒlƒbƒgƒ[ƒNƒhƒ‰ƒCƒu‚É•\Ž¦‚·‚é S3 ƒoƒPƒbƒg‚ð–¼‘O‚â•\Ž¦”‚Å’²®‰Â”\‚Å‚·B
-- ƒŠ[ƒhƒIƒ“ƒŠ[‚Å‚Ìƒ}ƒEƒ“ƒg‚ðs‚¦‚Ü‚·B
+- ƒ}ƒEƒ“ƒgŽž‚É•\Ž¦‚·‚é S3 ƒoƒPƒbƒg‚Ì–¼‘O‚â”‚ð’²®‰Â”\‚Å‚·B
+- S3 ƒoƒPƒbƒg‚ð“Ç‚ÝŽæ‚èê—pƒ‚[ƒh‚Åƒ}ƒEƒ“ƒg‚·‚é‚±‚Æ‚ª‚Å‚«‚Ü‚·B
 
 ## ƒVƒXƒeƒ€—vŒ
-- Windows 10 ˆÈ~‚ð‘z’è
+- Windows 10 ˆÈ~‚ð„§
 - [WinFsp](http://www.secfs.net/winfsp/)
 - [AWS SDK for C++](https://github.com/aws/aws-sdk-cpp)
 
@@ -19,7 +19,7 @@ WinCse ‚ÍAAWS S3 ƒoƒPƒbƒg‚ð Windows Explorer ‚É“‡‚·‚éƒAƒvƒŠƒP[ƒVƒ‡ƒ“‚ÅAS3 ƒ
 ## Žg—p•û–@
 1. `setup/install-aws-s3.bat` ‚ðŠÇ—ŽÒŒ ŒÀ‚ÅŽÀs‚·‚éB
 2. ƒtƒH[ƒ€‰æ–Ê‚ª•\Ž¦‚³‚ê‚½‚çAAWS ‚Ì”FØî•ñ‚ð“ü—Í‚·‚éB
-3. `ì¬` ƒ{ƒ^ƒ“‚ð‰Ÿ‚·B
+3. **ì¬** ƒ{ƒ^ƒ“‚ð‰Ÿ‚·B
 4. •\Ž¦‚³‚ê‚½ Explorer ‚ÌƒfƒBƒŒƒNƒgƒŠ‚©‚ç `mount.bat` ‚ðŽÀs‚·‚éB
 5. ƒtƒH[ƒ€‰æ–Ê‚Å‘I‘ð‚µ‚½ƒhƒ‰ƒCƒu‚ÅAWindows Explorer ‚©‚ç S3 ƒoƒPƒbƒg‚ÉƒAƒNƒZƒX‚Å‚«‚é‚æ‚¤‚É‚È‚éB
 6. `un-mount.bat` ‚ðŽÀs‚·‚é‚ÆAƒ}ƒEƒ“ƒg‚µ‚½ƒhƒ‰ƒCƒu‚ð‰ðœ‚Å‚«‚éB
@@ -28,16 +28,16 @@ WinCse ‚ÍAAWS S3 ƒoƒPƒbƒg‚ð Windows Explorer ‚É“‡‚·‚éƒAƒvƒŠƒP[ƒVƒ‡ƒ“‚ÅAS3 ƒ
 1. ƒ}ƒEƒ“ƒg‚µ‚½ƒhƒ‰ƒCƒu‚ðƒAƒ“ƒ}ƒEƒ“ƒg‚·‚éB
 2. `reg-del.bat` ‚ðŠÇ—ŽÒŒ ŒÀ‚ÅŽÀs‚µAWinFsp ‚É“o˜^‚³‚ê‚½ƒŒƒWƒXƒgƒŠî•ñ‚ðíœ‚·‚éB
 3. `*.bat` ƒtƒ@ƒCƒ‹‚ª‚ ‚éƒfƒBƒŒƒNƒgƒŠ‚ðíœ‚·‚éB
-4. •K—v‚Ì–³‚¢ê‡‚Í [WinFsp](https://winfsp.dev/rel/) ‚ðƒAƒ“ƒCƒ“ƒXƒg[ƒ‹‚·‚éB
+4. •K—v‚ª‚È‚¯‚ê‚ÎA[WinFsp](https://winfsp.dev/rel/) ‚ðƒAƒ“ƒCƒ“ƒXƒg[ƒ‹‚·‚éB
 
 ## §ŒÀŽ–€
 - ‚¢‚­‚Â‚©‚Ì§–ñ‚É‚Â‚¢‚Ä‚Í [Ý’èƒtƒ@ƒCƒ‹](./doc/conf-example.txt) ‚ð•ÏX‚·‚é‚±‚Æ‚ÅŠÉ˜a‰Â”\‚Å‚·B
-- ƒoƒPƒbƒg‚Ìì¬Eíœ‚È‚Ç‚Ì‘€ì‚Ís‚¦‚Ü‚¹‚ñB
-- •s‹ï‡‚ðŒŸ’m‚µ‚â‚·‚­‚·‚é‚½‚ßAabort() ‚ðŽg—p‚µ‚Ä‚¢‚é‚Ì‚Å‹­§I—¹‚·‚é‰Â”\«‚ª‚ ‚è‚Ü‚·B
+- ƒoƒPƒbƒg‚Ìì¬Eíœ‚Í—˜—p‚Å‚«‚Ü‚¹‚ñB
+- •s‹ï‡‚ÌŒŸo‚ð—eˆÕ‚É‚·‚é‚½‚ß `abort()` ‚ðŽg—p‚µ‚Ä‚¨‚èA‹­§I—¹‚·‚é‰Â”\«‚ª‚ ‚è‚Ü‚·B
 - ‚»‚Ì‘¼‚Ì§ŒÀŽ–€‚É‚Â‚¢‚Ä‚Í [§ŒÀŽ–€](./doc/limitations-ja.md) ‚ðŽQÆ‚µ‚Ä‚­‚¾‚³‚¢B
 
 ## ’ˆÓŽ–€
-- Windows 11 ‚Ì‚Ý‚Å“®ìŠm”FÏ‚Ý‚Å‚·B
+- –{ƒ\ƒtƒgƒEƒFƒA‚Í Windows 11 ‚Ì‚Ý‚Å“®ìŠm”F‚³‚ê‚Ä‚¢‚Ü‚·B‘¼‚Ìƒo[ƒWƒ‡ƒ“‚Æ‚ÌŒÝŠ·«‚Í•ÛØ‚³‚ê‚Ä‚¢‚Ü‚¹‚ñB
 
 ## ƒ‰ƒCƒZƒ“ƒX
 –{ƒvƒƒWƒFƒNƒg‚Í [GPLv3](https://www.gnu.org/licenses/gpl-3.0.html) ‚¨‚æ‚Ñ [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0) ‚Ì‚à‚Æ‚Åƒ‰ƒCƒZƒ“ƒX‚³‚ê‚Ä‚¢‚Ü‚·B
