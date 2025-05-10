@@ -27,7 +27,7 @@ NTSTATUS CSDriverBase::RelayGetSecurityByName(PCWSTR argFileName, PUINT32 argFil
 #define SET_FLAG(ctx, name)         (ctx)->mFlags |= FLAG_NAME(name)
 #define SET_FLAG_IF(s, ctx, name)   if (NT_SUCCESS((s))) SET_FLAG(ctx, name)
 
-#define SET_DEFAULT_FA_IF(s, p)     if (NT_SUCCESS((s))) this->applyDefaultFileAttributes(p)
+#define APP_DEFAULT_FA_IF(s, p)     if (NT_SUCCESS((s))) this->applyDefaultFileAttributes(p)
 
 #define RETURN_IF_NOT_ALLOWED_VOID(ctx, ...) \
 do { \
@@ -57,7 +57,7 @@ NTSTATUS CSDriverBase::RelayOpen(PCWSTR argWinPath, UINT32 argCreateOptions, UIN
         ntstatus = this->Open(argWinPath, argCreateOptions, argGrantedAccess, (FileContext**)argFileContext, argFileInfo);
     }
 
-    SET_DEFAULT_FA_IF(ntstatus, argFileInfo);
+    APP_DEFAULT_FA_IF(ntstatus, argFileInfo);
 
     if (NT_SUCCESS(ntstatus))
     {
@@ -86,7 +86,7 @@ NTSTATUS CSDriverBase::RelayCreate(PCWSTR argFileName, UINT32 argCreateOptions, 
         ntstatus = this->Create(argFileName, argCreateOptions, argGrantedAccess, argFileAttributes, argSecurityDescriptor, argAllocationSize, (FileContext**)argFileContext, argFileInfo);
     }
 
-    SET_DEFAULT_FA_IF(ntstatus, argFileInfo);
+    APP_DEFAULT_FA_IF(ntstatus, argFileInfo);
 
     if (NT_SUCCESS(ntstatus))
     {
@@ -159,7 +159,7 @@ NTSTATUS CSDriverBase::RelayFlush(IFileContext* argFileContext, FSP_FSCTL_FILE_I
         ntstatus = this->Flush(ctx, argFileInfo);
     }
 
-    SET_DEFAULT_FA_IF(ntstatus, argFileInfo);
+    APP_DEFAULT_FA_IF(ntstatus, argFileInfo);
     SET_FLAG_IF(ntstatus, ctx, FLUSH);
 
     return ntstatus;
@@ -181,7 +181,7 @@ NTSTATUS CSDriverBase::RelayGetFileInfo(IFileContext* argFileContext, FSP_FSCTL_
         ntstatus = this->GetFileInfo(ctx, argFileInfo);
     }
 
-    SET_DEFAULT_FA_IF(ntstatus, argFileInfo);
+    APP_DEFAULT_FA_IF(ntstatus, argFileInfo);
     SET_FLAG_IF(ntstatus, ctx, GET_FILE_INFO);
 
     return ntstatus;
@@ -227,7 +227,7 @@ NTSTATUS CSDriverBase::RelayOverwrite(IFileContext* argFileContext, UINT32 argFi
         ntstatus = this->Overwrite(ctx, argFileAttributes, argReplaceFileAttributes, argAllocationSize, argFileInfo);
     }
 
-    SET_DEFAULT_FA_IF(ntstatus, argFileInfo);
+    APP_DEFAULT_FA_IF(ntstatus, argFileInfo);
     SET_FLAG_IF(ntstatus, ctx, OVERWRITE);
 
     return ntstatus;
@@ -323,7 +323,7 @@ NTSTATUS CSDriverBase::RelaySetBasicInfo(IFileContext* argFileContext, UINT32 ar
         ntstatus = this->SetBasicInfo(ctx, argFileAttributes, argCreationTime, argLastAccessTime, argLastWriteTime, argChangeTime, argFileInfo);
     }
 
-    SET_DEFAULT_FA_IF(ntstatus, argFileInfo);
+    APP_DEFAULT_FA_IF(ntstatus, argFileInfo);
     SET_FLAG_IF(ntstatus, ctx, SET_BASIC_INFO);
 
     return ntstatus;
@@ -348,7 +348,7 @@ NTSTATUS CSDriverBase::RelaySetFileSize(IFileContext* argFileContext, UINT64 arg
         ntstatus = this->SetFileSize(ctx, argNewSize, argSetAllocationSize, argFileInfo);
     }
 
-    SET_DEFAULT_FA_IF(ntstatus, argFileInfo);
+    APP_DEFAULT_FA_IF(ntstatus, argFileInfo);
     SET_FLAG_IF(ntstatus, ctx, SET_FILE_SIZE);
 
     return ntstatus;
@@ -397,7 +397,7 @@ NTSTATUS CSDriverBase::RelayWrite(IFileContext* argFileContext, PVOID argBuffer,
         ntstatus = this->Write(ctx, argBuffer, argOffset, argLength, argWriteToEndOfFile, argConstrainedIo, argBytesTransferred, argFileInfo);
     }
 
-    SET_DEFAULT_FA_IF(ntstatus, argFileInfo);
+    APP_DEFAULT_FA_IF(ntstatus, argFileInfo);
     SET_FLAG_IF(ntstatus, ctx, WRITE);
 
     return ntstatus;

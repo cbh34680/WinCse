@@ -2,8 +2,9 @@
 type=aws-s3
 
 ; AWS client credentials
-aws_access_key_id={aes256}abcdefg
-aws_secret_access_key={aes256}abcdefg
+; Note: Only valid on the computer it was created on.
+aws_access_key_id={aes256}ABCD012
+aws_secret_access_key={aes256}ABCD012
 region=ap-northeast-1
 
 ; You can select the bucket names to display using wildcards as follows.
@@ -39,6 +40,11 @@ region=ap-northeast-1
 ; default: 2
 #delete_dir_condition=2
 
+; Specifies the number of threads used for file I/O operations.
+; valid range: 1 to 32
+; default: 4
+#file_io_threads=4
+
 ; Maximum number of display buckets.
 ; valid range: 0 (No restrictions) to INT_MAX
 ; default: 8
@@ -64,11 +70,6 @@ region=ap-northeast-1
 ; default: 0 (Not strict)
 #strict_file_timestamp=0
 
-; Specifies the number of threads used for file I/O operations.
-; valid range: 1 to 32
-; default: 4
-#file_io_threads=4
-
 ; Specifies the size of data to be read during a transfer operation.
 ; valid range: 5 (5 MiB) to 100 (100 MiB)
 ; default: 10
@@ -82,4 +83,3 @@ region=ap-northeast-1
 ; Files that match the following regex patterns will be ignored.
 ; default: Empty (Don't ignore)
 re_ignore_patterns=\\(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif))$
-

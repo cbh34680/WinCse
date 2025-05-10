@@ -247,16 +247,14 @@ void CSDriverBase::applyDefaultFileAttributes(FSP_FSCTL_FILE_INFO* pFileInfo) co
 {
 	if (mRuntimeEnv->DefaultFileAttributes)
 	{
-		// デフォルトのファイル属性を反映する
-
 		if (pFileInfo->FileAttributes & FILE_ATTRIBUTE_NORMAL)
 		{
-			// FILE_ATTRIBUTE_NORMAL のビットを落とす
+			// FILE_ATTRIBUTE_NORMAL の場合はビットを落とす
 
 			pFileInfo->FileAttributes &= ~FILE_ATTRIBUTE_NORMAL;
-
-			APP_ASSERT(!pFileInfo->FileAttributes);
 		}
+
+		// デフォルトのファイル属性を反映する
 
 		pFileInfo->FileAttributes |= mRuntimeEnv->DefaultFileAttributes;
 	}

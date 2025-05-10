@@ -11,7 +11,7 @@ $Error.Clear();
 $CurrentDir      = Get-Location
 
 $AppName         = "WinCse"
-$DllType            = "aws-s3"
+$DllType         = "aws-s3"
 $ExeFileName     = "${AppName}.exe"
 $ConfFileName    = "${AppName}.conf"
 $LogDirName      = "log"
@@ -32,12 +32,13 @@ $ExeDir          = [System.IO.Path]::Combine($CurrentDir, $RelExeDir)
 $ExeDir          = [System.IO.Path]::GetFullPath($ExeDir)
 $ExePath         = [System.IO.Path]::Combine($ExeDir, $ExeFileName)
 
-$AddRegBatFName  = "reg-add.bat"
-$DelRegBatFName  = "reg-del.bat"
-$QryRegBatFName  = "reg-query.bat"
-$MountBatFName   = "mount.bat"
-$UMountBatFName  = "un-mount.bat"
-$ReadmeFName     = "readme.txt"
+$RegAddBatFName    = "reg-add.bat"
+$RegAddLogBatFName = "reg-add-log.bat"
+$RegDelBatFName    = "reg-del.bat"
+$RegQryBatFName    = "reg-query.bat"
+$MountBatFName     = "mount.bat"
+$UMountBatFName    = "un-mount.bat"
+$ReadmeFName       = "readme.txt"
 
 $SwitchAdmin     = @"
 @rem
@@ -219,7 +220,7 @@ $tbx_region = New-Object System.Windows.Forms.TextBox -Property @{
 # Encrypt
 #
 $chk_encrypt = New-Object System.Windows.Forms.CheckBox -Property @{
-    Location = "470,120"
+    Location = "485,120"
     Size = "100,24"
     Text = "Encrypt"
     Font = $FontM
@@ -287,17 +288,6 @@ foreach ($ch in $chars) {
 
 if ($cbx_drive.Items.Count -ne 0) {
     $cbx_drive.SelectedIndex = 0
-}
-
-# -----------------
-# Log checkbox
-#
-$chk_log = New-Object System.Windows.Forms.CheckBox -Property @{
-    Location = "470,160"
-    Size = "100,24"
-    Text = "Log output"
-    Font = $FontM
-    TextAlign = $LblTextAlign
 }
 
 # -----------------
@@ -445,29 +435,19 @@ $btn_reg.Add_Click({
         }
     }
 
-    if ($chk_log.Checked) {
-        $logdir = "${workdir}\${DllType}\${LogDirName}"
-        $WinFspLog = "${logdir}\${WinFspLogFName}"
+    $logdir = "${workdir}\${DllType}\${LogDirName}"
+    $WinFspLog = "${logdir}\${WinFspLogFName}"
 
-        if (-not (Test-Path -Path $logdir)) {
-            New-Item -Path $logdir -ItemType Directory -Force
-        }
-
-        if (-not (Test-Path -Path $logdir)) {
-            Msg-Warn -Text "${logdir}: The directory does not exist."
-            return
-        }
-
-        $info_log_dir = "# log:          [${logdir}]"
-        $fsreg_arg = @"
-"-u %%%%1 -m %%%%2 -d 1 -D ""${WinFspLog}"" -T ""${logdir}""" "D:P(A;;RPWPLC;;;WD)"
-"@
-
-    } else {
-        $fsreg_arg = @"
-"-u %%%%1 -m %%%%2" "D:P(A;;RPWPLC;;;WD)"
-"@
+    if (-not (Test-Path -Path $logdir)) {
+        New-Item -Path $logdir -ItemType Directory -Force
     }
+
+    if (-not (Test-Path -Path $logdir)) {
+        Msg-Warn -Text "${logdir}: The directory does not exist."
+        return
+    }
+
+    $info_log_dir = "# log:          [${logdir}]"
 
     $reg_name = "${AppName}.${DllType}.${drive}"
 
@@ -478,11 +458,24 @@ $btn_reg.Add_Click({
 ${SwitchAdmin}
 
 @echo on
-call "${FsregBatPath}" ${reg_name} "${exepath}" ${fsreg_arg}
+call "${FsregBatPath}" ${reg_name} "${exepath}" "-u %%%%1 -m %%%%2" "D:P(A;;RPWPLC;;;WD)"
 @pause
 "@
 
-    Set-Content -Path "${workdir}\${AddRegBatFName}" -Value $add_reg_bat
+    Set-Content -Path "${workdir}\${RegAddBatFName}" -Value $add_reg_bat
+
+    # Write "reg-add-logging.bat"
+    $add_reg_log_bat = @"
+@echo off
+
+${SwitchAdmin}
+
+@echo on
+call "${FsregBatPath}" ${reg_name} "${exepath}" "-u %%%%1 -m %%%%2 -d 1 -D ""${WinFspLog}"" -T ""${logdir}""" "D:P(A;;RPWPLC;;;WD)"
+@pause
+"@
+
+    Set-Content -Path "${workdir}\${RegAddLogBatFName}" -Value $add_reg_log_bat
 
     # Write "reg-del.bat"
     $del_reg_bat = @"
@@ -496,14 +489,10 @@ call "${FsregBatPath}" -u ${reg_name}
 @pause
 "@
 
-    Set-Content -Path "${workdir}\${DelRegBatFName}" -Value $del_reg_bat
+    Set-Content -Path "${workdir}\${RegDelBatFName}" -Value $del_reg_bat
 
     # Write "mount.bat
     $mount_bat = @"
-@echo off
-
-${SwitchAdmin}
-
 @echo on
 if exist ${drive}:\ net use ${drive}: /delete
 net use ${drive}: "\\${reg_name}\${workdir_drive}$\${workdir_dir}"
@@ -519,7 +508,7 @@ reg query HKLM\Software\WinFsp\Services\${reg_name} /s /reg:32
 @pause
 "@
 
-    Set-Content -Path "${workdir}\${QryRegBatFName}" -Value $qry_reg_bat
+    Set-Content -Path "${workdir}\${RegQryBatFName}" -Value $qry_reg_bat
 
     # Write "un-mount.bat"
     $umount_bat = @"
@@ -530,8 +519,6 @@ if not exist ${drive}:\ (
   pause
   exit
 )
-
-${SwitchAdmin}
 
 echo on
 net use ${drive}: /delete
@@ -575,6 +562,7 @@ Description of the files in this directory
 type=${DllType}
 
 ; AWS client credentials
+; Note: Only valid on the computer it was created on.
 aws_access_key_id=${keyid}
 aws_secret_access_key=${secret}
 region=${region}
@@ -616,6 +604,11 @@ region=${region}
 ; default: 2
 #delete_dir_condition=2
 
+; Specifies the number of threads used for file I/O operations.
+; valid range: 1 to 32
+; default: 4
+#file_io_threads=4
+
 ; Maximum number of display buckets.
 ; valid range: 0 (No restrictions) to INT_MAX
 ; default: 8
@@ -640,11 +633,6 @@ region=${region}
 ; valid value: 0 or non-zero
 ; default: 0 (Not strict)
 #strict_file_timestamp=0
-
-; Specifies the number of threads used for file I/O operations.
-; valid range: 1 to 32
-; default: 4
-#file_io_threads=4
 
 ; Specifies the size of data to be read during a transfer operation.
 ; valid range: 5 (5 MiB) to 100 (100 MiB)
@@ -677,7 +665,7 @@ ${info_log_dir}
     Set-Content -Path $conf_path -Value $conf
 
     # fsreg.bat
-    Start-Process -FilePath "${workdir}\${AddRegBatFName}" -Wait
+    Start-Process -FilePath "${workdir}\${RegAddBatFName}" -Wait
 
     $reg_path = "${RegWinFspPath}\Services\${reg_name}"
 
@@ -719,9 +707,9 @@ $form = New-Object System.Windows.Forms.Form -Property @{
     AcceptButton = $btn_exit
 }
 
-$ctrls = $lbl_keyid,  $tbx_keyid,  $lbl_secret, $tbx_secret, `
+$ctrls = $lbl_keyid,  $tbx_keyid,  $lbl_secret, $tbx_secret,
          $lbl_region, $tbx_region, $chk_encrypt,
-         $lbl_drive,  $cbx_drive,  $chk_log, `
+         $lbl_drive,  $cbx_drive,
          $lbl_wkdir,  $txt_wkdir,  $btn_wkdir,                             `
          $lbl_exe,    $txt_exe,    $btn_exe,                                 `
          $btn_reg,    $btn_exit

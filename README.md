@@ -1,41 +1,43 @@
 # WinCse &middot; Windows Cloud Storage Explorer
 
-WinCse is an application that integrates AWS S3 buckets into Windows Explorer, allowing users to handle S3 buckets as if they were part of the local file system.
+WinCse is an application that integrates AWS S3 buckets into Windows Explorer, allowing S3 buckets to be treated like a local file system.
 
-## Features
-- Display S3 buckets in Windows Explorer
-- Simple interface for easy file management
+## Key Features
+- Operate files on S3 as if using Windows file sharing.
+- Adjust the name and number of S3 buckets displayed as network drives.
+- Mount in read-only mode.
 
 ## System Requirements
-- Windows 10 or later
+- Windows 10 or later (recommended)
 - [WinFsp](http://www.secfs.net/winfsp/)
 - [AWS SDK for C++](https://github.com/aws/aws-sdk-cpp)
 
-## Installation
+## Installation Instructions
 1. Install [WinFsp](https://winfsp.dev/rel/).
-2. Download WinCse (including AWS SDK for C++) from the [release page](https://github.com/cbh34680/WinCse/releases).
+2. Download WinCse (which includes AWS SDK for C++) from the [release page](https://github.com/cbh34680/WinCse/releases).
 
 ## Usage
-1. Run `setup/install-aws-s3.bat` with administrator privileges.
-2. Enter your AWS credentials in the form that appears.
-3. Click the `Create` button.
-4. Run `mount.bat` from the displayed Explorer directory.
-5. You can now access your S3 bucket as a drive selected in the form.
-6. To unmount the drive, run `un-mount.bat`.
+1. Run `setup/install-aws-s3.bat` as administrator.
+2. When the form screen appears, enter your AWS credentials.
+3. Click the **Create** button.
+4. Execute `mount.bat` in the directory displayed in Explorer.
+5. You can now access the S3 bucket via Windows Explorer using the selected drive.
+6. Run `un-mount.bat` to unmount the drive.
 
-## Uninstallation
-1. Run `reg-del.bat` with administrator privileges to remove the registry entries registered by WinFsp.
-2. Delete the directory containing the `*.bat` files.
-3. If no longer needed, uninstall [WinFsp](https://winfsp.dev/rel/).
+## Uninstallation Instructions
+1. Unmount the mounted drive.
+2. Run `reg-del.bat` as administrator to remove the registry entries registered in WinFsp.
+3. Delete the directory containing the `*.bat` files.
+4. If no longer needed, uninstall [WinFsp](https://winfsp.dev/rel/).
 
 ## Limitations
-- Some restrictions can be relaxed by modifying [config](./doc/conf-example.txt).
-- See [limitations.md](./doc/limitations.md) for further details.
+- Some constraints can be relaxed by modifying the [configuration file](./doc/conf-example.txt).
+- Operations such as bucket creation and deletion are not supported.
+- To facilitate bug detection, `abort()` is used, which may result in forced termination.
+- For other limitations, refer to the [Limitations](./doc/limitations.md) page.
 
 ## Notes
-- The current version is in testing.
-- Verified to work only on Windows 11.
-- If you need a stable alternative, consider using [Rclone](https://rclone.org/).
+- This software has only been tested on Windows 11.
 
 ## License
 This project is licensed under both [GPLv3](https://www.gnu.org/licenses/gpl-3.0.html) and [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
