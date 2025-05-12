@@ -95,10 +95,10 @@ bool mkdirIfNotExists(const std::filesystem::path& argDir)
 
 bool forEachFiles(const std::filesystem::path& argDir, const std::function<void(const WIN32_FIND_DATA&, const std::filesystem::path&)>& callback)
 {
-	const auto dir{ argDir / L"*" };
+	const auto findFileName{ argDir / L"*" };
 
 	WIN32_FIND_DATA wfd;
-	HANDLE hFile = ::FindFirstFileW(dir.wstring().c_str(), &wfd);
+	HANDLE hFile = ::FindFirstFileW(findFileName.wstring().c_str(), &wfd);
 
 	if (hFile == INVALID_HANDLE_VALUE)
 	{
@@ -112,10 +112,12 @@ bool forEachFiles(const std::filesystem::path& argDir, const std::function<void(
 			continue;
 		}
 
-		const auto curPath{ dir / wfd.cFileName };
+		const auto curPath{ argDir / wfd.cFileName };
 
 		if (FA_IS_DIR(wfd.dwFileAttributes))
 		{
+			// ドットエントリ以外のディレクトリは再帰
+
 			if (!forEachFiles(curPath, callback))
 			{
 				::FindClose(hFile);
@@ -137,10 +139,10 @@ bool forEachFiles(const std::filesystem::path& argDir, const std::function<void(
 
 bool forEachDirs(const std::filesystem::path& argDir, const std::function<void(const WIN32_FIND_DATA& wfd, const std::filesystem::path& fullPath)>& callback)
 {
-	const auto dir{ argDir / L"*" };
+	const auto findFileName{ argDir / L"*" };
 
 	WIN32_FIND_DATA wfd;
-	HANDLE hFile = ::FindFirstFileW(dir.wstring().c_str(), &wfd);
+	HANDLE hFile = ::FindFirstFileW(findFileName.wstring().c_str(), &wfd);
 
 	if (hFile == INVALID_HANDLE_VALUE)
 	{
@@ -154,10 +156,12 @@ bool forEachDirs(const std::filesystem::path& argDir, const std::function<void(c
 			continue;
 		}
 
-		const auto curPath{ dir / wfd.cFileName };
+		const auto curPath{ argDir / wfd.cFileName };
 
 		if (FA_IS_DIR(wfd.dwFileAttributes))
 		{
+			// ドットエントリ以外のディレクトリは再帰
+
 			if (!forEachDirs(curPath, callback))
 			{
 				::FindClose(hFile);

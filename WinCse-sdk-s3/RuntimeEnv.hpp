@@ -1,13 +1,13 @@
 #pragma once
 
-#include "CSDeviceCommon.h"
+#include "SdkS3Common.h"
 
-namespace CSEDAS3
+namespace CSESS3
 {
 
 struct RuntimeEnv final
 {
-	explicit RuntimeEnv(
+	WINCSESDKS3_API RuntimeEnv(
 		int									argBucketCacheExpiryMin,
 		const std::list<std::wregex>&		argBucketFilters,
 		const std::wstring&					argClientGuid,
@@ -49,9 +49,9 @@ struct RuntimeEnv final
 	const bool								StrictFileTimestamp;
 	const int								TransferWriteSizeMib;
 
-	std::wstring str() const;
+	WINCSESDKS3_API std::wstring str() const;
 };
 
-}	// namespace CSEDAS3
+}	// namespace CSESS3
 
 // EOF

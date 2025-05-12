@@ -1,8 +1,12 @@
 #include "CacheListBuckets.hpp"
 
 using namespace CSELIB;
-using namespace CSEDAS3;
+using namespace CSESS3;
 
+
+#if defined(THREAD_SAFE)
+#error "THREAD_SAFFE(): already defined"
+#endif
 
 #define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ mGuard }
 

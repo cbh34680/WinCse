@@ -30,6 +30,10 @@ FileContextSweeper::~FileContextSweeper()
 	}
 }
 
+#if defined(THREAD_SAFE)
+#error "THREAD_SAFFE(): already defined"
+#endif
+
 #define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ mGuard }
 
 void FileContextSweeper::add(FileContext* ctx)

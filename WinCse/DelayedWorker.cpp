@@ -199,6 +199,10 @@ void DelayedWorker::listen(int argThreadIndex)
 // ここから下のメソッドは THREAD_SAFE マクロによる修飾が必要
 //
 
+#if defined(THREAD_SAFE)
+#error "THREAD_SAFFE(): already defined"
+#endif
+
 #define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ mGuard }
 
 bool DelayedWorker::addTypedTask(IOnDemandTask* argTask)

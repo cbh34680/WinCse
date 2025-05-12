@@ -19,31 +19,11 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="CSDevice.cpp" />
-    <ClCompile Include="CSDeviceBase.cpp" />
-    <ClCompile Include="CSDeviceCommon.cpp" />
-    <ClCompile Include="ExecuteUpload.cpp" />
-    <ClCompile Include="QueryBucket.cpp" />
-    <ClCompile Include="ExecuteApi.cpp" />
-    <ClCompile Include="CSDeviceBase_event.cpp" />
-    <ClCompile Include="CacheListBuckets.cpp" />
+    <ClCompile Include="AwsS3Device.cpp" />
     <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="CacheObject.cpp" />
-    <ClCompile Include="QueryObject.cpp" />
-    <ClCompile Include="RuntimeEnv.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="CSDevice.hpp" />
-    <ClInclude Include="CSDeviceCommon.h" />
-    <ClInclude Include="ExecuteApi.hpp" />
-    <ClInclude Include="CSDeviceBase.hpp" />
-    <ClInclude Include="aws_sdk_s3_client.h" />
-    <ClInclude Include="QueryBucket.hpp" />
-    <ClInclude Include="aws_sdk_s3.h" />
-    <ClInclude Include="CacheListBuckets.hpp" />
-    <ClInclude Include="CacheObject.hpp" />
-    <ClInclude Include="QueryObject.hpp" />
-    <ClInclude Include="RuntimeEnv.hpp" />
+    <ClInclude Include="AwsS3Device.hpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
@@ -140,7 +120,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)aws-sdk\dest\$(Configuration)\include;$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)WinCseLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)aws-sdk\dest\$(Configuration)\include;$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)WinCseLib;$(SolutionDir)WinCse-sdk-s3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -168,7 +148,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)aws-sdk\dest\$(Configuration)\include;$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)WinCseLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)aws-sdk\dest\$(Configuration)\include;$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)WinCseLib;$(SolutionDir)WinCse-sdk-s3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

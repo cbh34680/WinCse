@@ -228,6 +228,7 @@ NTSTATUS CSDriver::Open(const std::filesystem::path& argWinPath, UINT32 argCreat
 	return STATUS_SUCCESS;
 }
 
+#pragma warning(suppress: 4100)
 NTSTATUS CSDriver::Create(const std::filesystem::path& argWinPath, UINT32 argCreateOptions,
     UINT32 argGrantedAccess, UINT32 argFileAttributes, PSECURITY_DESCRIPTOR argSecurityDescriptor,
     UINT64 argAllocationSize, FileContext** pFileContext, FSP_FSCTL_FILE_INFO* pFileInfo)
@@ -1054,7 +1055,7 @@ NTSTATUS CSDriver::Rename(FileContext* ctx, const std::filesystem::path& argSrcW
         if (!::MoveFileExW(orgCacheFilePath.c_str(), dstCacheFilePath.c_str(), MOVEFILE_REPLACE_EXISTING))
         {
             const auto lerr = ::GetLastError();
-            errorW(L"fault: MoveFileExW, lerr=%lu orgCacheFilePath=%s, dstCacheFilePath=%s", lerr, orgCacheFilePath.c_str(), dstCacheFilePath.c_str());
+            errorW(L"fault: MoveFileExW lerr=%lu orgCacheFilePath=%s, dstCacheFilePath=%s", lerr, orgCacheFilePath.c_str(), dstCacheFilePath.c_str());
 
             return FspNtStatusFromWin32(lerr);
         }

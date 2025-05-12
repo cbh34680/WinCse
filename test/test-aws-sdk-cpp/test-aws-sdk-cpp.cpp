@@ -70,7 +70,7 @@ void FEP(const std::function<void(Aws::S3::S3Client*, const char*)>& callback)
     free(bucket);
 }
 
-void listBuckets(Aws::S3::S3Client* client, const char* envBucket)
+void test_listBuckets(Aws::S3::S3Client* client, const char* envBucket)
 {
     auto outcome = client->ListBuckets();
     if (!outcome.IsSuccess())
@@ -87,7 +87,7 @@ void listBuckets(Aws::S3::S3Client* client, const char* envBucket)
     }
 }
 
-void listObjects(Aws::S3::S3Client* client, const char* envBucket)
+static void test_listObjects(Aws::S3::S3Client* client, const char* envBucket)
 {
     Aws::S3::Model::ListObjectsV2Request request;
 
@@ -130,7 +130,7 @@ void listObjects(Aws::S3::S3Client* client, const char* envBucket)
     while(!continuationToken.empty());
 }
 
-void getObject(Aws::S3::S3Client* client, const char* envBucket)
+static void test_getObject(Aws::S3::S3Client* client, const char* envBucket)
 {
     Aws::S3::Model::GetObjectRequest request;
 
@@ -161,9 +161,9 @@ void getObject(Aws::S3::S3Client* client, const char* envBucket)
 
 int main()
 {
-    //FEP(listBuckets);
-    //FEP(listObjects);
-    FEP(getObject);
+    //FEP(test_listBuckets);
+    //FEP(test_listObjects);
+    FEP(test_getObject);
 
     return 0;
 }

@@ -1,28 +1,8 @@
 #include "CSDevice.hpp"
 
 using namespace CSELIB;
-using namespace CSEDAS3;
+using namespace CSESS3;
 
-
-ICSDevice* NewCSDevice(PCWSTR argIniSection, NamedWorker argWorkers[])
-{
-    std::map<std::wstring, IWorker*> workers;
-
-    if (NamedWorkersToMap(argWorkers, &workers) <= 0)
-    {
-        return nullptr;
-    }
-
-    for (const auto key: { L"delayed", L"timer", })
-    {
-        if (workers.find(key) == workers.cend())
-        {
-            return nullptr;
-        }
-    }
-
-    return new CSDevice(argIniSection, workers);
-}
 
 CSDevice::~CSDevice()
 {
@@ -74,7 +54,7 @@ bool CSDevice::headBucket(CALLER_ARG const std::wstring& argBucketName, DirEntry
 
 bool CSDevice::listBuckets(CALLER_ARG DirEntryListType* pDirEntryList)
 {
-    return mQueryBucket->qbListBuckets(CONT_CALLER pDirEntryList, {});
+    return mQueryBucket->qbListBuckets(CONT_CALLER pDirEntryList);
 }
 
 bool CSDevice::headObject(CALLER_ARG const ObjectKey& argObjKey, DirEntryType* pDirEntry)

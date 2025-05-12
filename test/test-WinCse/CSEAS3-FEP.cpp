@@ -1,5 +1,5 @@
 #include "WinCseLib.h"
-#include "CSDevice.hpp"
+#include "AwsS3Device.hpp"
 #include <iostream>
 
 #pragma comment(lib, "WinCse-aws-s3.lib")

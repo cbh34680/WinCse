@@ -1,7 +1,7 @@
 #include "RuntimeEnv.hpp"
 
 using namespace CSELIB;
-using namespace CSEDAS3;
+using namespace CSESS3;
 
 
 #define TO_LITERAL(name)        L#name

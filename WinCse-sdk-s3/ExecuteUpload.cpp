@@ -2,7 +2,7 @@
 #include "aws_sdk_s3.h"
 
 using namespace CSELIB;
-using namespace CSEDAS3;
+using namespace CSESS3;
 
 
 static std::shared_ptr<Aws::StringStream> makeStreamFromFile(CALLER_ARG const std::filesystem::path& argInputPath,
@@ -207,7 +207,7 @@ struct UploadFilePartTask : public IOnDemandTask
     {
         NEW_LOG_BLOCK();
 
-        std::shared_ptr<Aws::S3::Model::CompletedPart> result;
+        std::optional<Aws::String> result;
 
         try
         {
@@ -236,7 +236,7 @@ struct UploadFilePartTask : public IOnDemandTask
     }
 };
 
-std::shared_ptr<Aws::S3::Model::CompletedPart> ExecuteApi::uploadPart(CALLER_ARG
+std::optional<Aws::String> ExecuteApi::uploadPart(CALLER_ARG
     const ObjectKey& argObjKey, const std::filesystem::path& argInputPath, const Aws::String& argUploadId,
     const std::shared_ptr<UploadFilePartType>& argFilePart)
 {
@@ -270,14 +270,14 @@ std::shared_ptr<Aws::S3::Model::CompletedPart> ExecuteApi::uploadPart(CALLER_ARG
         abortRequest.WithBucket(argObjKey.bucketA()).WithKey(argObjKey.keyA()).WithUploadId(argUploadId);
         mS3Client->AbortMultipartUpload(abortRequest);
 
-        return nullptr;
+        return std::nullopt;
     }
 
-    auto result{ std::make_shared<Aws::S3::Model::CompletedPart>() };
+    return uploadOutcome.GetResult().GetETag();
 
-    result->WithPartNumber(argFilePart->mPartNumber).WithETag(uploadOutcome.GetResult().GetETag());
-
-    return result;
+    //auto result{ std::make_shared<Aws::S3::Model::CompletedPart>() };
+    //result->WithPartNumber(argFilePart->mPartNumber).WithETag(uploadOutcome.GetResult().GetETag());
+    //return result;
 }
 
 bool ExecuteApi::uploadMultipart(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath)
@@ -319,7 +319,7 @@ bool ExecuteApi::uploadMultipart(CALLER_ARG const ObjectKey& argObjKey, const FS
         const auto partOffset = i * PART_SIZE_BYTE;
         const auto partLength = min(PART_SIZE_BYTE, fileSize - partOffset);
 
-        fileParts.emplace_back(std::make_shared<UploadFilePartType>(partNumber, partOffset, partLength, nullptr));
+        fileParts.emplace_back(std::make_shared<UploadFilePartType>(partNumber, partOffset, partLength, std::nullopt));
     }
 
     // マルチパート・アップロードの準備
@@ -369,7 +369,7 @@ bool ExecuteApi::uploadMultipart(CALLER_ARG const ObjectKey& argObjKey, const FS
             break;
         }
 
-        completedParts[i] = std::move(*result);
+        completedParts[i].WithPartNumber(filePart->mPartNumber).WithETag(*result);
 
         i++;
     }

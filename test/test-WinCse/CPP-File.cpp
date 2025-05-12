@@ -1,8 +1,59 @@
 #include <Windows.h>
 #include <iostream>
+#include <fstream>
 #include <filesystem>
 
 void t_CPP_File()
+{
+	std::filesystem::create_directory("dir");
+
+	std::ofstream ofs;
+	ofs.open("dir\\file.txt", std::ios_base::out);
+	if (ofs)
+	{
+		ofs.write("abc", 3);
+		ofs.close();
+
+		std::error_code ec;
+		std::filesystem::remove("dir", ec);
+
+		if (ec)
+		{
+			std::cout << ec.message() << std::endl;
+
+			std::filesystem::remove("dir\\file.txt", ec);
+
+			if (ec)
+			{
+				std::cout << ec.message() << std::endl;
+			}
+			else
+			{
+				std::filesystem::remove("dir", ec);
+
+				if (ec)
+				{
+					std::cout << ec.message() << std::endl;
+				}
+				else
+				{
+					std::cout << "done." << std::endl;
+				}
+			}
+		}
+		else
+		{
+			std::cout << "done." << std::endl;
+		}
+	}
+	else
+	{
+		std::cout << "open error" << std::endl;
+	}
+
+}
+
+void t_CPP_File_Win32()
 {
 	char path[] = "file.tmp";
 

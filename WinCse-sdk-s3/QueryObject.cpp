@@ -1,7 +1,7 @@
 #include "QueryObject.hpp"
 
 using namespace CSELIB;
-using namespace CSEDAS3;
+using namespace CSESS3;
 
 
 bool QueryObject::qoHeadObjectFromCache(CALLER_ARG const ObjectKey& argObjKey, DirEntryType* pDirEntry) const

@@ -1,7 +1,7 @@
 #include "QueryBucket.hpp"
 
 using namespace CSELIB;
-using namespace CSEDAS3;
+using namespace CSESS3;
 
 
 void QueryBucket::qbClearCache(CALLER_ARG0)
@@ -66,7 +66,7 @@ bool QueryBucket::qbHeadBucket(CALLER_ARG const std::wstring& argBucketName, Dir
     return mCacheListBuckets.clbFind(CONT_CALLER argBucketName, pDirEntry);
 }
 
-bool QueryBucket::qbListBuckets(CALLER_ARG DirEntryListType* pDirEntryList, const std::set<std::wstring>& options)
+bool QueryBucket::qbListBuckets(CALLER_ARG DirEntryListType* pDirEntryList)
 {
     NEW_LOG_BLOCK();
 
@@ -160,20 +160,6 @@ bool QueryBucket::qbListBuckets(CALLER_ARG DirEntryListType* pDirEntryList, cons
                 }
             }
 
-            if (!options.empty())
-            {
-                // 引数で options が指定されている場合
-
-                if (options.find(bucketName) == options.cend())
-                {
-                    // 検索抽出条件に一致しない場合は取り除く
-
-                    it = dirEntryList.erase(it);
-
-                    continue;
-                }
-            }
-
             ++it;
         }
 
@@ -207,7 +193,7 @@ bool QueryBucket::qbReload(CALLER_ARG std::chrono::system_clock::time_point thre
 
         // バケット一覧の取得 --> キャッシュの生成
 
-        if (!this->qbListBuckets(CONT_CALLER nullptr, {}))
+        if (!this->qbListBuckets(CONT_CALLER nullptr))
         {
             errorW(L"fault: listBuckets");
             return false;

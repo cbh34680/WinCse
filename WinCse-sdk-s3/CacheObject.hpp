@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CSDeviceCommon.h"
+#include "SdkS3Common.h"
 
 // HeadObject, ListObjectsV2 から取得したデータをキャッシュする
 // どちらも型が異なるだけ (DirEntryType, DirEntryListType) なのでテンプレートにして
@@ -29,7 +29,7 @@
 
 #define THREAD_SAFE()       std::lock_guard<std::mutex> lock_{ mGuard }
 
-namespace CSEDAS3
+namespace CSESS3
 {
 
 template<typename T>
@@ -38,25 +38,25 @@ class ObjectCacheTmpl
 public:
     virtual ~ObjectCacheTmpl() = default;
 
-	struct CacheValue
-	{
-		mutable std::wstring                            mCreateCallChain;
+    struct CacheValue
+    {
+        mutable std::wstring                            mCreateCallChain;
         mutable std::wstring                            mLastAccessCallChain;
         mutable std::chrono::system_clock::time_point   mCreateTime;
         mutable std::chrono::system_clock::time_point   mLastAccessTime;
         mutable int                                     mRefCount = 0;
 
         CacheValue(CALLER_ARG0)
-		{
-			mCreateCallChain = mLastAccessCallChain = CALL_CHAIN();
-			mCreateTime = mLastAccessTime = std::chrono::system_clock::now();
-		}
-	};
+        {
+            mCreateCallChain = mLastAccessCallChain = CALL_CHAIN();
+            mCreateTime = mLastAccessTime = std::chrono::system_clock::now();
+        }
+    };
 
-	struct NegativeValue : public CacheValue { };
-	struct PositiveValue : public CacheValue
-	{
-		T mV;
+    struct NegativeValue : public CacheValue { };
+    struct PositiveValue : public CacheValue
+    {
+        T mV;
 
         explicit PositiveValue(CALLER_ARG const T& argV)
             :
@@ -64,7 +64,7 @@ public:
             mV(argV)
         {
         }
-	};
+    };
 
 protected:
     std::map<CSELIB::ObjectKey, PositiveValue>  mPositive;
@@ -108,6 +108,7 @@ public:
     int coDeleteByTime(CALLER_ARG std::chrono::system_clock::time_point threshold)
     {
         THREAD_SAFE();
+        NEW_LOG_BLOCK();
 
         const auto OldAccessTime = [&threshold](const auto& it)
         {
@@ -121,8 +122,6 @@ public:
 
         if (sum > 0)
         {
-            NEW_LOG_BLOCK();
-
             traceW(L"* delete records: Positive=%d, Negative=%d", delPositive, delNegative);
         }
 
@@ -132,6 +131,7 @@ public:
     int coDeleteByKey(CALLER_ARG const CSELIB::ObjectKey& argObjKey)
     {
         THREAD_SAFE();
+        NEW_LOG_BLOCK();
 
         const auto EqualObjKey = [&argObjKey](const auto& it)
         {
@@ -143,7 +143,7 @@ public:
         const int delPositive = deleteBy(EqualObjKey, mPositive);
         const int delNegative = deleteBy(EqualObjKey, mNegative);
 
-        //traceW(L"delete records: Positive=%d Negative=%d", delPositive, delNegative);
+        traceW(L"delete records: Positive=%d Negative=%d", delPositive, delNegative);
 
         int delPositiveP = 0;
         int delNegativeP = 0;
@@ -161,7 +161,7 @@ public:
             delPositiveP = deleteBy(EqualParentDir, mPositive);
             delNegativeP = deleteBy(EqualParentDir, mNegative);
 
-            //traceW(L"delete records: PositiveP=%d NegativeP=%d", delPositiveP, delNegativeP);
+            traceW(L"delete records: PositiveP=%d NegativeP=%d", delPositiveP, delNegativeP);
         }
         else
         {
@@ -173,21 +173,11 @@ public:
 
         if (sum > 0)
         {
-            NEW_LOG_BLOCK();
-
             traceW(L"* delete records: argObjKey=%s, Positive=%d, Negative=%d, PositiveP=%d, NegativeP=%d",
                 argObjKey.c_str(), delPositive, delNegative, delPositiveP, delNegativeP);
         }
 
         return sum;
-    }
-
-    void coClear(CALLER_ARG0)
-    {
-        THREAD_SAFE();
-
-        mPositive.clear();
-        mNegative.clear();
     }
 
     // ----------------------- Positive
@@ -280,27 +270,27 @@ public:
     }
 };
 
-}	// namespace CSEDAS3
+}	// namespace CSESS3
 
 #undef THREAD_SAFE
 
 #pragma warning(pop)
 
-namespace CSEDAS3
+namespace CSESS3
 {
 
 class CacheHeadObject final : public ObjectCacheTmpl<CSELIB::DirEntryType>
 {
 public:
-    void coReport(CALLER_ARG FILE* fp) const override;
+    WINCSESDKS3_API void coReport(CALLER_ARG FILE* fp) const override;
 };
 
 class CacheListObjects final : public ObjectCacheTmpl<CSELIB::DirEntryListType>
 {
 public:
-    void coReport(CALLER_ARG FILE* fp) const override;
+    WINCSESDKS3_API void coReport(CALLER_ARG FILE* fp) const override;
 };
 
-}	// namespace CSEDAS3
+}	// namespace CSESS3
 
 // EOF

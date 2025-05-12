@@ -27,7 +27,7 @@ struct ICSDevice : public ICSService
 		return this->listObjects(CONT_CALLER argObjKey, pDirEntryList);
 	}
 
-	virtual CSELIB::FILEIO_LENGTH_T getObjectAndWriteFile(CALLER_ARG const ObjectKey& argObjKey, const std::filesystem::path& argOutputPath, CSELIB::FILEIO_OFFSET_T argOffset, CSELIB::FILEIO_LENGTH_T argLength) = 0;
+	virtual FILEIO_LENGTH_T getObjectAndWriteFile(CALLER_ARG const ObjectKey& argObjKey, const std::filesystem::path& argOutputPath, FILEIO_OFFSET_T argOffset, FILEIO_LENGTH_T argLength) = 0;
 	virtual bool putObject(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath) = 0;
 	virtual bool deleteObject(CALLER_ARG const ObjectKey& argObjKey) = 0;
 	virtual bool deleteObjects(CALLER_ARG const std::wstring& argBucket, const std::list<std::wstring>& argKeys) = 0;

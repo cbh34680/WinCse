@@ -6,7 +6,13 @@ using namespace CSEDRV;
 
 void CSDriverBase::onIdle()
 {
-    //NEW_LOG_BLOCK();
+    NEW_LOG_BLOCK();
+
+    if (!std::filesystem::is_directory(mRuntimeEnv->CacheDataDir))
+    {
+        traceW(L"fault: not directory CacheDataDir=%s", mRuntimeEnv->CacheDataDir.c_str());
+        return;
+    }
 
     // IdleTask から呼び出され、メモリやファイルの古いものを削除
 
@@ -16,23 +22,27 @@ void CSDriverBase::onIdle()
     //
     // 最終アクセス日時から一定時間経過したキャッシュ・ファイルを削除する
 
-    APP_ASSERT(std::filesystem::is_directory(mRuntimeEnv->CacheDataDir));
 
     const auto duration = now.time_since_epoch();
     const auto nowMillis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-    const auto cacheFileRetentionMin = mRuntimeEnv->CacheFileRetentionMin;
 
-    forEachFiles(mRuntimeEnv->CacheDataDir, [this, nowMillis, cacheFileRetentionMin](const auto& wfd, const auto& fullPath)
+    traceW(L"now=%lld %s", nowMillis, UtcMillisToLocalTimeStringW(nowMillis).c_str());
+
+    const auto cacheFileRetentionMillis = TIMEMILLIS_1MINull * mRuntimeEnv->CacheFileRetentionMin;
+
+    forEachFiles(mRuntimeEnv->CacheDataDir, [this, nowMillis, cacheFileRetentionMillis](const auto& wfd, const auto& fullPath)
     {
+        NEW_LOG_BLOCK();
+
         const auto fileMillis = WinFileTimeToUtcMillis(wfd.ftLastAccessTime);
         const auto diffMillis = nowMillis - fileMillis;
 
-        if (diffMillis > (TIMEMILLIS_1MINull * cacheFileRetentionMin))
-        {
-            NEW_LOG_BLOCK();
+        traceW(L"cache file=%s fileMillis=%llu %s", wfd.cFileName, fileMillis, UtcMillisToLocalTimeStringW(fileMillis).c_str());
+        traceW(L"diffMillis=%llu cacheFileRetentionMillis=%llu", diffMillis, cacheFileRetentionMillis);
 
-            traceW(L"cache file=%s nowMillis=%llu fileMillis=%llu diffMillis=%llu cacheFileRetentionMin=%d",
-                wfd.cFileName, nowMillis, fileMillis, diffMillis, cacheFileRetentionMin);
+        if (diffMillis > cacheFileRetentionMillis)
+        {
+            traceW(L"The cache file has expired.");
 
             if (::DeleteFilePassively(fullPath.c_str()))
             {
@@ -41,25 +51,31 @@ void CSDriverBase::onIdle()
             else
             {
                 const auto lerr = ::GetLastError();
-                errorW(L"--> Remove error, lerr=%lu", lerr);
+                errorW(L"fault: Remove error lerr=%lu", lerr);
             }
+        }
+        else
+        {
+            traceW(L"The cache file is still valid.");
         }
     });
 
     // ファイル・キャッシュのディレクトリ
     // 上記でファイルが削除され、空になったディレクトリは削除
 
-    forEachDirs(mRuntimeEnv->CacheDataDir, [this, nowMillis, cacheFileRetentionMin](const auto& wfd, const auto& fullPath)
+    forEachDirs(mRuntimeEnv->CacheDataDir, [this, nowMillis, cacheFileRetentionMillis](const auto& wfd, const auto& fullPath)
     {
-        const auto fileMillis = WinFileTimeToUtcMillis(wfd.ftLastAccessTime);
+        NEW_LOG_BLOCK();
+
+        const auto fileMillis = WinFileTimeToUtcMillis(wfd.ftCreationTime);
         const auto diffMillis = nowMillis - fileMillis;
 
-        if (diffMillis > (TIMEMILLIS_1MINull * cacheFileRetentionMin))
-        {
-            NEW_LOG_BLOCK();
+        traceW(L"cache directory=%s fileMillis=%llu %s", wfd.cFileName, fileMillis, UtcMillisToLocalTimeStringW(fileMillis).c_str());
+        traceW(L"diffMillis=%llu cacheFileRetentionMillis=%llu", diffMillis, cacheFileRetentionMillis);
 
-            traceW(L"cache dir=%s nowMillis=%llu fileMillis=%llu diffMillis=%llu cacheFileRetentionMin=%d",
-                wfd.cFileName, nowMillis, fileMillis, diffMillis, cacheFileRetentionMin);
+        if (diffMillis > cacheFileRetentionMillis)
+        {
+            traceW(L"The cache directory has expired.");
 
             std::error_code ec;
             std::filesystem::remove(fullPath, ec);
@@ -68,16 +84,20 @@ void CSDriverBase::onIdle()
             {
                 const auto lerr = ::GetLastError();
 
-                errorW(L"--> Remove error, lerr=%lu", lerr);
+                errorA("fault: Remove error lerr=%lu ec=%s", lerr, ec.message().c_str());
             }
             else
             {
                 traceW(L"--> Removed");
             }
         }
+        else
+        {
+            traceW(L"The cache directory is still valid.");
+        }
     });
 
-    //traceW(L"done.");
+    traceW(L"done.");
 }
 
 bool CSDriverBase::onNotif(const std::wstring& argNotifName)

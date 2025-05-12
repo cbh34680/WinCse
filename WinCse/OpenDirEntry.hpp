@@ -4,6 +4,10 @@
 
 // マクロにする必要性はないが、わかりやすいので
 
+#if defined(THREAD_SAFE)
+#error "THREAD_SAFFE(): already defined"
+#endif
+
 #define THREAD_SAFE()       std::lock_guard<std::mutex> lock_{ mGuard }
 
 namespace CSEDRV

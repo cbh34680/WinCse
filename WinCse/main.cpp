@@ -16,6 +16,8 @@
 
 #if DIRECT_LINK_TEST
 #pragma comment(lib, "WinCse-aws-s3.lib")
+
+#include "..\WinCse-sdk-s3\SdkS3Common.hpp"
 #include "..\WinCse-aws-s3\CSDevice.hpp"
 #endif
 

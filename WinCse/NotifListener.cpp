@@ -141,7 +141,7 @@ void NotifListener::listen()
 		else
 		{
 			const auto lerr = ::GetLastError();
-			errorW(L"un-expected reason=%lu, lerr=%lu, continue", reason, lerr);
+			errorW(L"un-expected reason=%lu lerr=%lu, continue", reason, lerr);
 			continue;
 		}
 

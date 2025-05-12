@@ -27,32 +27,35 @@
     <ClCompile Include="main.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="String.cpp">
+    <ClCompile Include="CSELIB-String.cpp">
       <Filter>ソース ファイル\WinCseLib</Filter>
     </ClCompile>
-    <ClCompile Include="System.cpp">
+    <ClCompile Include="CSELIB-System.cpp">
       <Filter>ソース ファイル\WinCseLib</Filter>
     </ClCompile>
-    <ClCompile Include="ObjectKey.cpp">
+    <ClCompile Include="CSELIB-ObjectKey.cpp">
       <Filter>ソース ファイル\WinCseLib</Filter>
     </ClCompile>
-    <ClCompile Include="Protect.cpp">
+    <ClCompile Include="CSELIB-Protect.cpp">
       <Filter>ソース ファイル\WinCseLib</Filter>
     </ClCompile>
-    <ClCompile Include="Find.cpp">
+    <ClCompile Include="CSEAS3-Find.cpp">
       <Filter>ソース ファイル\WinCseLib-aws-s3</Filter>
     </ClCompile>
-    <ClCompile Include="FEP.cpp">
+    <ClCompile Include="CSEAS3-FEP.cpp">
       <Filter>ソース ファイル\WinCseLib-aws-s3</Filter>
     </ClCompile>
-    <ClCompile Include="Time.cpp">
+    <ClCompile Include="CSELIB-Time.cpp">
       <Filter>ソース ファイル\WinCseLib</Filter>
     </ClCompile>
-    <ClCompile Include="Crypt.cpp">
+    <ClCompile Include="CSELIB-Crypt.cpp">
       <Filter>ソース ファイル\WinCseLib</Filter>
     </ClCompile>
-    <ClCompile Include="File.cpp">
+    <ClCompile Include="CPP-File.cpp">
       <Filter>ソース ファイル\CPP</Filter>
+    </ClCompile>
+    <ClCompile Include="CSELIB-File.cpp">
+      <Filter>ソース ファイル\WinCseLib</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

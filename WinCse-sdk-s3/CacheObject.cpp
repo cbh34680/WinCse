@@ -1,7 +1,7 @@
 #include "CacheObject.hpp"
 
 using namespace CSELIB;
-using namespace CSEDAS3;
+using namespace CSESS3;
 
 
 #define LN              L"\n"
@@ -10,7 +10,6 @@ using namespace CSEDAS3;
 #define INDENT3         L"\t\t\t"
 #define INDENT4         L"\t\t\t\t"
 #define INDENT5         L"\t\t\t\t\t"
-
 
 void CacheHeadObject::coReport(CALLER_ARG FILE* fp) const
 {

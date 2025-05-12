@@ -9,33 +9,37 @@
 
 static void setup_stdout();
 
-// [CPP/File.cpp]
+// [CPP/CPP-File.cpp]
 void t_CPP_File();
+void t_CPP_File_Win32();
 
-// [WinCseLib/System.cpp]
+// [WinCseLib/CSELIB-System.cpp]
 void t_WinCseLib_System_AbnormalEnd();
 
-// [WinCseLib/Crypt.cpp]
+// [WinCseLib/CSELIB-Crypt.cpp]
 void t_WinCseLib_Crypt();
 
-// [WinCseLib/String.cpp]
+// [WinCseLib/CSELIB-File.cpp]
+void t_WinCseLib_File();
+
+// [WinCseLib/CSELIB-String.cpp]
 void t_WinCseLib_String_MBWC();
 void t_WinCseLib_String_TrimW();
 void t_WinCseLib_String_SplitString();
 void t_WinCseLib_String_SplitPath();
 
-// [WinCseLib/ObjectKey.cpp]
+// [WinCseLib/CSELIB-ObjectKey.cpp]
 void t_WinCseLib_ObjectKey_fromPath();
 void t_WinCseLib_ObjectKey_fromWinPath();
 void t_WinCseLib_ObjectKey();
 
-// [WinCseLib/Protect.cpp]
+// [WinCseLib/CSELIB-Protect.cpp]
 void t_WinCseLib_Protect();
 
-// [WinCseLib/Time.cpp]
+// [WinCseLib/CSELIB-Time.cpp]
 void t_WinCseLib_Time();
 
-// [WinCseLib-aws-s3/Find.cpp]
+// [WinCseLib-aws-s3/CSEAS3-Find.cpp]
 void t_WinCseLib_aws_s3_Find();
 
 
@@ -48,23 +52,29 @@ int wmain(int, wchar_t**)
 
     std::wcout << L"Current Directory=" << curdir << std::endl;
 
-#if 1
-    /* [CPP/File.cpp] */
+#if 0
+    /* [CPP/CPP-File.cpp] */
     t_CPP_File();
+    t_CPP_File_Win32();
 #endif
 
 #if 0
-	/* [WinCseLib/System.cpp] */
+	/* [WinCseLib/CSELIB-System.cpp] */
     t_WinCseLib_System_AbnormalEnd();
 #endif
 
 #if 0
-    /* [WinCseLib/Crypt.cpp] */
+    /* [WinCseLib/CSELIB-Crypt.cpp] */
     t_WinCseLib_Crypt();
 #endif
 
+#if 1
+    /* [WinCseLib/CSELIB-File.cpp] */
+    t_WinCseLib_File();
+#endif
+
 #if 0
-    /* [WinCseLib/String.cpp */
+    /* [WinCseLib/CSELIB-String.cpp */
     t_WinCseLib_String_MBWC();
     t_WinCseLib_String_TrimW();
     t_WinCseLib_String_SplitString();
@@ -72,24 +82,24 @@ int wmain(int, wchar_t**)
 #endif
 
 #if 0
-    /* [WinCseLib/ObjectKey.cpp */
+    /* [WinCseLib/CSELIB-ObjectKey.cpp */
     t_WinCseLib_ObjectKey();
     t_WinCseLib_ObjectKey_fromPath();
     t_WinCseLib_ObjectKey_fromWinPath();
 #endif
 
 #if 0
-    /* [WinCseLib/Protect.cpp] */
+    /* [WinCseLib/CSELIB-Protect.cpp] */
     t_WinCseLib_Protect();
 #endif
 
 #if 0
-    /* [WinCseLib/Time.cpp] */
+    /* [WinCseLib/CSELIB-Time.cpp] */
     t_WinCseLib_Time();
 #endif
 
 #if 0
-    /* [WinCseLib-aws-s3/Find.cpp] */
+    /* [WinCseLib-aws-s3/CSEAS3-Find.cpp] */
     t_WinCseLib_aws_s3_Find();
 #endif
 

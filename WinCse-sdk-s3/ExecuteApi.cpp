@@ -2,81 +2,15 @@
 #include "aws_sdk_s3.h"
 
 using namespace CSELIB;
-using namespace CSEDAS3;
+using namespace CSESS3;
 
 
-ExecuteApi::ExecuteApi(
-    IWorker* argDelayedWorker,
-    const RuntimeEnv* argRuntimeEnv,
-    const std::wstring& argRegion,
-    const std::wstring& argAccessKeyId,
-    const std::wstring& argSecretAccessKey)
+ExecuteApi::ExecuteApi(IWorker* argDelayedWorker, const RuntimeEnv* argRuntimeEnv, Aws::S3::S3Client* argS3Client)
     :
     mDelayedWorker(argDelayedWorker),
-    mRuntimeEnv(argRuntimeEnv)
+    mRuntimeEnv(argRuntimeEnv),
+    mS3Client(argS3Client)
 {
-    NEW_LOG_BLOCK();
-
-    // S3 クライアントの生成
-
-    mSdkOptions = std::make_unique<Aws::SDKOptions>();
-    Aws::InitAPI(*mSdkOptions);
-
-    auto region{ WC2MB(argRegion) };
-
-    Aws::Client::ClientConfiguration config;
-    if (argRegion.empty())
-    {
-        // とりあえずデフォルト・リージョンとして設定しておく
-
-        traceA("argRegion empty, set default");
-
-        region = AWS_DEFAULT_REGION;
-    }
-
-    traceA("region=%s", region.c_str());
-
-    // 東京) Aws::Region::AP_NORTHEAST_1;
-    // 大阪) Aws::Region::AP_NORTHEAST_3;
-
-    config.region = region;
-
-    Aws::S3::S3Client* client = nullptr;
-
-    if (!argAccessKeyId.empty() && !argSecretAccessKey.empty())
-    {
-        const Aws::Auth::AWSCredentials credentials{ WC2MB(argAccessKeyId), WC2MB(argSecretAccessKey) };
-
-        client = new Aws::S3::S3Client(credentials, nullptr, config);
-
-        traceW(L"use credentials");
-    }
-    else
-    {
-        client = new Aws::S3::S3Client(config);
-
-        traceW(L"no credentials");
-    }
-
-    APP_ASSERT(client);
-    mS3Client = std::unique_ptr<Aws::S3::S3Client>(client);
-}
-
-ExecuteApi::~ExecuteApi()
-{
-    NEW_LOG_BLOCK();
-
-    // デストラクタからも呼ばれるので、再入可能としておくこと
-
-    // AWS S3 処理終了
-
-    if (mSdkOptions)
-    {
-        traceW(L"aws shutdown");
-
-        Aws::ShutdownAPI(*mSdkOptions);
-        mSdkOptions.reset();
-    }
 }
 
 bool ExecuteApi::isInBucketFilters(const std::wstring& argBucket) const

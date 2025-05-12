@@ -2,6 +2,7 @@
 //
 // AWS SDK ŠÖ˜A
 //
+#include "aws_sdk_s3_client.h"
 
 #include "internal_undef_alloc.h"
 
@@ -12,9 +13,6 @@
 #endif
 
 #pragma warning(push, 0)
-#include <aws/core/auth/AWSCredentials.h>
-#include <aws/core/auth/AWSCredentialsProvider.h>
-
 #include <aws/s3/model/GetBucketLocationRequest.h>
 #include <aws/s3/model/ListBucketsRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
@@ -25,12 +23,12 @@
 #include <aws/s3/model/DeleteObjectsRequest.h>
 
 // Multipart upload
+#include <aws/s3/model/AbortMultipartUploadRequest.h>
 #include <aws/s3/model/CreateMultipartUploadRequest.h>
+#include <aws/s3/model/CompleteMultipartUploadRequest.h>
+#include <aws/s3/model/CompletedMultipartUpload.h>
 #include <aws/s3/model/CompletedPart.h>
 #include <aws/s3/model/UploadPartRequest.h>
-#include <aws/s3/model/AbortMultipartUploadRequest.h>
-#include <aws/s3/model/CompletedMultipartUpload.h>
-#include <aws/s3/model/CompleteMultipartUploadRequest.h>
 #pragma warning(pop)
 
 #undef USE_IMPORT_EXPORT

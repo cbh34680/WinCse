@@ -1,18 +1,8 @@
 #include "CSDeviceBase.hpp"
 
 using namespace CSELIB;
-using namespace CSEDAS3;
+using namespace CSESS3;
 
-
-static bool decryptIfNecessaryW(const std::wstring& argSecretKey, std::wstring* pInOut);
-
-CSDeviceBase::CSDeviceBase(const std::wstring& argIniSection,
-    const std::map<std::wstring, IWorker*>& argWorkers)
-    :
-    mIniSection(argIniSection),
-    mWorkers(argWorkers)
-{
-}
 
 struct TimerTask : public IScheduledTask
 {
@@ -80,8 +70,6 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
     }
 
     APP_ASSERT(!clientGuid.empty());
-
-    // ini ファイルから値を取得
 
     // バケット名フィルタ
 
@@ -170,11 +158,6 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
     }
 #endif
 
-    // AWS 接続リージョン
-
-    std::wstring region;
-    GetIniStringW(confPath, mIniSection, L"region", &region);
-
     // 実行時変数
 
     auto runtimeEnv = std::make_unique<RuntimeEnv>(
@@ -188,7 +171,7 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
         GetIniIntW(confPath,    mIniSection,    L"max_display_buckets",              8,     0, INT_MAX - 1),
         GetIniIntW(confPath,    mIniSection,    L"max_display_objects",           1000,     0, INT_MAX - 1),
         GetIniIntW(confPath,    mIniSection,    L"object_cache_expiry_min",          5,     1,          60),
-        region,
+        this->getClientRegion(),
         GetIniBoolW(confPath,   mIniSection,    L"strict_bucket_region",        false),
         GetIniBoolW(confPath,   mIniSection,    L"strict_file_timestamp",       false),
         GetIniIntW(confPath,	mIniSection,	L"transfer_write_size_mib",			10,     5,          100)
@@ -196,54 +179,9 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
 
     traceW(L"runtimeEnv=%s", runtimeEnv->str().c_str());
 
-    // AWS 認証情報
-
-    std::wstring accessKeyId;
-    std::wstring secretAccessKey;
-
-    GetIniStringW(confPath, mIniSection, L"aws_access_key_id",     &accessKeyId);
-    GetIniStringW(confPath, mIniSection, L"aws_secret_access_key", &secretAccessKey);
-
-    // レジストリ "HKLM:\SOFTWARE\Microsoft\Cryptography" から "MachineGuid" の値を取得
-
-    std::wstring regSecretKey;
-
-    const auto lstatus = GetCryptKeyFromRegistryW(&regSecretKey);
-    if (lstatus != ERROR_SUCCESS)
-    {
-        errorW(L"fault: GetCryptKeyFromRegistry");
-        return STATUS_OBJECT_NAME_NOT_FOUND;
-    }
-
-    if (regSecretKey.length() < 32)
-    {
-        errorW(L"%s: illegal data", regSecretKey.c_str());
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-#ifdef _DEBUG
-    traceW(L"accessKeyId=%s, secretAccessKey=%s", accessKeyId.c_str(), secretAccessKey.c_str());
-#endif
-
-    // MachineGuid の値をキーにして keyid&secret を復号化 (必要なら)
-
-    if (!decryptIfNecessaryW(regSecretKey, &accessKeyId))
-    {
-        errorW(L"%s: keyid decrypt fault", accessKeyId.c_str());
-        return STATUS_ENCRYPTION_FAILED;
-    }
-
-    if (!decryptIfNecessaryW(regSecretKey, &secretAccessKey))
-    {
-        errorW(L"%s: secret decrypt fault", secretAccessKey.c_str());
-        return STATUS_ENCRYPTION_FAILED;
-    }
-
-    traceW(L"accessKeyId=%s***, secretAccessKey=%s***", accessKeyId.substr(0, 5).c_str(), secretAccessKey.substr(0, 5).c_str());
-
     // API 実行オブジェクト
 
-    auto execApi{ std::make_unique<ExecuteApi>(getWorker(L"delayed"), runtimeEnv.get(), region, accessKeyId, secretAccessKey) };
+    auto execApi{ std::make_unique<ExecuteApi>(getWorker(L"delayed"), runtimeEnv.get(), this->getClient()) };
     APP_ASSERT(execApi);
 
     if (!execApi->Ping(START_CALLER0))
@@ -283,99 +221,69 @@ VOID CSDeviceBase::OnSvcStop()
 {
 }
 
-static bool decryptIfNecessaryA(const std::string& argSecretKey, std::string* pInOut)
+void CSDeviceBase::printReport(FILE* fp)
 {
-    APP_ASSERT(pInOut);
+    fwprintf(fp, L"[ListBucketsCache]\n");
+    mQueryBucket->qbReportCache(START_CALLER fp);
 
-    std::string str{ *pInOut };
-
-    if (!str.empty())
-    {
-        if (str.length() > 8)
-        {
-            if (str.substr(0, 8) == "{aes256}")
-            {
-                NEW_LOG_BLOCK();
-
-                // 先頭の "{aes256}" を除く
-
-                const auto concatB64Str{ str.substr(8) };
-
-                traceA("concatB64Str=%s", concatB64Str.c_str());
-
-                // MachineGuid の値を AES の key とし、iv には key[0..16] を設定する
-
-                // BASE64 文字列をデコード
-
-                std::string concatStr;
-                if (!Base64DecodeA(concatB64Str, &concatStr))
-                {
-                    errorW(L"fault: Base64DecodeA");
-                    return false;
-                }
-
-                const std::vector<BYTE> concatBytes{ concatStr.cbegin(), concatStr.cend() };
-
-                if (concatBytes.size() < 17)
-                {
-                    // IV + データなので最低でも 16 + 1 byte は必要
-
-                    errorW(L"fault: concatBytes.size() < 17");
-                    return false;
-                }
-
-                // 先頭の 16 byte が IV
-
-                const std::vector<BYTE> aesIV{ concatStr.cbegin(), concatStr.cbegin() + 16 };
-
-                // それ以降がデータ
-
-                const std::vector<BYTE> encrypted{ concatStr.cbegin() + 16, concatStr.cend() };
-
-                // 復号化
-
-                std::vector<BYTE> decrypted;
-
-                const std::vector<BYTE> aesKey{ argSecretKey.cbegin(), argSecretKey.cend() };
-
-                if (!DecryptAES(aesKey, aesIV, encrypted, &decrypted))
-                {
-                    errorW(L"fault: DecryptAES");
-                    return false;
-                }
-
-                // これだと strlen() のサイズと一致しなくなる
-                //str.assign(decrypted.begin(), decrypted.end());
-
-                // 入力が '\0' 終端であることを前提に char* から std::string を初期化する
-
-                //str = (char*)decrypted.data();
-                //*pInOut = std::move(str);
-
-                *pInOut = std::string((char*)decrypted.data());
-
-                traceW(L"success: DecryptAES");
-            }
-        }
-    }
-
-    return true;
+    fwprintf(fp, L"[ObjectCache]\n");
+    mQueryObject->qoReportCache(START_CALLER fp);
 }
 
-static bool decryptIfNecessaryW(const std::wstring& argSecretKey, std::wstring* pInOut)
+void CSDeviceBase::onTimer()
 {
-    const auto secretKey{ WC2MB(argSecretKey) };
-    auto data{ WC2MB(*pInOut) };
+    NEW_LOG_BLOCK();
 
-    if (decryptIfNecessaryA(secretKey, &data))
+    // TimerTask から呼び出され、メモリの古いものを削除
+
+    const auto now{ std::chrono::system_clock::now() };
+
+    traceW(L"qoDeleteOldCache");
+
+    const auto num = mQueryObject->qoDeleteOldCache(START_CALLER
+        now - std::chrono::minutes(mRuntimeEnv->ObjectCacheExpiryMin));
+
+    traceW(L"delete %d records", num);
+}
+
+void CSDeviceBase::onIdle()
+{
+    NEW_LOG_BLOCK();
+
+    // IdleTask から呼び出され、メモリやファイルの古いものを削除
+
+    const auto now{ std::chrono::system_clock::now() };
+
+    // IdleTask から呼び出され、メモリやファイルの古いものを削除
+
+    // バケット・キャッシュの再作成
+
+    traceW(L"qbReload");
+
+    mQueryBucket->qbReload(START_CALLER
+        now - std::chrono::minutes(mRuntimeEnv->BucketCacheExpiryMin));
+}
+
+bool CSDeviceBase::onNotif(const std::wstring& argNotifName)
+{
+    NEW_LOG_BLOCK();
+
+    traceW(L"argNotifName=%s", argNotifName.c_str());
+
+    if (argNotifName == L"Global\\WinCse-util-awss3-clear-cache")
     {
-        *pInOut = MB2WC(data);
+        mQueryBucket->qbClearCache(START_CALLER0);
+        mQueryObject->qoClearCache(START_CALLER0);
+
+        this->onTimer();
+        this->onIdle();
+
+        traceW(L">>>>> CACHE CLEAN <<<<<");
 
         return true;
     }
 
     return false;
 }
-
 
 // EOF
