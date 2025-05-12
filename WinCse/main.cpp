@@ -31,7 +31,7 @@ static WCHAR PROGNAME[] = L"WinCse";
 static void app_terminate();
 static void app_sighandler(int signum);
 
-static WCHAR WINCSE_BUILD_TIME[] = L"Build: 2025/05/09 22:50 JST";
+static WCHAR WINCSE_BUILD_TIME[] = L"Build: 2025/05/12 13:45 JST";
 static WCHAR AWS_SDK_CPP_COMMIT[] = L"aws-sdk-cpp: Commit 6b03639";
 
 static void writeStats(
