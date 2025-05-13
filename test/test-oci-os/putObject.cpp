@@ -66,7 +66,7 @@ int putObject_main(int argc, char **argv) {
         {
             request.SetBody(inputData);
 
-#define SET_CONTENT_LENGTH (0)
+#define SET_CONTENT_LENGTH (1)
 
 #if SET_CONTENT_LENGTH
             inputData->seekg(0, std::ios::end);
@@ -74,6 +74,7 @@ int putObject_main(int argc, char **argv) {
             inputData->seekg(0, std::ios::beg);
 
             request.SetContentLength(contentLength);
+            std::cout << "SetContentLength(" << contentLength << ")" << std::endl;
 #endif
 
             std::cout << "Try PutObject" << std::endl <<
