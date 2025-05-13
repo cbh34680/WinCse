@@ -97,6 +97,10 @@ static std::shared_ptr<Aws::StringStream> makeStreamFromFile(CALLER_ARG const st
 
     APP_ASSERT(remainingTotal == 0);
 
+    traceW(L"stream length=%llu", stream->str().size());
+
+    APP_ASSERT(static_cast<FILEIO_LENGTH_T>(stream->str().size()) == argLength);
+
     return stream;
 }
 
@@ -155,12 +159,15 @@ bool ExecuteApi::uploadSimple(CALLER_ARG const ObjectKey& argObjKey, const FSP_F
 
         const auto body{ makeStreamFromFile(CONT_CALLER argInputPath, 0, argFileInfo.FileSize) };
 
-        if (!body)
+        if (!*body)
         {
             errorW(L"fault: makeStreamFromFile argSourcePath=%s", argInputPath);
             return false;
         }
 
+        APP_ASSERT(body->good());
+
+        request.SetContentLength(body->str().length());
         request.SetBody(body);
     }
 

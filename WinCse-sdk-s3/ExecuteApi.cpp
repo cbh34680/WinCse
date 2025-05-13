@@ -316,7 +316,7 @@ bool ExecuteApi::ListObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryList
             // "dir/"           --> ""              ... 上記で除かれている
             // "dir/subdir/"    --> "subdir/"       ... 以降はこちらが対象
 
-            const auto key{ keyFull.substr(argKeyLen) };
+            const auto key{ SafeSubStringW(keyFull, argKeyLen) };
 
             // CommonPrefixes(=ディレクトリ) なので、"/" 終端されている
 
@@ -337,7 +337,7 @@ bool ExecuteApi::ListObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryList
 
             // ディレクトリと同じファイル名は無視するために保存
 
-            dirNames.insert(key.substr(0, key.length() - 1));
+            dirNames.insert(SafeSubStringW(key, 0, key.length() - 1));
 
             // CommonPrefix なので、ディレクトリ・オブジェクトとして登録
 
@@ -375,7 +375,7 @@ bool ExecuteApi::ListObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryList
             // "dir/"           --> ""              ... 上記で除かれている
             // "dir/file1.txt"  --> "file1.txt"     ... 以降はこちらが対象
 
-            const auto key{ keyFull.substr(argKeyLen) };
+            const auto key{ SafeSubStringW(keyFull, argKeyLen) };
 
             APP_ASSERT(!key.empty());
             APP_ASSERT(key.back() != L'/');

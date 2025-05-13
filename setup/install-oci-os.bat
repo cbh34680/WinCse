@@ -10,13 +10,6 @@ if %errorlevel% neq 0 (
   exit
 )
 
-set DRIVELETTER=%~d0%
-set DRIVELETTER=%DRIVELETTER:~0,1%
-
-@echo on
-if exist Y:\ net use Y: /delete
-
-call %~dp0setvars.bat
-
-net use Y: "\\%REGKEY%\%DRIVELETTER%$%~p0..\..\MOUNT"
+cd "%~dp0"
+powershell.exe -ExecutionPolicy Bypass -Command ".\gui-aws-s3.ps1" "oci-os"
 

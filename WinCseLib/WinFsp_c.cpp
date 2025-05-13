@@ -1082,6 +1082,8 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
     PTFS *Ptfs = 0;
     NTSTATUS Result = STATUS_UNSUCCESSFUL;
 #if !WINFSP_PASSTHROUGH
+    ULONG CheckAndExit = 0;
+
     FSP_FSCTL_VOLUME_PARAMS VolumeParams = { 0 };
 
     VolumeParams.SectorSize = ALLOCATION_UNIT;
@@ -1096,8 +1098,8 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
     VolumeParams.PassQueryDirectoryPattern = 1;
     VolumeParams.FlushAndPurgeOnCleanup = 1;
     VolumeParams.UmFileContextIsUserContext2 = 1;
-#endif
 
+#endif
     for (argp = argv + 1, arge = argv + argc; arge > argp; argp++)
     {
         if (L'-' != argp[0][0])
@@ -1122,6 +1124,11 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
             argtos(VolumePrefix);
             break;
 //#if !WINFSP_PASSTHROUGH
+        case L'C':
+        {
+            argtol(CheckAndExit);
+            break;
+        }
         case L'S':
         case L'T':
         {
@@ -1136,7 +1143,9 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
     }
 
     if (arge > argp)
+    {
         goto usage;
+    }
 
     if (0 == PassThrough && 0 != VolumePrefix)
     {
@@ -1160,7 +1169,9 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
     }
 
     if (0 == PassThrough || 0 == MountPoint)
+    {
         goto usage;
+    }
 
     EnableBackupRestorePrivileges();
 
@@ -1211,6 +1222,14 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
     if (!NT_SUCCESS(Result))
     {
         fail(L"fault: OnSvcStart");
+        goto exit;
+    }
+
+    if (CheckAndExit)
+    {
+        info(L"Check configuration and exit");
+
+        Result = STATUS_UNSUCCESSFUL;
         goto exit;
     }
 

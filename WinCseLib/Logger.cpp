@@ -142,7 +142,7 @@ static void writeTextToTarget(const std::wstring& argText, const OutputTarget& t
 #ifdef _DEBUG
 	std::wostringstream ssDebug;
 
-	ssDebug << L"| ";
+	ssDebug << L"|" << target.prefix << L"| ";
 	ssDebug << std::setw(3) << (tid % 1000);
 	ssDebug << L' ' << argText;
 
@@ -246,18 +246,32 @@ Logger* Logger::mInstance = nullptr;
 
 void Logger::writeToTraceLog(std::optional<std::wstring> optText)
 {
-	if (optText)
+	if (!optText)
 	{
-		writeTextToTarget(*optText, { mOutputDir, L"trace", mTraceLogStream, mTraceLogStreamOK, mTraceLogFlushTime });
+		return;
 	}
+
+	if (this->mPrintScreen)
+	{
+		std::wcout << L"|trace| " << *optText;
+	}
+
+	writeTextToTarget(*optText, { mOutputDir, L"trace", mTraceLogStream, mTraceLogStreamOK, mTraceLogFlushTime });
 }
 
 void Logger::writeToErrorLog(std::optional<std::wstring> optText)
 {
-	if (optText)
+	if (!optText)
 	{
-		writeTextToTarget(*optText, { mOutputDir, L"error", mErrorLogStream, mErrorLogStreamOK, mErrorLogFlushTime });
+		return;
 	}
+
+	if (this->mPrintScreen)
+	{
+		std::wcout << L"|error| " << *optText;
+	}
+
+	writeTextToTarget(*optText, { mOutputDir, L"error", mErrorLogStream, mErrorLogStreamOK, mErrorLogFlushTime });
 }
 
 std::optional<std::wstring> Logger::makeTextW(int argIndent, PCWSTR argPath, int argLine, PCWSTR argFunc, DWORD argLastError, PCWSTR argFormat, ...) const 

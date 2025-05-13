@@ -97,7 +97,7 @@ bool resolveCacheFilePath(const std::filesystem::path& argDir, const std::wstrin
 
     // 先頭の 2Byte はディレクトリ名
 
-    auto filePath{ argDir / nameSha256.substr(0, 2) };
+    auto filePath{ argDir / SafeSubStringW(nameSha256, 0, 2) };
 
     std::error_code ec;
     std::filesystem::create_directory(filePath, ec);
@@ -108,7 +108,7 @@ bool resolveCacheFilePath(const std::filesystem::path& argDir, const std::wstrin
         return false;
     }
 
-    filePath.append(nameSha256.substr(2));
+    filePath.append(SafeSubStringW(nameSha256, 2));
 
     *pPath = std::move(filePath);
 

@@ -91,6 +91,8 @@ namespace CSELIB {
 //
 WINCSELIB_API std::wstring MB2WC(const std::string& str);
 WINCSELIB_API std::string WC2MB(const std::wstring& wstr);
+WINCSELIB_API std::wstring SafeSubStringW(const std::wstring& str, std::wstring::size_type pos, std::wstring::size_type len=std::wstring::npos);
+WINCSELIB_API std::string SafeSubStringA(const std::string& str, std::string::size_type pos, std::string::size_type len=std::string::npos);
 WINCSELIB_API std::wstring TrimW(const std::wstring& str);
 WINCSELIB_API std::vector<std::wstring> SplitString(const std::wstring& input, wchar_t sep, bool ignoreEmpty);
 WINCSELIB_API bool SplitObjectKey(const std::wstring& argKey, std::wstring* pParentDir /* nullable */, std::wstring* pFileName /* nullable */);
@@ -137,6 +139,8 @@ WINCSELIB_API LSTATUS GetCryptKeyFromRegistryA(std::string* pOutput);
 WINCSELIB_API LSTATUS GetCryptKeyFromRegistryW(std::wstring* pOutput);
 WINCSELIB_API NTSTATUS ComputeSHA256A(const std::string& input, std::string* pOutput);
 WINCSELIB_API NTSTATUS ComputeSHA256W(const std::wstring& input, std::wstring* pOutput);
+WINCSELIB_API bool DecryptCredentialStringA(const std::string& argSecretKey, std::string* pInOut);
+WINCSELIB_API bool DecryptCredentialStringW(const std::wstring& argSecretKey, std::wstring* pInOut);
 
 WINCSELIB_API int NamedWorkersToMap(NamedWorker workers[], std::map<std::wstring, IWorker*>* pWorkerMap);
 

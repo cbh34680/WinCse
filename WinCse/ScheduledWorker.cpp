@@ -56,7 +56,19 @@ NTSTATUS ScheduledWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
 
 	for (int i=0; i<WORKER_MAX; i++)
 	{
-		auto& thr = mThreads.emplace_back(&ScheduledWorker::listen, this, i);
+		EventHandle hStarted = ::CreateEventW(NULL, FALSE, FALSE, NULL);
+		APP_ASSERT(hStarted.valid());
+
+		auto& thr = mThreads.emplace_back(&ScheduledWorker::listen, this, i, hStarted.handle());
+		::SwitchToThread();
+
+		// スレッドが開始されたことを待つ
+
+		if (::WaitForSingleObject(hStarted.handle(), INFINITE) != WAIT_OBJECT_0)
+		{
+			errorW(L"fault: WaitForSingleObject(%d)", i);
+			return STATUS_UNSUCCESSFUL;
+		}
 
 		const auto priority = this->getThreadPriority();
 
@@ -114,9 +126,15 @@ VOID ScheduledWorker::OnSvcStop()
 	mTasks.clear();
 }
 
-void ScheduledWorker::listen(int argThreadIndex)
+void ScheduledWorker::listen(int argThreadIndex, HANDLE argStarted)
 {
 	NEW_LOG_BLOCK();
+
+	if (!::SetEvent(argStarted))
+	{
+		errorW(L"fault: SetEvent(%d)", argThreadIndex);
+		return;
+	}
 
 	const auto timePeriod = this->getTimePeriodMillis();
 	const auto klassName{ getDerivedClassNamesW(this) };

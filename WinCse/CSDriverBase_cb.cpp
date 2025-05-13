@@ -472,6 +472,8 @@ NTSTATUS CSDriverBase::RelayOnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileS
         }
     }
 
+    GetLogger()->printAlsoOnScreen(false);
+
     return STATUS_SUCCESS;
 }
 

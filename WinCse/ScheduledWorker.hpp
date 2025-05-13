@@ -17,7 +17,7 @@ private:
 	mutable std::mutex									mGuard;
 
 protected:
-	void listen(int i);
+	void listen(int artThreadIndex, HANDLE argStarted);
 	std::deque<std::shared_ptr<CSELIB::IScheduledTask>> getTasks() const;
 
 	virtual int getThreadPriority() const = 0;

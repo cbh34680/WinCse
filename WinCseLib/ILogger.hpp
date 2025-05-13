@@ -9,6 +9,7 @@ struct ILogger
 	virtual ~ILogger() = default;
 
 	virtual PCWSTR getOutputDirectory() const = 0;
+	virtual void printAlsoOnScreen(bool argPrintScreen) = 0;
 
 	virtual void writeToTraceLog(std::optional<std::wstring> argText) = 0;
 	virtual void writeToErrorLog(std::optional<std::wstring> argText) = 0;

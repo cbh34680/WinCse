@@ -34,9 +34,7 @@ static void app_sighandler(int signum);
 static WCHAR WINCSE_BUILD_TIME[] = L"Build: 2025/05/12 13:45 JST";
 static WCHAR AWS_SDK_CPP_COMMIT[] = L"aws-sdk-cpp: Commit 6b03639";
 
-static void writeStats(
-    PCWSTR logDir, const WINFSP_STATS* libStats,
-    const WINCSE_DRIVER_STATS* appStats);
+static void writeStats(PCWSTR logDir, const WINFSP_STATS* libStats, const WINCSE_DRIVER_STATS* appStats);
 
 /*
  * DEBUG ARGS
@@ -179,8 +177,13 @@ static int app_main(int argc, wchar_t** argv, PCWSTR iniSection, PCWSTR traceLog
     // 6) DLL アンロード (DllModuleRAII デストラクタ)
     // 7) ロガー解放 (DeleteLogger)
     //
-    if (CreateLogger(traceLogDir))
+    auto* logger = CreateLogger(traceLogDir);
+    if (logger)
     {
+        // CSDriverBase::RelayOnSvcStart() の最後で false に設定している
+
+        logger->printAlsoOnScreen(true);
+
         // traceW/A が使えるのはここから
 
         NEW_LOG_BLOCK();
@@ -195,12 +198,10 @@ static int app_main(int argc, wchar_t** argv, PCWSTR iniSection, PCWSTR traceLog
                 wchar_t defaultIniSection[] = L"default";
                 if (!iniSection)
                 {
-                    std::wcout << L"use 'default' ini section" << std::endl;
                     traceW(L"use 'default' ini section");
                     iniSection = defaultIniSection;
                 }
 
-                std::wcout << L"iniSection: " << iniSection << std::endl;
                 traceW(L"iniSection: %s", iniSection);
 
                 DelayedWorker dworker(iniSection);
@@ -213,7 +214,6 @@ static int app_main(int argc, wchar_t** argv, PCWSTR iniSection, PCWSTR traceLog
                     { nullptr, nullptr },
                 };
 
-                std::wcout << L"load dll type=" << csDeviceType << std::endl;
                 traceW(L"load dll type=%s", csDeviceType.c_str());
 
                 // dll のロード
@@ -229,51 +229,43 @@ static int app_main(int argc, wchar_t** argv, PCWSTR iniSection, PCWSTR traceLog
                     {
                         // このブロック化は必要
 
-                        std::wcout << L"call NewCSDriver" << std::endl;
                         traceW(L"call NewCSDriver");
 
                         auto app{ std::unique_ptr<ICSDriver>{ NewCSDriver(csDeviceType.c_str(), iniSection, workers, dll.mDevice, &appStats) } };
                         if (app)
                         {
                             appif.mDriver = app.get();
-
                             rc = WinFspMain(argc, argv, PROGNAME, &appif);
                         }
                         else
                         {
-                            std::wcerr << L"fault: NewCSDriver" << std::endl;
                             errorW(L"fault: NewCSDriver");
                         }
                     }
 
-                    PCWSTR outputDir = GetLogger()->getOutputDirectory();
+                    PCWSTR outputDir = logger->getOutputDirectory();
                     if (outputDir)
                     {
                         writeStats(outputDir, &appif.FspStats, &appStats);
                     }
 
-                    std::wcout << L"WinFspMain done. return=" << rc << std::endl;
                     traceW(L"WinFspMain done. return=%d", rc);
                 }
                 else
                 {
-                    std::wcerr << L"fault: loadCSDevice" << std::endl;
                     errorW(L"fault: loadCSDevice");
                 }
             }
             catch (const std::exception& ex)
             {
-                std::cerr << "catch exception: what=" << ex.what() << std::endl;
                 errorA("catch exception: what=%s", ex.what());
             }
             catch (...)
             {
-                std::cerr << "catch exception: unknown" << std::endl;
                 errorA("catch exception: unknown");
             }
         }
 
-        std::wcout << L"all done." << std::endl;
         traceW(L"all done.");
     }
     else
@@ -338,6 +330,7 @@ int wmain(int argc, wchar_t** argv)
     std::wcout << L"ProcessId: " << pid << std::endl;
 
     // メモリリーク調査を目的としてブロックを分ける
+
     int rc = EXIT_FAILURE;
 
     try
@@ -354,6 +347,10 @@ int wmain(int argc, wchar_t** argv)
 
             switch (argp[0][1])
             {
+                case L'C':
+                    // WinFsp_c.cpp で処理
+                    break;
+
                 case L'S':
                     iniSection = *(argp + 1);
                     break;
@@ -378,6 +375,7 @@ int wmain(int argc, wchar_t** argv)
         }
 
         // "\WinCse.aws-s3.Y\C$\folder\to\work" から "WinCse.aws-s3.Y" を取り出す
+
         const auto segments{ SplitString(VolumePrefix, L'\\', true) };
         if (segments.size() < 1)
         {
@@ -386,6 +384,7 @@ int wmain(int argc, wchar_t** argv)
         }
 
         // "WinCse.aws-s3.Y" の中から "aws-s3" を取り出す
+
         const auto names{ SplitString(segments[0], L'.', true) };
         if (names.size() < 2)
         {
@@ -429,9 +428,8 @@ static void writeStats(PCWSTR outputDir, const WINFSP_STATS* libStats, const WIN
     std::wostringstream ss;
 
     ss << outputDir;
-    ss << L'\\';
-    ss << L"stats";
-    ss << L'-';
+
+    ss << L"\\WinCse-stats-";
     ss << std::setw(4) << std::setfill(L'0') << st.wYear;
     ss << std::setw(2) << std::setfill(L'0') << st.wMonth;
     ss << std::setw(2) << std::setfill(L'0') << st.wDay;

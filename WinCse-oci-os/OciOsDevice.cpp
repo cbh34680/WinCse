@@ -1,7 +1,7 @@
-#include "AwsS3Device.hpp"
+#include "OciOsDevice.hpp"
 
 using namespace CSELIB;
-using namespace CSEAS3;
+using namespace CSEOOS;
 
 
 ICSDevice* NewCSDevice(PCWSTR argIniSection, NamedWorker argWorkers[])
@@ -21,10 +21,10 @@ ICSDevice* NewCSDevice(PCWSTR argIniSection, NamedWorker argWorkers[])
         }
     }
 
-    return new AwsS3Device(argIniSection, workers);
+    return new OciOsDevice(argIniSection, workers);
 }
 
-AwsS3Device::AwsS3Device(const std::wstring& argIniSection, const std::map<std::wstring, CSELIB::IWorker*>& argWorkers)
+OciOsDevice::OciOsDevice(const std::wstring& argIniSection, const std::map<std::wstring, CSELIB::IWorker*>& argWorkers)
     :
     CSDevice(argIniSection, argWorkers)
 {
@@ -33,7 +33,7 @@ AwsS3Device::AwsS3Device(const std::wstring& argIniSection, const std::map<std::
     Aws::InitAPI(*mSdkOptions);
 }
 
-AwsS3Device::~AwsS3Device()
+OciOsDevice::~OciOsDevice()
 {
     NEW_LOG_BLOCK();
 
@@ -48,7 +48,7 @@ AwsS3Device::~AwsS3Device()
     }
 }
 
-NTSTATUS AwsS3Device::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
+NTSTATUS OciOsDevice::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 {
     NEW_LOG_BLOCK();
 
@@ -59,10 +59,27 @@ NTSTATUS AwsS3Device::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 
     // ini ファイルから値を取得
 
-    // 接続リージョン
+    // 接続リージョンとネームスペース
 
     std::wstring regionW;
-    GetIniStringW(confPath, mIniSection, L"region", &regionW);
+    std::wstring namespaceW;
+
+    GetIniStringW(confPath, mIniSection, L"region",    &regionW);
+    GetIniStringW(confPath, mIniSection, L"namespace", &namespaceW);
+
+    if (regionW.empty())
+    {
+        errorW(L"fault: regionW empty");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if (namespaceW.empty())
+    {
+        errorW(L"fault: namespaceW empty");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    traceW(L"regionW=%s namespaceW=%s", regionW.c_str(), namespaceW.c_str());
 
     // 認証情報
 
@@ -126,22 +143,18 @@ NTSTATUS AwsS3Device::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
     // S3 クライアントの生成
 
     auto regionA{ WC2MB(regionW) };
+    auto namespaceA{ WC2MB(namespaceW) };
 
     Aws::Client::ClientConfiguration config;
-    if (regionA.empty())
-    {
-        // とりあえずデフォルト・リージョンとして設定しておく
 
-        traceA("argRegion empty, set default");
+    // first param is namespace, 2nd param is region 
+    // S3 compatible URL is https://NAMESPACE.compat.objectstorage.REGION.oraclecloud.com/ 
 
-        regionA = AWS_DEFAULT_REGION;
-    }
+    config.endpointOverride = std::string("https://") + namespaceA + ".compat.objectstorage." + regionA + ".oraclecloud.com/";
+    traceA("config.endpointOverride=%s", config.endpointOverride.c_str());
 
-    traceA("regionA=%s", regionA.c_str());
-
-    // 東京) Aws::Region::AP_NORTHEAST_1;
-    // 大阪) Aws::Region::AP_NORTHEAST_3;
-
+    config.scheme = Aws::Http::Scheme::HTTP;
+    config.verifySSL = true;
     config.region = regionA;
 
     Aws::S3::S3Client* s3Client = nullptr;
@@ -153,7 +166,7 @@ NTSTATUS AwsS3Device::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 
         const Aws::Auth::AWSCredentials credentials{ accessKeyIdA, secretAccessKeyA };
 
-        s3Client = new Aws::S3::S3Client{ credentials, nullptr, config };
+        s3Client = new Aws::S3::S3Client{ credentials, config, Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never, false };
 
         traceW(L"use credentials");
     }

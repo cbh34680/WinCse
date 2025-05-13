@@ -74,6 +74,34 @@ std::wstring MB2WC(const std::string& str)
 	return std::wstring{ pWstr };
 }
 
+std::wstring SafeSubStringW(const std::wstring& str, std::wstring::size_type pos, std::wstring::size_type len)
+{
+	const auto strSize = str.size();
+
+	if (pos >= strSize)
+	{
+		return L""; // posが範囲外の場合は空文字列を返す
+	}
+
+	len = min(len, strSize - pos); // 取得長が範囲外にならないよう調整
+
+	return str.substr(pos, len);
+}
+
+std::string SafeSubStringA(const std::string& str, std::string::size_type pos, std::string::size_type len)
+{
+	const auto strSize = str.size();
+
+	if (pos >= strSize)
+	{
+		return ""; // posが範囲外の場合は空文字列を返す
+	}
+
+	len = min(len, strSize - pos); // 取得長が範囲外にならないよう調整
+
+	return str.substr(pos, len);
+}
+
 // argKey                       parentDir       filename
 // ------------------------------------------------------
 // ""						NG
