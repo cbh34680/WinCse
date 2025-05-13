@@ -56,7 +56,7 @@ int putObject_main(int argc, char **argv) {
         const Aws::String fileName{ __FILE__ };
 
         Aws::S3::Model::PutObjectRequest request;
-        request.WithBucket(bucketName).WithKey(fileName);
+        request.WithBucket(bucketName).WithKey("putObject.cpp");
 
         std::shared_ptr<Aws::IOStream> inputData = Aws::MakeShared<Aws::FStream>("SampleAllocationTag",
             fileName.c_str(),
