@@ -54,7 +54,14 @@ bool ExecuteApi::Ping(CALLER_ARG0) const
     // S3 接続試験
     traceW(L"Connection test");
 
+    Aws::S3::Model::ListBucketsRequest request;
+
+#if 1
+    const auto outcome = executeWithRetry(mS3Client, &Aws::S3::S3Client::ListBuckets, request, mRuntimeEnv->MaxApiRetryCount);
+#else
     const auto outcome = mS3Client->ListBuckets();
+#endif
+
     if (!outcomeIsSuccess(outcome))
     {
         errorW(L"fault: ListBuckets");
@@ -71,7 +78,12 @@ bool ExecuteApi::ListBuckets(CALLER_ARG DirEntryListType* pDirEntryList) const
 
     Aws::S3::Model::ListBucketsRequest request;
 
+#if 1
+    const auto outcome = executeWithRetry(mS3Client, &Aws::S3::S3Client::ListBuckets, request, mRuntimeEnv->MaxApiRetryCount);
+#else
     const auto outcome = mS3Client->ListBuckets(request);
+#endif
+
     if (!outcomeIsSuccess(outcome))
     {
         errorW(L"fault: ListBuckets");
@@ -134,7 +146,12 @@ bool ExecuteApi::GetBucketRegion(CALLER_ARG const std::wstring& argBucket, std::
     Aws::S3::Model::GetBucketLocationRequest request;
     request.SetBucket(WC2MB(argBucket));
 
+#if 1
+    const auto outcome = executeWithRetry(mS3Client, &Aws::S3::S3Client::GetBucketLocation, request, mRuntimeEnv->MaxApiRetryCount);
+#else
     const auto outcome = mS3Client->GetBucketLocation(request);
+#endif
+
     if (!outcomeIsSuccess(outcome))
     {
         errorW(L"fault: GetBucketLocation argBucket=%s", argBucket.c_str());
@@ -170,7 +187,11 @@ bool ExecuteApi::HeadObject(CALLER_ARG const ObjectKey& argObjKey, DirEntryType*
     request.SetBucket(argObjKey.bucketA());
     request.SetKey(argObjKey.keyA());
 
+#if 1
+    const auto outcome = executeWithRetry(mS3Client, &Aws::S3::S3Client::HeadObject, request, mRuntimeEnv->MaxApiRetryCount);
+#else
     const auto outcome = mS3Client->HeadObject(request);
+#endif
     if (!outcomeIsSuccess(outcome))
     {
         // HeadObject の実行時エラー、またはオブジェクトが見つからない
@@ -267,11 +288,14 @@ bool ExecuteApi::ListObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryList
             request.SetContinuationToken(continuationToken);
         }
 
+#if 1
+        const auto outcome = executeWithRetry(mS3Client, &Aws::S3::S3Client::ListObjectsV2, request, mRuntimeEnv->MaxApiRetryCount);
+#else
         const auto outcome = mS3Client->ListObjectsV2(request);
+#endif
         if (!outcomeIsSuccess(outcome))
         {
             errorW(L"fault: ListObjectsV2 argObjKey=%s", argObjKey.c_str());
-
             return false;
         }
 
@@ -452,7 +476,11 @@ bool ExecuteApi::DeleteObjects(CALLER_ARG const std::wstring& argBucket, const s
     request.SetBucket(WC2MB(argBucket));
     request.SetDelete(delete_objects);
 
+#if 1
+    const auto outcome = executeWithRetry(mS3Client, &Aws::S3::S3Client::DeleteObjects, request, mRuntimeEnv->MaxApiRetryCount);
+#else
     const auto outcome = mS3Client->DeleteObjects(request);
+#endif
 
     if (!outcomeIsSuccess(outcome))
     {
@@ -473,7 +501,12 @@ bool ExecuteApi::DeleteObject(CALLER_ARG const ObjectKey& argObjKey) const
     Aws::S3::Model::DeleteObjectRequest request;
     request.SetBucket(argObjKey.bucketA());
     request.SetKey(argObjKey.keyA());
+
+#if 1
+    const auto outcome = executeWithRetry(mS3Client, &Aws::S3::S3Client::DeleteObject, request, mRuntimeEnv->MaxApiRetryCount);
+#else
     const auto outcome = mS3Client->DeleteObject(request);
+#endif
 
     if (!outcomeIsSuccess(outcome))
     {
@@ -624,7 +657,12 @@ FILEIO_LENGTH_T ExecuteApi::GetObjectAndWriteFile(CALLER_ARG const ObjectKey& ar
     request.SetKey(argObjKey.keyA());
     request.SetRange(range);
 
+#if 1
+    const auto outcome = executeWithRetry(mS3Client, &Aws::S3::S3Client::GetObject, request, mRuntimeEnv->MaxApiRetryCount);
+#else
     const auto outcome = mS3Client->GetObject(request);
+#endif
+
     if (!outcomeIsSuccess(outcome))
     {
         errorW(L"fault: GetObject argObjKey=%s", argObjKey.c_str());

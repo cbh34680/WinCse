@@ -176,7 +176,11 @@ bool ExecuteApi::uploadSimple(CALLER_ARG const ObjectKey& argObjKey, const FSP_F
 
     traceW(L"PutObject argObjKey=%s, argInputPath=%s", argObjKey.c_str(), argInputPath);
 
+#if 1
+    const auto outcome = executeWithRetry(mS3Client, &Aws::S3::S3Client::PutObject, request, mRuntimeEnv->MaxApiRetryCount);
+#else
     const auto outcome = mS3Client->PutObject(request);
+#endif
 
     if (!outcomeIsSuccess(outcome))
     {
@@ -266,7 +270,11 @@ std::optional<Aws::String> ExecuteApi::uploadPart(CALLER_ARG
 
     uploadRequest.SetBody(body);
 
+#if 1
+    const auto uploadOutcome = executeWithRetry(mS3Client, &Aws::S3::S3Client::UploadPart, uploadRequest, mRuntimeEnv->MaxApiRetryCount);
+#else
     const auto uploadOutcome = mS3Client->UploadPart(uploadRequest);
+#endif
 
     if (!outcomeIsSuccess(uploadOutcome))
     {

@@ -168,6 +168,7 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
         clientGuid,
         STCTimeToWinFileTime100nsW(argWorkDir),
         ignoreFileNamePatterns,
+        GetIniIntW(confPath,    mIniSection,    L"max_api_retry_count",              3,     0,           5),
         GetIniIntW(confPath,    mIniSection,    L"max_display_buckets",              8,     0, INT_MAX - 1),
         GetIniIntW(confPath,    mIniSection,    L"max_display_objects",           1000,     0, INT_MAX - 1),
         GetIniIntW(confPath,    mIniSection,    L"object_cache_expiry_min",          5,     1,          60),
@@ -215,10 +216,6 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
     getWorker(L"timer")->addTask(new IdleTask{ this });
 
     return STATUS_SUCCESS;
-}
-
-VOID CSDeviceBase::OnSvcStop()
-{
 }
 
 void CSDeviceBase::printReport(FILE* fp)

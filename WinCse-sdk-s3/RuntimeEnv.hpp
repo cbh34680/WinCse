@@ -13,6 +13,7 @@ struct RuntimeEnv final
 		const std::wstring&					argClientGuid,
 		CSELIB::FILETIME_100NS_T			argDefaultCommonPrefixTime,
 		const std::optional<std::wregex>&	argIgnoreFileNamePatterns,
+		int									argMaxApiRetryCount,
 		int									argMaxDisplayBuckets,
 		int									argMaxDisplayObjects,
 		int									argObjectCacheExpiryMin,
@@ -26,6 +27,7 @@ struct RuntimeEnv final
 		ClientGuid							(argClientGuid),
 		DefaultCommonPrefixTime				(argDefaultCommonPrefixTime),
 		IgnoreFileNamePatterns				(argIgnoreFileNamePatterns),
+		MaxApiRetryCount					(argMaxApiRetryCount),
 		MaxDisplayBuckets					(argMaxDisplayBuckets),
 		MaxDisplayObjects					(argMaxDisplayObjects),
 		ObjectCacheExpiryMin				(argObjectCacheExpiryMin),
@@ -41,6 +43,7 @@ struct RuntimeEnv final
 	const std::wstring						ClientGuid;
 	const CSELIB::FILETIME_100NS_T			DefaultCommonPrefixTime;
 	const std::optional<std::wregex>		IgnoreFileNamePatterns;
+	const int								MaxApiRetryCount;
 	const int								MaxDisplayBuckets;
 	const int								MaxDisplayObjects;
 	const int								ObjectCacheExpiryMin;

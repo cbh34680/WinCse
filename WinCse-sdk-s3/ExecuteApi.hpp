@@ -16,36 +16,6 @@ private:
 	const RuntimeEnv* const				mRuntimeEnv;
 	Aws::S3::S3Client*					mS3Client;
 
-	template<typename T>
-	bool outcomeIsSuccess(const T& outcome) const
-	{
-		NEW_LOG_BLOCK();
-
-		const bool isSuccess = outcome.IsSuccess();
-		traceA("isSuccess=%s name=%s", BOOL_CSTRA(isSuccess), typeid(outcome).name());
-
-		if (!isSuccess)
-		{
-			const auto& err{ outcome.GetError() };
-
-			const auto mesg{ err.GetMessage().c_str() };
-			const auto code{ err.GetResponseCode() };
-			const auto type{ err.GetErrorType() };
-			const auto name{ err.GetExceptionName().c_str() };
-
-			if (static_cast<int>(code) == 404)
-			{
-				traceA("error: type=%d, code=%d, name=%s, message=%s", type, code, name, mesg);
-			}
-			else
-			{
-				errorA("error: type=%d, code=%d, name=%s, message=%s", type, code, name, mesg);
-			}
-		}
-
-		return isSuccess;
-	}
-
 	WINCSESDKS3_API bool isInBucketFilters(const std::wstring& argBucket) const;
 
 	WINCSESDKS3_API bool uploadSimple(CALLER_ARG const CSELIB::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath);
@@ -72,6 +42,95 @@ public:
 	WINCSESDKS3_API std::optional<Aws::String> uploadPart(CALLER_ARG const CSELIB::ObjectKey& argObjKey,
 		const std::filesystem::path& argInputPath, const Aws::String& argUploadId, const std::shared_ptr<UploadFilePartType>& argFilePart);
 };
+
+template<typename T>
+bool outcomeIsSuccess(const T& outcome)
+{
+	NEW_LOG_BLOCK();
+
+	const bool isSuccess = outcome.IsSuccess();
+	traceA("isSuccess=%s name=%s", BOOL_CSTRA(isSuccess), typeid(outcome).name());
+
+	if (!isSuccess)
+	{
+		const auto& err{ outcome.GetError() };
+
+		const auto mesg{ err.GetMessage().c_str() };
+		const auto code{ err.GetResponseCode() };
+		const auto type{ err.GetErrorType() };
+		const auto name{ err.GetExceptionName().c_str() };
+
+		if (static_cast<int>(code) == 404)
+		{
+			traceA("error: type=%d, code=%d, name=%s, message=%s", type, code, name, mesg);
+		}
+		else
+		{
+			errorA("error: type=%d, code=%d, name=%s, message=%s", type, code, name, mesg);
+		}
+	}
+
+	return isSuccess;
+}
+
+template<typename ReturnT, typename RequestT>
+ReturnT executeWithRetry(
+	Aws::S3::S3Client* argClient,
+	ReturnT (Aws::S3::S3Client::*argMethod)(const RequestT&) const,
+	const RequestT& argRequest,
+	int argMaxRetryCount)
+{
+	NEW_LOG_BLOCK();
+
+	ReturnT outcome;
+
+	bool shouldRetry = true;
+	DWORD waitSec = 1;
+	int i = 0;
+
+	do
+	{
+		outcome = (argClient->*argMethod)(argRequest);
+		if (outcome.IsSuccess())
+		{
+			traceW(L"success");
+			shouldRetry = false;
+		}
+		else
+		{
+			const auto& err{ outcome.GetError() };
+
+			const auto mesg{ err.GetMessage().c_str() };
+			const auto code{ err.GetResponseCode() };
+			const auto type{ err.GetErrorType() };
+			const auto name{ err.GetExceptionName().c_str() };
+			shouldRetry = err.ShouldRetry();
+
+			if (static_cast<int>(code) == 404)
+			{
+				traceA("fault: type=%d code=%d name=%s message=%s retry=%s", type, code, name, mesg, BOOL_CSTRA(shouldRetry));
+			}
+			else
+			{
+				errorA("fault: type=%d code=%d name=%s message=%s retry=%s", type, code, name, mesg, BOOL_CSTRA(shouldRetry));
+			}
+		}
+
+		if (!shouldRetry)
+		{
+			break;
+		}
+
+		traceW(L"retry: %d/%d", i + 1, argMaxRetryCount);
+		::Sleep(waitSec * 1000);
+
+		waitSec *= 2;
+		i++;
+	}
+	while (i < argMaxRetryCount);
+
+	return outcome;
+}
 
 }	// namespace CSESS3
 

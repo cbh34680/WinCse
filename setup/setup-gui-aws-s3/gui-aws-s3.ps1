@@ -694,6 +694,12 @@ region=${region}
 ; default: 4
 #file_io_threads=4
 
+; Maximum retry count for API execution
+; Note) Added after v0.250512.1345
+; valid range: 0 to 5
+; default: 3
+#max_api_retry_count=3
+
 ; Maximum number of display buckets.
 ; valid range: 0 (No restrictions) to INT_MAX
 ; default: 8

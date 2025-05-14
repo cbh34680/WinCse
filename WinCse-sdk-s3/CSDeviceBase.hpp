@@ -49,7 +49,6 @@ public:
 	}
 
 	WINCSESDKS3_API NTSTATUS OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
-	WINCSESDKS3_API VOID OnSvcStop() override;
 
 	bool shouldIgnoreFileName(const std::filesystem::path& argWinPath) override
 	{
