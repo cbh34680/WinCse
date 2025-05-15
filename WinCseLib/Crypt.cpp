@@ -336,7 +336,23 @@ bool DecryptCredentialStringA(const std::string& argSecretKey, std::string* pInO
     //str = (char*)decrypted.data();
     //*pInOut = std::move(str);
 
-    *pInOut = std::string((char*)decrypted.data());
+    const auto decryptedSize = decrypted.size();
+    const auto* decrypted_c = (char*)decrypted.data();
+    const auto* pos = decrypted_c;
+
+    while (*pos)
+    {
+        if (pos - decrypted_c >= decryptedSize)
+        {
+            // decrypted ‚Í '\0' ‚àŠÜ‚ñ‚Å‚¢‚é‚Ì‚ÅA”z—ñ‚ÌÅŒã‚Ü‚Å“’B‚µ‚Ä‚µ‚Ü‚Á‚½‚ç•œ†‰»¸”s‚Æˆµ‚¤
+
+            return false;
+        }
+
+        pos++;
+    }
+
+    *pInOut = std::string{ decrypted_c };
 
     //traceW(L"success: DecryptAES");
 
