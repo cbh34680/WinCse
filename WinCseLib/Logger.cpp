@@ -112,14 +112,16 @@ struct OutputTarget
 
 	const std::optional<std::filesystem::path>&		outputDir;
 	PCWSTR											prefix;
+	const bool										forceFlush;
 	std::wofstream&									stream;
 	bool&											streamOK;
 	UTC_MILLIS_T&									flushTime;
 
-	OutputTarget(const std::optional<std::filesystem::path>& argOutputDir, PCWSTR argPrefix, std::wofstream& argStream, bool& argStreamOK, UTC_MILLIS_T& argFlushTime)
+	OutputTarget(const std::optional<std::filesystem::path>& argOutputDir, PCWSTR argPrefix, bool argForceFlush, std::wofstream& argStream, bool& argStreamOK, UTC_MILLIS_T& argFlushTime)
 		:
 		outputDir(argOutputDir),
 		prefix(argPrefix),
+		forceFlush(argForceFlush),
 		stream(argStream),
 		streamOK(argStreamOK),
 		flushTime(argFlushTime)
@@ -218,14 +220,24 @@ static void writeTextToTarget(const std::wstring& argText, const OutputTarget& t
 		target.flushTime = now;
 
 #else
-		if (now - target.flushTime > TIMEMILLIS_1MINll)
+		bool doFlush = false;
+
+		if (target.forceFlush)
+		{
+			doFlush = true;
+		}
+		else if (now - target.flushTime > TIMEMILLIS_1MINll)
 		{
 			// 1 •ª‚Éˆê“x’ö“x‚Í flush ‚·‚é
 
+			doFlush = true;
+		}
+
+		if (doFlush)
+		{
 			target.stream.flush();
 			target.flushTime = now;
 		}
-
 #endif
 	}
 }
@@ -256,7 +268,7 @@ void Logger::writeToTraceLog(std::optional<std::wstring> optText)
 		std::wcout << L"|trace| " << *optText;
 	}
 
-	writeTextToTarget(*optText, { mOutputDir, L"trace", mTraceLogStream, mTraceLogStreamOK, mTraceLogFlushTime });
+	writeTextToTarget(*optText, { mOutputDir, L"trace", false, mTraceLogStream, mTraceLogStreamOK, mTraceLogFlushTime });
 }
 
 void Logger::writeToErrorLog(std::optional<std::wstring> optText)
@@ -271,7 +283,7 @@ void Logger::writeToErrorLog(std::optional<std::wstring> optText)
 		std::wcout << L"|error| " << *optText;
 	}
 
-	writeTextToTarget(*optText, { mOutputDir, L"error", mErrorLogStream, mErrorLogStreamOK, mErrorLogFlushTime });
+	writeTextToTarget(*optText, { mOutputDir, L"error", true, mErrorLogStream, mErrorLogStreamOK, mErrorLogFlushTime });
 }
 
 std::optional<std::wstring> Logger::makeTextW(int argIndent, PCWSTR argPath, int argLine, PCWSTR argFunc, DWORD argLastError, PCWSTR argFormat, ...) const 
