@@ -1,48 +1,53 @@
 # WinCse &middot; Windows Cloud Storage Explorer
 
-WinCse is an application that integrates AWS S3 buckets into Windows Explorer, allowing S3 buckets to be treated like a local file system.
+WinCse is an application that integrates AWS S3 buckets into Windows Explorer, allowing you to treat S3 buckets like a local file system.  
 
-## Update Information
-**2025/5/15 15:34 JST**  
-An outdated file (`0-250220-2315.zip`) was mistakenly uploaded to the [release page](https://github.com/cbh34680/WinCse/releases).  
-The correct file (`0-250512-1345.zip`) has now been updated.
+## Updates
+**2025/5/15 15:34**  
+I mistakenly uploaded an old file (`0-250220-2315.zip`) to the [release page](https://github.com/cbh34680/WinCse/releases).  
+It has now been corrected to the correct version (`0-250512-1345.zip`).
 
 ## Key Features
-- Operate files on S3 as if using Windows file sharing.
-- Adjust the name and number of displayed S3 buckets when mounting.
-- You can mount S3 buckets in read-only mode.
+- Manage files on S3 as if they were on a Windows shared drive.
+- Customize the names and number of S3 buckets displayed upon mounting.
+- Mount S3 buckets in read-only mode.
 
 ## System Requirements
-- Windows 10 or later (recommended)
+- Recommended: Windows 10 or later
 - [WinFsp](http://www.secfs.net/winfsp/)
 - [AWS SDK for C++](https://github.com/aws/aws-sdk-cpp)
 
-## Installation Instructions
+## Installation
 1. Install [WinFsp](https://winfsp.dev/rel/).
-2. Download WinCse (which includes AWS SDK for C++) from the [release page](https://github.com/cbh34680/WinCse/releases).
+2. Download WinCse (includes AWS SDK for C++) from the [release page](https://github.com/cbh34680/WinCse/releases).
 
 ## Usage
 1. Run `setup/install-aws-s3.bat` as administrator.
-2. When the form screen appears, enter your AWS credentials.
+2. When the form screen appears, enter AWS authentication details.
 3. Click the **Create** button.
-4. Execute `mount.bat` in the directory displayed in Explorer.
-5. You can now access the S3 bucket via Windows Explorer using the selected drive.
+4. Run `mount.bat` from the directory shown in Explorer.
+5. You can access the selected drive and S3 bucket from Windows Explorer.
 6. Run `un-mount.bat` to unmount the drive.
 
-## Uninstallation Instructions
-1. Unmount the mounted drive.
-2. Run `reg-del.bat` as administrator to remove the registry entries registered in WinFsp.
+## Uninstallation
+1. Unmount any mounted drives.
+2. Run `reg-del.bat` as administrator to delete registry information registered in WinFsp.
 3. Delete the directory containing the `*.bat` files.
 4. If no longer needed, uninstall [WinFsp](https://winfsp.dev/rel/).
 
+## Updating
+1. Unmount any mounted drives.
+2. Extract the zip file obtained from the [release page](https://github.com/cbh34680/WinCse/releases).
+3. Overwrite the setup and x64 directories in the installation directory.
+
 ## Limitations
-- Some constraints can be relaxed by modifying the [configuration file](./doc/conf-example.txt).
-- Bucket creation and deletion are not available.
-- `abort()` is used to help detect issues, but it may cause forced termination.
-- For other limitations, refer to the [Limitations](./doc/limitations.md) page.
+- Some restrictions can be relaxed by modifying the [configuration file](./doc/conf-example.txt).
+- Bucket creation and deletion are not supported.
+- `abort()` is used to make bug detection easier, which may result in forced termination.
+- For other limitations, refer to [Limitations](./doc/limitations-ja.md).
 
 ## Notes
-- This software has been tested only on Windows 11, and compatibility with other versions is not guaranteed.
+- This software has only been tested on Windows 11. Compatibility with other versions is not guaranteed.
 
 ## License
 This project is licensed under both [GPLv3](https://www.gnu.org/licenses/gpl-3.0.html) and [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
