@@ -37,11 +37,11 @@ int main(int argc, char **argv)
     char prefix[] = "";
     size_t len;
 
-    _dupenv_s( &ns,     &len, "WINCSE_TEST_OCI_NAMESPACE");
-    _dupenv_s( &region, &len, "WINCSE_TEST_OCI_REGION");
-    _dupenv_s( &key_id, &len, "WINCSE_TEST_OCI_ACCESS_KEY_ID");
-    _dupenv_s( &secret, &len, "WINCSE_TEST_OCI_SECRET_ACCESS_KEY");
-    _dupenv_s( &bucket, &len, "WINCSE_TEST_OCI_BUCKET_NAME");
+    _dupenv_s(&ns,     &len, "WINCSE_TEST_OCI_NAMESPACE");
+    _dupenv_s(&region, &len, "WINCSE_TEST_OCI_REGION");
+    _dupenv_s(&key_id, &len, "WINCSE_TEST_OCI_ACCESS_KEY_ID");
+    _dupenv_s(&secret, &len, "WINCSE_TEST_OCI_SECRET_ACCESS_KEY");
+    _dupenv_s(&bucket, &len, "WINCSE_TEST_OCI_BUCKET");
 
     assert(ns && region && key_id && secret && bucket);
 

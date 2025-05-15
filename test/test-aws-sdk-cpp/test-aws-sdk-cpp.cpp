@@ -16,10 +16,10 @@
 #include <aws/core/auth/AWSCredentials.h>
 #include <aws/core/auth/AWSCredentialsProvider.h>
 #include <aws/s3/S3Client.h>
-
 //#include <aws/s3/model/ListBucketsRequest.h>
 #include <aws/s3/model/ListObjectsV2Request.h>
 #include <aws/s3/model/GetObjectRequest.h>
+#pragma warning(pop)
 
 #undef USE_IMPORT_EXPORT
 
@@ -39,10 +39,10 @@ void FEP(const std::function<void(Aws::S3::S3Client*, const char*)>& callback)
     char *bucket;
     size_t len;
 
-    _dupenv_s( &region, &len, "WINCSE_TEST_AWS_REGION");
-    _dupenv_s( &key_id, &len, "WINCSE_TEST_AWS_ACCESS_KEY_ID");
-    _dupenv_s( &secret, &len, "WINCSE_TEST_AWS_SECRET_ACCESS_KEY");
-    _dupenv_s( &bucket, &len, "WINCSE_TEST_AWS_BUCKET_NAME");
+    _dupenv_s(&region, &len, "WINCSE_TEST_AWS_REGION");
+    _dupenv_s(&key_id, &len, "WINCSE_TEST_AWS_ACCESS_KEY_ID");
+    _dupenv_s(&secret, &len, "WINCSE_TEST_AWS_SECRET_ACCESS_KEY");
+    _dupenv_s(&bucket, &len, "WINCSE_TEST_AWS_BUCKET");
 
     assert(region && key_id && secret && bucket);
 

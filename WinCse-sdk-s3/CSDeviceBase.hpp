@@ -45,7 +45,7 @@ public:
 
 	std::list<std::wstring> getNotificationList() override
 	{
-		return { L"Global\\WinCse-util-awss3-clear-cache" };
+		return { L"Global\\WinCse-util-sdk-s3-clear-cache" };
 	}
 
 	WINCSESDKS3_API NTSTATUS OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;

@@ -59,7 +59,7 @@ bool ExecuteApi::Ping(CALLER_ARG0) const
 #if 1
     const auto outcome = executeWithRetry(mS3Client, &Aws::S3::S3Client::ListBuckets, request, mRuntimeEnv->MaxApiRetryCount);
 #else
-    const auto outcome = mS3Client->ListBuckets();
+    const auto outcome = mS3Client->ListBuckets(request);
 #endif
 
     if (!outcomeIsSuccess(outcome))
@@ -124,6 +124,7 @@ bool ExecuteApi::ListBuckets(CALLER_ARG DirEntryListType* pDirEntryList) const
         {
             if (dirEntryList.size() >= mRuntimeEnv->MaxDisplayBuckets)
             {
+                traceW(L"The maximum display limit has been reached.");
                 break;
             }
         }

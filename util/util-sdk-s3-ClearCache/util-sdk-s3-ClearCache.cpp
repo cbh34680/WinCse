@@ -6,7 +6,7 @@
 
 int wmain(int argc, wchar_t** argv)
 {
-	HANDLE hEvent = ::OpenEventW(EVENT_ALL_ACCESS, FALSE, L"Global\\WinCse-util-awss3-clear-cache");
+	HANDLE hEvent = ::OpenEventW(EVENT_ALL_ACCESS, FALSE, L"Global\\WinCse-util-sdk-s3-clear-cache");
 	if (!hEvent)
 	{
 		const auto lerr = ::GetLastError();

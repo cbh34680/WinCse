@@ -16,7 +16,8 @@ cd
 del /Q trace\*.log
 del /Q trace\*.txt
 
-if not "%1"=="" xcopy /EXCLUDE:util\xcopy-excl-aws-s3-dll.txt /D /Y /I aws-sdk\dest\%1\bin\*.dll x64\%1
+if not "%1"=="" xcopy /EXCLUDE:util\xcopy-excl-aws-sdk-cpp-dll.txt      /D /Y /I aws-sdk-cpp\dest\%1\bin\*.dll x64\%1
+if not "%1"=="" xcopy /EXCLUDE:util\xcopy-excl-google-cloud-cpp-dll.txt /D /Y /I google-cloud-cpp\dest\%1\bin\*.dll x64\%1
 
 call %~dp0setvars.bat
 

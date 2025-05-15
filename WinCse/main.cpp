@@ -3,7 +3,6 @@
 #pragma comment(lib, "winfsp-x64.lib")
 #pragma comment(lib, "WinCseLib.lib")
 
-
 #include "WinCseLib.h"
 #include "CSDriver.hpp"
 #include "DelayedWorker.hpp"

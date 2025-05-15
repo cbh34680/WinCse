@@ -267,7 +267,7 @@ bool CSDeviceBase::onNotif(const std::wstring& argNotifName)
 
     traceW(L"argNotifName=%s", argNotifName.c_str());
 
-    if (argNotifName == L"Global\\WinCse-util-awss3-clear-cache")
+    if (argNotifName == L"Global\\WinCse-util-sdk-s3-clear-cache")
     {
         mQueryBucket->qbClearCache(START_CALLER0);
         mQueryObject->qoClearCache(START_CALLER0);
