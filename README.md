@@ -3,7 +3,7 @@
 WinCse is an application that integrates AWS S3 buckets into Windows Explorer, allowing S3 buckets to be treated like a local file system.
 
 ## Update Information
-**2025/5/15 15:34**  
+**2025/5/15 15:34 JST**  
 An outdated file (`0-250220-2315.zip`) was mistakenly uploaded to the [release page](https://github.com/cbh34680/WinCse/releases).  
 The correct file (`0-250512-1345.zip`) has now been updated.
 
