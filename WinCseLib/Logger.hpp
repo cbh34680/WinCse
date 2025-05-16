@@ -55,7 +55,8 @@ public:
 	std::optional<std::wstring> makeTextA(int argIndent, PCSTR argPath, int argLine, PCSTR argFunc, DWORD argLastError, PCSTR argFormat, ...) const override;
 
 	// friend
-	friend ILogger* CreateLogger(PCWSTR argTraceLogDir);
+	friend ILogger* CreateLogger(PCWSTR argLogDir);
+	friend Logger* NewLogger(PCWSTR argLogDir);
 	friend ILogger* GetLogger();
 	friend void DeleteLogger();
 };

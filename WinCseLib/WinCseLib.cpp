@@ -263,7 +263,13 @@ LogBlock::LogBlock(PCWSTR argFile, int argLine, PCWSTR argFunc)
 	:
 	mFile(argFile), mLine(argLine), mFunc(argFunc)
 {
-	GetLogger()->writeToTraceLog(GetLogger()->makeTextW(mDepth, mFile, mLine, mFunc, ::GetLastError(), L"{enter}"));
+#ifdef _DEBUG
+	auto* logger = GetLogger();
+	if (logger)
+	{
+		logger->writeToTraceLog(logger->makeTextW(mDepth, mFile, mLine, mFunc, ::GetLastError(), L"{enter}"));
+	}
+#endif
 
 	mDepth++;
 }
@@ -272,7 +278,13 @@ LogBlock::~LogBlock()
 {
 	mDepth--;
 
-	GetLogger()->writeToTraceLog(GetLogger()->makeTextW(mDepth, mFile, -1, mFunc, ::GetLastError(), L"{leave}"));
+#ifdef _DEBUG
+	auto* logger = GetLogger();
+	if (logger)
+	{
+		logger->writeToTraceLog(logger->makeTextW(mDepth, mFile, -1, mFunc, ::GetLastError(), L"{leave}"));
+	}
+#endif
 }
 
 int LogBlock::depth() const

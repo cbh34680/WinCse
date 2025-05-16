@@ -3,7 +3,7 @@
 #include <iomanip>
 
 //
-// 主に ChatGPT により生成
+// 難しいコードは主に ChatGPT/Copilot に作ってもらった
 //
 
 namespace CSELIB {
@@ -280,12 +280,12 @@ exit:
 
 bool DecryptCredentialStringA(const std::string& argSecretKey, std::string* pInOut)
 {
-    //NEW_LOG_BLOCK();
+    NEW_LOG_BLOCK();
     APP_ASSERT(pInOut);
 
     const auto concatB64Str{ *pInOut };
 
-    //traceA("concatB64Str=%s", concatB64Str.c_str());
+    traceA("concatB64Str=%s***", SafeSubStringA(concatB64Str, 0, 5).c_str());
 
     // MachineGuid の値を AES の key とし、iv には key[0..16] を設定する
 
@@ -294,7 +294,7 @@ bool DecryptCredentialStringA(const std::string& argSecretKey, std::string* pInO
     std::string concatStr;
     if (!Base64DecodeA(concatB64Str, &concatStr))
     {
-        //errorW(L"fault: Base64DecodeA");
+        errorW(L"fault: Base64DecodeA");
         return false;
     }
 
@@ -304,7 +304,7 @@ bool DecryptCredentialStringA(const std::string& argSecretKey, std::string* pInO
     {
         // IV + データなので最低でも 16 + 1 byte は必要
 
-        //errorW(L"fault: concatBytes.size() < 17");
+        errorW(L"fault: concatBytes.size() < 17");
         return false;
     }
 
@@ -324,7 +324,7 @@ bool DecryptCredentialStringA(const std::string& argSecretKey, std::string* pInO
 
     if (!DecryptAES(aesKey, aesIV, encrypted, &decrypted))
     {
-        //errorW(L"fault: DecryptAES");
+        errorW(L"fault: DecryptAES");
         return false;
     }
 
@@ -336,25 +336,20 @@ bool DecryptCredentialStringA(const std::string& argSecretKey, std::string* pInO
     //str = (char*)decrypted.data();
     //*pInOut = std::move(str);
 
-    const auto decryptedSize = decrypted.size();
-    const auto* decrypted_c = (char*)decrypted.data();
-    const auto* pos = decrypted_c;
-
-    while (*pos)
+    const auto it = std::find_if(decrypted.cbegin(), decrypted.cend(), [](const auto ch)
     {
-        if (pos - decrypted_c >= decryptedSize)
-        {
-            // decrypted は '\0' も含んでいるので、配列の最後まで到達してしまったら復号化失敗と扱う
+        return ch == '\0';
+    });
 
-            return false;
-        }
-
-        pos++;
+    if (it == decrypted.cend())
+    {
+        errorW(L"fault: Not String size=%zu", decrypted.size());
+        return false;
     }
 
-    *pInOut = std::string{ decrypted_c };
+    *pInOut = std::string{ (char*)decrypted.data() };
 
-    //traceW(L"success: DecryptAES");
+    traceA("success: DecryptAES result=%s***", SafeSubStringA(*pInOut, 0, 5).c_str());
 
     return true;
 }

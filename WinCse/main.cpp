@@ -38,11 +38,8 @@ static void writeStats(PCWSTR logDir, const WINFSP_STATS* libStats, const WINCSE
 /*
  * DEBUG ARGS
 
-    [nolog]
-        -u \WinCse.aws-s3.Y\C$\$(MSBuildProjectDirectoryNoRoot)\..\..\MOUNT -m Y:
-
-    [with log]
-        -u \WinCse.aws-s3.Y\C$\$(MSBuildProjectDirectoryNoRoot)\..\..\MOUNT -m Y: -T $(SolutionDir)\trace
+    -u \WinCse.aws-s3.Y\C$\$(MSBuildProjectDirectoryNoRoot)\..\..\MOUNT -m Y:
+    -u \WinCse.aws-s3.Y\C$\$(MSBuildProjectDirectoryNoRoot)\..\..\MOUNT -m Y: -T $(SolutionDir)\trace
 */
 
 // DLL 解放のための RAII
@@ -242,12 +239,13 @@ static int app_main(int argc, wchar_t** argv, PCWSTR iniSection, PCWSTR traceLog
                         }
                     }
 
+#ifdef _DEBUG
                     PCWSTR outputDir = logger->getOutputDirectory();
                     if (outputDir)
                     {
                         writeStats(outputDir, &appif.FspStats, &appStats);
                     }
-
+#endif
                     traceW(L"WinFspMain done. return=%d", rc);
                 }
                 else
@@ -432,11 +430,7 @@ static void writeStats(PCWSTR outputDir, const WINFSP_STATS* libStats, const WIN
     ss << std::setw(4) << std::setfill(L'0') << st.wYear;
     ss << std::setw(2) << std::setfill(L'0') << st.wMonth;
     ss << std::setw(2) << std::setfill(L'0') << st.wDay;
-    ss << L'-';
-    ss << std::setw(2) << std::setfill(L'0') << st.wHour;
-    ss << std::setw(2) << std::setfill(L'0') << st.wMinute;
-    ss << std::setw(2) << std::setfill(L'0') << st.wSecond;
-    ss << L".log";
+    ss << L'-' << ::GetCurrentProcessId() << L".log";
 
     const auto path{ ss.str() };
 

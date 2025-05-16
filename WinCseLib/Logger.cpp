@@ -18,69 +18,87 @@ namespace CSELIB {
 
 // スレッド・ローカル変数の初期化
 
-ILogger* CreateLogger(PCWSTR argTraceLogDir)
+Logger* NewLogger(PCWSTR argLogDir)
+{
+	std::optional<std::filesystem::path> optLogDir;
+
+	if (argLogDir)
+	{
+		// "-T" 引数で出力ディレクトリの指定がある
+
+		std::error_code ec;
+		const auto ok = std::filesystem::is_directory(argLogDir, ec);
+
+		if (ok)
+		{
+			// 指定されたディレクトリが利用できるとき (通常はここ)
+
+			optLogDir = argLogDir;
+		}
+		else
+		{
+			std::wcerr << argLogDir << L":  not directory" << std::endl;
+		}
+	}
+
+	if (!optLogDir)
+	{
+		// 指定されたディレクトリが利用できないときは、代替としてシステムのテンポラリ・ディレクトリに
+		// ログ出力用ディレクトリを作成し、それを利用する
+
+		wchar_t sysTempDir[MAX_PATH];
+		const auto len = ::GetTempPathW(MAX_PATH, sysTempDir);
+
+		if (len)
+		{
+			if (sysTempDir[len - 1] == L'\\')
+			{
+				sysTempDir[len - 1] = L'\0';
+			}
+
+			std::filesystem::path appTempDir{ sysTempDir };
+			appTempDir.append(L"WinCse\\log");
+
+			if (mkdirIfNotExists(appTempDir))
+			{
+				// -T の指定がない場合はここ
+
+				optLogDir = appTempDir;
+			}
+			else
+			{
+				const auto lerr = ::GetLastError();
+				std::wcerr << L"fault: mkdirIfNotExists tmpdir=" << appTempDir << " lerr=" << lerr << std::endl;
+
+				optLogDir = sysTempDir;
+			}
+		}
+		else
+		{
+			const auto lerr = ::GetLastError();
+			std::wcerr << L"fault: GetTempPath lerr=" << lerr << std::endl;
+		}
+	}
+
+	if (optLogDir)
+	{
+		std::wcout << L"set log-directory=" << optLogDir->wstring() << std::endl;
+	}
+	else
+	{
+		std::wcout << L"no logger" << std::endl;
+	}
+
+	return new Logger{ optLogDir };
+}
+
+ILogger* CreateLogger(PCWSTR argLogDir)
 {
 	// プログラム引数 "-T" で指定されたディレクトリをログ出力用に保存する
 
 	if (!Logger::mInstance)
 	{
-		std::filesystem::path dir;
-
-		if (argTraceLogDir)
-		{
-			// "-T" 引数で出力ディレクトリの指定がある
-
-			std::error_code ec;
-			const auto ok = std::filesystem::is_directory(argTraceLogDir, ec);
-
-			if (ok)
-			{
-				// 指定されたディレクトリが利用できるとき (通常はここ)
-
-				dir = argTraceLogDir;
-
-				std::wcout << L"set trace-log-dir=" << dir.wstring() << std::endl;
-			}
-			else
-			{
-				// 指定されたディレクトリが利用できないときは、代替としてシステムのテンポラリ・ディレクトリに
-				// ログ出力用ディレクトリを作成し、それを利用する
-
-				wchar_t tmpdir[MAX_PATH];
-				const auto len = ::GetTempPathW(MAX_PATH, tmpdir);
-
-				if (len)
-				{
-					if (tmpdir[len - 1] == L'\\')
-					{
-						tmpdir[len - 1] = L'\0';
-					}
-
-					wcscat_s(tmpdir, L"\\WinCse\\log");
-
-					if (mkdirIfNotExists(tmpdir))
-					{
-						dir = tmpdir;
-
-						std::wcout << L"set trace-log-dir=" << dir.wstring() << std::endl;
-					}
-					else
-					{
-						std::wcerr << L"fault: mkdirIfNotExists tmpdir=" << tmpdir << std::endl;
-					}
-				}
-				else
-				{
-					std::wcerr << L"fault: GetTempPath" << std::endl;
-				}
-			}
-		}
-		else
-		{
-			std::wcout << L"no logger" << std::endl;
-		}
-
-		Logger::mInstance = new Logger{ dir.empty() ? std::nullopt : std::optional{ dir } };
+		Logger::mInstance = NewLogger(argLogDir);
 	}
 
 	return Logger::mInstance;
@@ -166,21 +184,11 @@ static void writeTextToTarget(const std::wstring& argText, const OutputTarget& t
 		{
 			std::wostringstream ss;
 
-#ifdef _DEBUG
-			ss << target.prefix;
-			ss << L"-";
-			ss << tid % 1000 << L'-';
-
-#else
-			ss << L"WinCse-";
-			ss << target.prefix;
-			ss << L"-";
+			ss << L"WinCse-" << target.prefix << L"-";
 			ss << std::setw(4) << std::setfill(L'0') << st.wYear;
 			ss << std::setw(2) << std::setfill(L'0') << st.wMonth;
 			ss << std::setw(2) << std::setfill(L'0') << st.wDay;
-			ss << L'-';
-#endif
-			ss << pid << L'-' << tid << L".log";
+			ss << L'-' << pid << L'-' << tid << L".log";
 
 			const auto path{ (*target.outputDir / ss.str()).wstring() };
 

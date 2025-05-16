@@ -503,6 +503,8 @@ $btn_reg.Add_Click({
 
     $reg_name = "${AppName}.${DllType}.${drive}"
 
+    $win_acl = "D:P(A;;RPWPLC;;;WD)"
+
     #
     # Create "reg-add.bat"
     #
@@ -512,7 +514,7 @@ $btn_reg.Add_Click({
 ${SwitchAdmin}
 
 @echo on
-call "${FsregBatPath}" ${reg_name} "${exepath}" "-u %%%%1 -m %%%%2" "D:P(A;;RPWPLC;;;WD)"
+call "${FsregBatPath}" ${reg_name} "${exepath}" "-u %%%%1 -m %%%%2 -T ""${logdir}"" " "${win_acl}"
 @pause
 "@
 
@@ -527,7 +529,7 @@ call "${FsregBatPath}" ${reg_name} "${exepath}" "-u %%%%1 -m %%%%2" "D:P(A;;RPWP
 ${SwitchAdmin}
 
 @echo on
-call "${FsregBatPath}" ${reg_name} "${exepath}" "-u %%%%1 -m %%%%2 -d 1 -D ""${WinFspLog}"" -T ""${logdir}""" "D:P(A;;RPWPLC;;;WD)"
+call "${FsregBatPath}" ${reg_name} "${exepath}" "-u %%%%1 -m %%%%2 -d 1 -D ""${WinFspLog}"" -T ""${logdir}"" " "${win_acl}"
 @pause
 "@
 

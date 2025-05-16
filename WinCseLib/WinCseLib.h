@@ -457,11 +457,21 @@ constexpr const wchar_t* const CONFIGFILE_FNAME = L"WinCse.conf";
 #define NEW_LOG_BLOCK()				CSELIB::LogBlock LOG_BLOCK()(__FILEW__, __LINE__, __FUNCTIONW__)
 #define LOG_DEPTH()					LOG_BLOCK().depth()
 
+#ifdef _DEBUG
 #define traceW(format, ...)			do { auto* logger_ = CSELIB::GetLogger(); const auto text_ = logger_->makeTextW(LOG_DEPTH(), __FILEW__, __LINE__, __FUNCTIONW__, ::GetLastError(), format, __VA_ARGS__); logger_->writeToTraceLog(text_); } while (false)
 #define traceA(format, ...)			do { auto* logger_ = CSELIB::GetLogger(); const auto text_ = logger_->makeTextA(LOG_DEPTH(), __FILE__,  __LINE__, __FUNCTION__,  ::GetLastError(), format, __VA_ARGS__); logger_->writeToTraceLog(text_); } while (false)
-
 #define errorW(format, ...)			do { auto* logger_ = CSELIB::GetLogger(); const auto text_ = logger_->makeTextW(LOG_DEPTH(), __FILEW__, __LINE__, __FUNCTIONW__, ::GetLastError(), format, __VA_ARGS__); logger_->writeToTraceLog(text_); logger_->writeToErrorLog(text_); } while (false)
 #define errorA(format, ...)			do { auto* logger_ = CSELIB::GetLogger(); const auto text_ = logger_->makeTextA(LOG_DEPTH(), __FILE__,  __LINE__, __FUNCTION__,  ::GetLastError(), format, __VA_ARGS__); logger_->writeToTraceLog(text_); logger_->writeToErrorLog(text_); } while (false)
+
+#else
+// リリース時はエラーログのみ
+
+#define traceW(format, ...)
+#define traceA(format, ...)
+#define errorW(format, ...)			do { auto* logger_ = CSELIB::GetLogger(); const auto text_ = logger_->makeTextW(LOG_DEPTH(), __FILEW__, __LINE__, __FUNCTIONW__, ::GetLastError(), format, __VA_ARGS__); logger_->writeToErrorLog(text_); } while (false)
+#define errorA(format, ...)			do { auto* logger_ = CSELIB::GetLogger(); const auto text_ = logger_->makeTextA(LOG_DEPTH(), __FILE__,  __LINE__, __FUNCTION__,  ::GetLastError(), format, __VA_ARGS__); logger_->writeToErrorLog(text_); } while (false)
+
+#endif
 
 //#define FA_MEANS_TEMPORARY(fa)		((fa) & FILE_ATTRIBUTE_HIDDEN || (fa) & FILE_ATTRIBUTE_TEMPORARY || (fa) & FILE_ATTRIBUTE_NOT_CONTENT_INDEXED)
 
