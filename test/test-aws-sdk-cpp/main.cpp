@@ -159,11 +159,43 @@ static void test_getObject(Aws::S3::S3Client* client, const char* envBucket)
     std::cout << buf << std::endl;
 }
 
-int main()
+static void test_putObject(int argc, char** argv)
+{
+    char ns[] = "@";
+    char *region;
+    char *key_id;
+    char *secret;
+    char *bucket;
+    char prefix[] = "";
+    size_t len;
+
+    _dupenv_s(&region, &len, "WINCSE_TEST_AWS_REGION");
+    _dupenv_s(&key_id, &len, "WINCSE_TEST_AWS_ACCESS_KEY_ID");
+    _dupenv_s(&secret, &len, "WINCSE_TEST_AWS_SECRET_ACCESS_KEY");
+    _dupenv_s(&bucket, &len, "WINCSE_TEST_AWS_BUCKET");
+
+    assert(region && key_id && secret && bucket);
+
+    std::cout << region << std::endl;
+    std::cout << key_id << std::endl;
+    std::cout << secret << std::endl;
+    std::cout << bucket << std::endl;
+    std::cout << prefix << std::endl;
+
+    char* paramsObjects[] = { argv[0], ns, region, key_id, secret, bucket, prefix };
+
+    int putObject_main(int argc, char **argv);
+    putObject_main(_countof(paramsObjects), paramsObjects);
+
+}
+
+int main(int argc, char** argv)
 {
     //FEP(test_listBuckets);
     //FEP(test_listObjects);
-    FEP(test_getObject);
+    //FEP(test_getObject);
+
+    test_putObject(argc, argv);
 
     return 0;
 }

@@ -62,6 +62,7 @@ bool QueryBucket::qbHeadBucket(CALLER_ARG const std::wstring& argBucketName, Dir
     }
 
     // キャッシュから探す
+    // --> キャッシュに存在しない状況は発生しないはずなので、clbFind の実行のみ
 
     return mCacheListBuckets.clbFind(CONT_CALLER argBucketName, pDirEntry);
 }

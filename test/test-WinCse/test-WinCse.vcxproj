@@ -147,6 +147,7 @@
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="CPP-Misc.cpp" />
     <ClCompile Include="CSELIB-Crypt.cpp" />
     <ClCompile Include="CSEAS3-FEP.cpp" />
     <ClCompile Include="CPP-File.cpp" />

@@ -15,7 +15,10 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="test-aws-sdk-cpp.cpp">
+    <ClCompile Include="main.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="putObject.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
   </ItemGroup>

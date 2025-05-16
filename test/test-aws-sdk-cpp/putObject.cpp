@@ -11,6 +11,8 @@
 using namespace Aws;
 using namespace Aws::Auth;
 
+#define OCI_OS (0)
+
 // usage listObjects namespace region accesskey secretkey bucket prefix
 
 int putObject_main(int argc, char **argv) {
@@ -21,6 +23,7 @@ int putObject_main(int argc, char **argv) {
     Aws::SDKOptions m_options;
     Aws::InitAPI(m_options); // Should only be called once.
     Aws::Client::ClientConfiguration cfg;
+#if OCI_OS
     // first param is namespace, 2nd param is region 
     // S3 compatible URL is https://NAMESPACE.compat.objectstorage.REGION.oraclecloud.com/ 
     cfg.endpointOverride = std::string("https://") + argv[1] + ".compat.objectstorage." + argv[2] + ".oraclecloud.com/" ;
@@ -32,7 +35,11 @@ int putObject_main(int argc, char **argv) {
     cfg.region = argv[2];
     // 3rd param is access key, 4th param is secret key
     Aws::S3::S3Client m_client(Aws::Auth::AWSCredentials(argv[3], argv[4]), cfg,
-          Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never, false);
+        Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never, false);
+#else
+    cfg.region = argv[2];
+    Aws::S3::S3Client m_client(Aws::Auth::AWSCredentials(argv[3], argv[4]), nullptr, cfg);
+#endif
     int result = 0;
     {
         std::cout << "LISTING OBJECTS" << std::endl;
@@ -43,12 +50,12 @@ int putObject_main(int argc, char **argv) {
             result = 1;
         } else {
             std::cout << "Found " << objects.GetResult().GetContents().size()
-                      << " objects\n";
+                << " objects\n";
             for (auto &object: objects.GetResult().GetContents()) {
                 std::cout << object.GetKey() << std::endl;
             }
         }
-// PUT -->
+        // PUT -->
         //
         // https://github.com/awsdocs/aws-doc-sdk-examples/blob/main/cpp/example_code/s3/put_object.cpp
         //
@@ -102,7 +109,7 @@ int putObject_main(int argc, char **argv) {
         {
             std::cerr << "Error unable to read file " << fileName << std::endl;
         }
-// PUT <--
+        // PUT <--
     }
     Aws::ShutdownAPI(m_options); // Should only be called once.
     return result;

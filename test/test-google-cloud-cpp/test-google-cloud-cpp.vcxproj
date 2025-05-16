@@ -139,8 +139,9 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="listBuckets.cpp" />
     <ClCompile Include="quickstart_main.cpp" />
-    <ClCompile Include="test-google-cloud-cpp.cpp" />
+    <ClCompile Include="main.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -142,7 +142,7 @@
     <ClCompile Include="listBuckets.cpp" />
     <ClCompile Include="listObjects.cpp" />
     <ClCompile Include="putObject.cpp" />
-    <ClCompile Include="test-oci-os.cpp" />
+    <ClCompile Include="main.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
