@@ -20,10 +20,8 @@
 #include "..\WinCse-aws-s3\CSDevice.hpp"
 #endif
 
-
 using namespace CSELIB;
 using namespace CSEDRV;
-
 
 static WCHAR PROGNAME[] = L"WinCse";
 

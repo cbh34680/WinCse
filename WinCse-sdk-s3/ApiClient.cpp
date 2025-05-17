@@ -1,77 +1,11 @@
-#include "ExecuteApi.hpp"
+#include "ApiClient.hpp"
 #include "aws_sdk_s3.h"
 
 using namespace CSELIB;
-using namespace CSESS3;
 
+namespace CSESS3 {
 
-ExecuteApi::ExecuteApi(IWorker* argDelayedWorker, const RuntimeEnv* argRuntimeEnv, Aws::S3::S3Client* argS3Client)
-    :
-    mDelayedWorker(argDelayedWorker),
-    mRuntimeEnv(argRuntimeEnv),
-    mS3Client(argS3Client)
-{
-}
-
-bool ExecuteApi::isInBucketFilters(const std::wstring& argBucket) const
-{
-    const auto& filters{ mRuntimeEnv->BucketFilters };
-
-    if (filters.empty())
-    {
-        return true;
-    }
-
-    const auto it = std::find_if(filters.cbegin(), filters.cend(), [&argBucket](const auto& item)
-    {
-        return std::regex_match(argBucket, item);
-    });
-
-    return it != filters.cend();
-}
-
-bool ExecuteApi::shouldIgnoreFileName(const std::filesystem::path& argWinPath) const
-{
-    APP_ASSERT(!argWinPath.empty());
-    APP_ASSERT(argWinPath.wstring().at(0) == L'\\');
-
-    // リストの最大数に関連するので、API 実行結果を生成するときにもチェックが必要
-
-    if (mRuntimeEnv->IgnoreFileNamePatterns)
-    {
-        return std::regex_search(argWinPath.wstring(), *mRuntimeEnv->IgnoreFileNamePatterns);
-    }
-
-    // 正規表現が設定されていない
-
-    return false;
-}
-
-bool ExecuteApi::Ping(CALLER_ARG0) const
-{
-    NEW_LOG_BLOCK();
-
-    // S3 接続試験
-    traceW(L"Connection test");
-
-    Aws::S3::Model::ListBucketsRequest request;
-
-#if 1
-    const auto outcome = executeWithRetry(mS3Client, &Aws::S3::S3Client::ListBuckets, request, mRuntimeEnv->MaxApiRetryCount);
-#else
-    const auto outcome = mS3Client->ListBuckets(request);
-#endif
-
-    if (!outcomeIsSuccess(outcome))
-    {
-        errorW(L"fault: ListBuckets");
-        return false;
-    }
-
-    return true;
-}
-
-bool ExecuteApi::ListBuckets(CALLER_ARG DirEntryListType* pDirEntryList) const
+bool ApiClient::ListBuckets(CALLER_ARG DirEntryListType* pDirEntryList)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(pDirEntryList);
@@ -98,7 +32,7 @@ bool ExecuteApi::ListBuckets(CALLER_ARG DirEntryListType* pDirEntryList) const
     {
         const auto bucketName{ MB2WC(bucket.GetName()) };
 
-        if (!this->isInBucketFilters(bucketName))
+        if (!mRuntimeEnv->matchesBucketFilter(bucketName))
         {
             // バケット名によるフィルタリング
 
@@ -135,10 +69,10 @@ bool ExecuteApi::ListBuckets(CALLER_ARG DirEntryListType* pDirEntryList) const
     return true;
 }
 
-bool ExecuteApi::GetBucketRegion(CALLER_ARG const std::wstring& argBucket, std::wstring* pRegion) const
+bool ApiClient::GetBucketRegion(CALLER_ARG const std::wstring& argBucket, std::wstring* pBucketRegion)
 {
     NEW_LOG_BLOCK();
-    APP_ASSERT(pRegion);
+    APP_ASSERT(pBucketRegion);
 
     traceW(L"argBucket=%s", argBucket.c_str());
 
@@ -164,20 +98,33 @@ bool ExecuteApi::GetBucketRegion(CALLER_ARG const std::wstring& argBucket, std::
     const auto& result = outcome.GetResult();
     const auto& location = result.GetLocationConstraint();
 
+    std::string bucketRegionA;
+
     if (location == Aws::S3::Model::BucketLocationConstraint::NOT_SET)
     {
-        traceW(L"location is NOT_SET");
-        return false;
+        traceW(L"location is NOT_SET, set default");
+
+        bucketRegionA = this->getDefaultBucketRegion();
+    }
+    else
+    {
+        bucketRegionA = mapper::GetNameForBucketLocationConstraint(location);
+
+        if (bucketRegionA.empty())
+        {
+            errorW(L"bucketRegionA is empty");
+            return false;
+        }
     }
 
-    *pRegion = MB2WC(mapper::GetNameForBucketLocationConstraint(location));
+    traceA("bucketRegionA=%s", bucketRegionA.c_str());
 
-    traceW(L"bucketRegion=%s", pRegion->c_str());
+    *pBucketRegion = MB2WC(bucketRegionA);
 
     return true;
 }
 
-bool ExecuteApi::HeadObject(CALLER_ARG const ObjectKey& argObjKey, DirEntryType* pDirEntry) const
+bool ApiClient::HeadObject(CALLER_ARG const ObjectKey& argObjKey, DirEntryType* pDirEntry)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(pDirEntry);
@@ -257,7 +204,7 @@ bool ExecuteApi::HeadObject(CALLER_ARG const ObjectKey& argObjKey, DirEntryType*
 // ListObjectsV2 API を実行し結果を引数のポインタの指す変数に保存する
 // 引数の条件に合致するオブジェクトが見つからないときは false を返却
 //
-bool ExecuteApi::ListObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryListType* pDirEntryList) const
+bool ApiClient::ListObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryListType* pDirEntryList)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(pDirEntryList);
@@ -351,7 +298,7 @@ bool ExecuteApi::ListObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryList
 
             const auto keyWinPath{ argObjKey.append(key).toWinPath() };
 
-            if (this->shouldIgnoreFileName(keyWinPath))
+            if (mRuntimeEnv->shouldIgnoreWinPath(keyWinPath))
             {
                 // 無視するファイル名はスキップ
 
@@ -416,7 +363,7 @@ bool ExecuteApi::ListObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryList
 
             const auto keyWinPath{ argObjKey.append(key).toWinPath() };
 
-            if (this->shouldIgnoreFileName(keyWinPath))
+            if (mRuntimeEnv->shouldIgnoreWinPath(keyWinPath))
             {
                 // 無視するファイル名はスキップ
 
@@ -456,7 +403,7 @@ exit:
     return true;
 }
 
-bool ExecuteApi::DeleteObjects(CALLER_ARG const std::wstring& argBucket, const std::list<std::wstring>& argKeys) const
+bool ApiClient::DeleteObjects(CALLER_ARG const std::wstring& argBucket, const std::list<std::wstring>& argKeys)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(!argBucket.empty());
@@ -492,7 +439,7 @@ bool ExecuteApi::DeleteObjects(CALLER_ARG const std::wstring& argBucket, const s
     return true;
 }
 
-bool ExecuteApi::DeleteObject(CALLER_ARG const ObjectKey& argObjKey) const
+bool ApiClient::DeleteObject(CALLER_ARG const ObjectKey& argObjKey)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.isObject());
@@ -518,7 +465,7 @@ bool ExecuteApi::DeleteObject(CALLER_ARG const ObjectKey& argObjKey) const
     return true;
 }
 
-bool ExecuteApi::PutObject(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath)
+bool ApiClient::PutObject(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath)
 {
     APP_ASSERT(argObjKey.isObject());
 
@@ -637,8 +584,8 @@ static FILEIO_LENGTH_T writeFileFromStream(CALLER_ARG
     return argInputLength;
 }
 
-FILEIO_LENGTH_T ExecuteApi::GetObjectAndWriteFile(CALLER_ARG const ObjectKey& argObjKey,
-    const std::filesystem::path& argOutputPath, FILEIO_LENGTH_T argOffset, FILEIO_LENGTH_T argLength) const
+FILEIO_LENGTH_T ApiClient::GetObjectAndWriteFile(CALLER_ARG const ObjectKey& argObjKey,
+    const std::filesystem::path& argOutputPath, FILEIO_LENGTH_T argOffset, FILEIO_LENGTH_T argLength)
 {
     NEW_LOG_BLOCK();
 
@@ -676,5 +623,7 @@ FILEIO_LENGTH_T ExecuteApi::GetObjectAndWriteFile(CALLER_ARG const ObjectKey& ar
 
     return writeFileFromStream(CONT_CALLER result.GetBody(), result.GetContentLength(), argOutputPath, argOffset);
 }
+
+}   // namespace CSESS3
 
 // EOF

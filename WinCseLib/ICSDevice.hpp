@@ -6,7 +6,7 @@ namespace CSELIB {
 
 struct ICSDevice : public ICSService
 {
-	virtual bool shouldIgnoreFileName(const std::filesystem::path& argWinPath) = 0;
+	virtual bool shouldIgnoreWinPath(const std::filesystem::path& argWinPath) = 0;
 	virtual void printReport(FILE* fp) = 0;
 
 	virtual bool headBucket(CALLER_ARG const std::wstring& argBucket, DirEntryType* pDirEntry) = 0;

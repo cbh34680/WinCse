@@ -1,8 +1,7 @@
 #include "OciOsDevice.hpp"
+#include "aws_sdk_s3.h"
 
 using namespace CSELIB;
-using namespace CSEOOS;
-
 
 ICSDevice* NewCSDevice(PCWSTR argIniSection, NamedWorker argWorkers[])
 {
@@ -21,17 +20,10 @@ ICSDevice* NewCSDevice(PCWSTR argIniSection, NamedWorker argWorkers[])
         }
     }
 
-    return new OciOsDevice(argIniSection, workers);
+    return new CSEOOS::OciOsDevice{ argIniSection, workers };
 }
 
-OciOsDevice::OciOsDevice(const std::wstring& argIniSection, const std::map<std::wstring, CSELIB::IWorker*>& argWorkers)
-    :
-    CSDevice(argIniSection, argWorkers)
-{
-    mSdkOptions = std::make_unique<Aws::SDKOptions>();
-
-    Aws::InitAPI(*mSdkOptions);
-}
+namespace CSEOOS {
 
 OciOsDevice::~OciOsDevice()
 {
@@ -55,9 +47,26 @@ NTSTATUS OciOsDevice::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
     APP_ASSERT(argWorkDir);
     //APP_ASSERT(FileSystem);
 
+    // AWS SDK の初期化
+
+    APP_ASSERT(!mSdkOptions);
+    mSdkOptions = std::make_unique<Aws::SDKOptions>();
+    Aws::InitAPI(*mSdkOptions);
+
     const auto confPath{ std::filesystem::path{ argWorkDir } / CONFIGFILE_FNAME };
 
     // ini ファイルから値を取得
+
+    // DLL 種類
+
+    std::wstring dllType;
+    GetIniStringW(confPath, mIniSection, L"type", &dllType);
+
+    if (dllType != L"oci-os")
+    {
+        errorW(L"false: DLL type mismatch dllType=%s", dllType.c_str());
+        return STATUS_INVALID_PARAMETER;
+    }
 
     // 接続リージョンとネームスペース
 
@@ -183,12 +192,14 @@ NTSTATUS OciOsDevice::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    mRegion = regionW;
+    mClientRegion = regionW;
     mS3Client = std::unique_ptr<Aws::S3::S3Client>(s3Client);
 
     // 最後に親クラスの OnSvcStart を呼び出す
 
-    return CSDevice::OnSvcStart(argWorkDir, FileSystem);
+    return SdkS3Device::OnSvcStart(argWorkDir, FileSystem);
 }
+
+}   // namespace CSEOOS
 
 // EOF

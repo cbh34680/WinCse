@@ -3,7 +3,6 @@
 #include <fstream>
 #include <dbghelp.h>
 
-
 namespace CSELIB {
 
 void AbnormalEnd(PCWSTR file, int line, PCWSTR func, int signum)

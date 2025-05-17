@@ -1,8 +1,8 @@
 #include "QueryBucket.hpp"
 
 using namespace CSELIB;
-using namespace CSESS3;
 
+namespace CSEDVC {
 
 void QueryBucket::qbClearCache(CALLER_ARG0)
 {
@@ -14,7 +14,7 @@ void QueryBucket::qbReportCache(CALLER_ARG FILE* fp) const
     mCacheListBuckets.clbReport(CONT_CALLER fp);
 }
 
-std::wstring QueryBucket::qbGetBucketRegion(CALLER_ARG const std::wstring& argBucketName)
+bool QueryBucket::qbGetBucketRegion(CALLER_ARG const std::wstring& argBucketName, std::wstring* pBucketRegion)
 {
     NEW_LOG_BLOCK();
 
@@ -26,21 +26,22 @@ std::wstring QueryBucket::qbGetBucketRegion(CALLER_ARG const std::wstring& argBu
     {
         // キャッシュに存在しない
 
-        if (!mExecuteApi->GetBucketRegion(CONT_CALLER argBucketName, &bucketRegion))
+        if (!mApiClient->GetBucketRegion(CONT_CALLER argBucketName, &bucketRegion))
         {
-            // 取得できないときはデフォルト値にする
-
-            bucketRegion = MB2WC(AWS_DEFAULT_REGION);
-
-            traceW(L"set fall back region is %s", bucketRegion.c_str());
+            errorW(L"fault: GetBucketRegion");
+            return false;
         }
+
+        APP_ASSERT(!bucketRegion.empty());
 
         mCacheListBuckets.clbAddBucketRegion(CONT_CALLER argBucketName, bucketRegion);
     }
 
     APP_ASSERT(!bucketRegion.empty());
 
-    return bucketRegion;
+    *pBucketRegion = std::move(bucketRegion);
+
+    return true;
 }
 
 bool QueryBucket::qbHeadBucket(CALLER_ARG const std::wstring& argBucketName, DirEntryType* pDirEntry)
@@ -51,13 +52,21 @@ bool QueryBucket::qbHeadBucket(CALLER_ARG const std::wstring& argBucketName, Dir
 
     traceW(L"argBucketName: %s", argBucketName.c_str());
 
-    const auto bucketRegion{ this->qbGetBucketRegion(CONT_CALLER argBucketName) };
-    if (bucketRegion != mRuntimeEnv->ClientRegion)
+    std::wstring bucketRegion;
+
+    if (this->qbGetBucketRegion(CONT_CALLER argBucketName, &bucketRegion))
     {
-        // バケットのリージョンが異なるときは拒否
+        if (!mApiClient->canAccessRegion(CONT_CALLER bucketRegion))
+        {
+            // バケットのリージョンが異なるときは拒否
 
-        traceW(L"%s: no match bucket-region", bucketRegion.c_str());
-
+            traceW(L"%s: no match bucket-region", bucketRegion.c_str());
+            return false;
+        }
+    }
+    else
+    {
+        errorW(L"fault: qbGetBucketRegion");
         return false;
     }
 
@@ -92,7 +101,7 @@ bool QueryBucket::qbListBuckets(CALLER_ARG DirEntryListType* pDirEntryList)
 
         // バケット一覧の取得
 
-        if (!mExecuteApi->ListBuckets(CONT_CALLER &dirEntryList))
+        if (!mApiClient->ListBuckets(CONT_CALLER &dirEntryList))
         {
             errorW(L"fault: ListBuckets");
             return false;
@@ -123,13 +132,9 @@ bool QueryBucket::qbListBuckets(CALLER_ARG DirEntryListType* pDirEntryList)
 
             if (mRuntimeEnv->StrictBucketRegion)
             {
-                // キャッシュに存在しなければ API を実行
-
-                bucketRegion = this->qbGetBucketRegion(CONT_CALLER bucketName);
-
-                if (bucketRegion.empty())
+                if (!this->qbGetBucketRegion(CONT_CALLER bucketName, &bucketRegion))
                 {
-                    errorW(L"fault: bucketRegion is empty bucketName=%s", bucketName.c_str());
+                    errorW(L"fault: qbGetBucketRegion");
                     return false;
                 }
             }
@@ -139,11 +144,7 @@ bool QueryBucket::qbListBuckets(CALLER_ARG DirEntryListType* pDirEntryList)
 
                 if (mCacheListBuckets.clbGetBucketRegion(CONT_CALLER bucketName, &bucketRegion))
                 {
-                    if (bucketRegion.empty())
-                    {
-                        errorW(L"fault: bucketRegion is empty bucketName=%s", bucketName.c_str());
-                        return false;
-                    }
+                    APP_ASSERT(!bucketRegion.empty());
                 }
             }
 
@@ -151,7 +152,7 @@ bool QueryBucket::qbListBuckets(CALLER_ARG DirEntryListType* pDirEntryList)
             {
                 // 異なるリージョンであるか調べる
 
-                if (bucketRegion != mRuntimeEnv->ClientRegion)
+                if (!mApiClient->canAccessRegion(CONT_CALLER bucketRegion))
                 {
                     // リージョンが異なる場合は HIDDEN 属性を付与
                     //
@@ -203,5 +204,7 @@ bool QueryBucket::qbReload(CALLER_ARG std::chrono::system_clock::time_point thre
 
     return true;
 }
+
+}   // namespace CSEDVC
 
 // EOF

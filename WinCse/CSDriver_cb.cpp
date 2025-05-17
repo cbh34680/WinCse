@@ -1,8 +1,8 @@
 #include "CSDriver.hpp"
 
 using namespace CSELIB;
-using namespace CSEDRV;
 
+namespace CSEDRV {
 
 NTSTATUS CSDriver::GetSecurityByName(const std::filesystem::path& argWinPath, PUINT32 pFileAttributes, PSECURITY_DESCRIPTOR argSecurityDescriptor, PSIZE_T argSecurityDescriptorSize)
 {
@@ -15,7 +15,7 @@ NTSTATUS CSDriver::GetSecurityByName(const std::filesystem::path& argWinPath, PU
     auto dirEntry{ mOpenDirEntry.get(argWinPath) };
     if (!dirEntry)
     {
-        if (mDevice->shouldIgnoreFileName(argWinPath))
+        if (mDevice->shouldIgnoreWinPath(argWinPath))
         {
             // "desktop.ini" ‚È‚Ç‚Í–³Ž‹‚³‚¹‚é
 
@@ -100,7 +100,7 @@ NTSTATUS CSDriver::Open(const std::filesystem::path& argWinPath, UINT32 argCreat
     }
     else
     {
-        if (mDevice->shouldIgnoreFileName(argWinPath))
+        if (mDevice->shouldIgnoreWinPath(argWinPath))
         {
             // "desktop.ini" ‚È‚Ç‚Í–³Ž‹‚³‚¹‚é
             // --> GetSecurityByName ‚Å‹‘”Û‚µ‚Ä‚¢‚é‚Ì‚Å‚±‚±‚Í’Ê‰ß‚µ‚È‚¢‚Í‚¸
@@ -238,7 +238,7 @@ NTSTATUS CSDriver::Create(const std::filesystem::path& argWinPath, UINT32 argCre
     traceW(L"argWinPath=%s argCreateOptions=%u argCreateOptions=%u argFileAttributes=%u argAllocationSize=%llu", argWinPath.c_str(), argCreateOptions, argCreateOptions, argFileAttributes, argAllocationSize);
     traceW(L"argFileAttributes=%s", FileAttributesToStringW(argFileAttributes).c_str());
 
-    if (mDevice->shouldIgnoreFileName(argWinPath))
+    if (mDevice->shouldIgnoreWinPath(argWinPath))
     {
         traceW(L"ignore argWinPath=%s", argWinPath.c_str());
         return FspNtStatusFromWin32(ERROR_FILE_NOT_FOUND);
@@ -825,7 +825,7 @@ NTSTATUS CSDriver::ReadDirectory(FileContext* ctx, PCWSTR argPattern, PWSTR argM
 
             const auto winPath{ refWinPath / fileNameBuf };
 
-            if (mDevice->shouldIgnoreFileName(winPath))
+            if (mDevice->shouldIgnoreWinPath(winPath))
             {
                 traceW(L"ignore winPath=%s", winPath.c_str());
                 continue;
@@ -929,7 +929,7 @@ NTSTATUS CSDriver::Rename(FileContext* ctx, const std::filesystem::path& argSrcW
 
     traceW(L"argSrcWinPath=%s argDstWinPath=%s argReplaceIfExists=%s ctx=%s", argSrcWinPath.c_str(), argDstWinPath.c_str(), BOOL_CSTRW(argReplaceIfExists), ctx->str().c_str());
 
-    if (mDevice->shouldIgnoreFileName(argDstWinPath))
+    if (mDevice->shouldIgnoreWinPath(argDstWinPath))
     {
         traceW(L"ignore argDstWinPath=%s", argDstWinPath.c_str());
         return STATUS_ACCESS_DENIED;
@@ -1445,5 +1445,7 @@ NTSTATUS CSDriver::SetDelete(FileContext* ctx, PCWSTR argFileName, BOOLEAN argDe
 
     return STATUS_SUCCESS;
 }
+
+}   // namespace CSEDRV
 
 // EOF

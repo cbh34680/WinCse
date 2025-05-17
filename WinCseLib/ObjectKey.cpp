@@ -1,7 +1,6 @@
 #include "WinCseLib.h"
 
-using namespace CSELIB;
-
+namespace CSELIB {
 
 ObjectKey::ObjectKey(const std::wstring& argBucket, const std::wstring& argKey)
 	:
@@ -242,5 +241,7 @@ std::optional<ObjectKey> ObjectKey::fromWinPath(const std::filesystem::path& arg
 
 	return fromXPath<L'\\'>(argWinPath);
 }
+
+}	// namespace CSELIB
 
 // EOF

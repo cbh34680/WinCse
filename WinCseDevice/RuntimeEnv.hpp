@@ -1,13 +1,13 @@
 #pragma once
 
-#include "SdkS3Common.h"
+#include "CSDeviceCommon.h"
 
-namespace CSESS3
+namespace CSEDVC
 {
 
 struct RuntimeEnv final
 {
-	WINCSESDKS3_API RuntimeEnv(
+	WINCSEDEVICE_API RuntimeEnv(
 		int									argBucketCacheExpiryMin,
 		const std::list<std::wregex>&		argBucketFilters,
 		const std::wstring&					argClientGuid,
@@ -17,7 +17,6 @@ struct RuntimeEnv final
 		int									argMaxDisplayBuckets,
 		int									argMaxDisplayObjects,
 		int									argObjectCacheExpiryMin,
-		const								std::wstring argClientRegion,
 		bool								argStrictBucketRegion,
 		bool								argStrictFileTimestamp,
 		int									argTransferWriteSizeMib)
@@ -31,7 +30,6 @@ struct RuntimeEnv final
 		MaxDisplayBuckets					(argMaxDisplayBuckets),
 		MaxDisplayObjects					(argMaxDisplayObjects),
 		ObjectCacheExpiryMin				(argObjectCacheExpiryMin),
-		ClientRegion						(argClientRegion),
 		StrictBucketRegion					(argStrictBucketRegion),
 		StrictFileTimestamp					(argStrictFileTimestamp),
 		TransferWriteSizeMib				(argTransferWriteSizeMib)
@@ -47,12 +45,13 @@ struct RuntimeEnv final
 	const int								MaxDisplayBuckets;
 	const int								MaxDisplayObjects;
 	const int								ObjectCacheExpiryMin;
-	const std::wstring						ClientRegion;
 	const bool								StrictBucketRegion;
 	const bool								StrictFileTimestamp;
 	const int								TransferWriteSizeMib;
 
-	WINCSESDKS3_API std::wstring str() const;
+	WINCSEDEVICE_API std::wstring str() const;
+	WINCSEDEVICE_API bool matchesBucketFilter(const std::wstring& argBucketName) const;
+	WINCSEDEVICE_API bool shouldIgnoreWinPath(const std::filesystem::path& argWinPath) const;
 };
 
 }	// namespace CSESS3

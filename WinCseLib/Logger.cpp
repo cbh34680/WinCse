@@ -13,7 +13,6 @@
 #define FORMAT1			FORMAT_DT "\t" FORMAT_ERR "\t" FORMAT_SRC "\t" FORMAT_FUNC "\t"
 #define FORMAT2			"\n"
 
-
 namespace CSELIB {
 
 // スレッド・ローカル変数の初期化

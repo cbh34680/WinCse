@@ -1,8 +1,7 @@
 #include "AwsS3Device.hpp"
+#include "aws_sdk_s3.h"
 
 using namespace CSELIB;
-using namespace CSEAS3;
-
 
 ICSDevice* NewCSDevice(PCWSTR argIniSection, NamedWorker argWorkers[])
 {
@@ -21,17 +20,10 @@ ICSDevice* NewCSDevice(PCWSTR argIniSection, NamedWorker argWorkers[])
         }
     }
 
-    return new AwsS3Device(argIniSection, workers);
+    return new CSEAS3::AwsS3Device{ argIniSection, workers };
 }
 
-AwsS3Device::AwsS3Device(const std::wstring& argIniSection, const std::map<std::wstring, CSELIB::IWorker*>& argWorkers)
-    :
-    CSDevice(argIniSection, argWorkers)
-{
-    mSdkOptions = std::make_unique<Aws::SDKOptions>();
-
-    Aws::InitAPI(*mSdkOptions);
-}
+namespace CSEAS3 {
 
 AwsS3Device::~AwsS3Device()
 {
@@ -55,14 +47,39 @@ NTSTATUS AwsS3Device::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
     APP_ASSERT(argWorkDir);
     //APP_ASSERT(FileSystem);
 
+    // AWS SDK の初期化
+
+    APP_ASSERT(!mSdkOptions);
+    mSdkOptions = std::make_unique<Aws::SDKOptions>();
+    Aws::InitAPI(*mSdkOptions);
+
     const auto confPath{ std::filesystem::path{ argWorkDir } / CONFIGFILE_FNAME };
 
     // ini ファイルから値を取得
+
+    // DLL 種類
+
+    std::wstring dllType;
+    GetIniStringW(confPath, mIniSection, L"type", &dllType);
+
+    if (dllType != L"aws-s3")
+    {
+        errorW(L"false: DLL type mismatch dllType=%s", dllType.c_str());
+        return STATUS_INVALID_PARAMETER;
+    }
 
     // 接続リージョン
 
     std::wstring regionW;
     GetIniStringW(confPath, mIniSection, L"region", &regionW);
+
+    if (regionW.empty())
+    {
+        errorW(L"fault: regionW empty");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    traceW(L"regionW=%s", regionW.c_str());
 
     // 認証情報
 
@@ -128,20 +145,6 @@ NTSTATUS AwsS3Device::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
     auto regionA{ WC2MB(regionW) };
 
     Aws::Client::ClientConfiguration config;
-    if (regionA.empty())
-    {
-        // とりあえずデフォルト・リージョンとして設定しておく
-
-        traceA("argRegion empty, set default");
-
-        regionA = AWS_DEFAULT_REGION;
-    }
-
-    traceA("regionA=%s", regionA.c_str());
-
-    // 東京) Aws::Region::AP_NORTHEAST_1;
-    // 大阪) Aws::Region::AP_NORTHEAST_3;
-
     config.region = regionA;
 
     Aws::S3::S3Client* s3Client = nullptr;
@@ -170,12 +173,14 @@ NTSTATUS AwsS3Device::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    mRegion = regionW;
+    mClientRegion = regionW;
     mS3Client = std::unique_ptr<Aws::S3::S3Client>(s3Client);
 
     // 最後に親クラスの OnSvcStart を呼び出す
 
-    return CSDevice::OnSvcStart(argWorkDir, FileSystem);
+    return SdkS3Device::OnSvcStart(argWorkDir, FileSystem);
 }
+
+}   // namespace CSEAS3
 
 // EOF

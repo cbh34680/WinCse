@@ -1,8 +1,6 @@
 #include "FileContext.hpp"
 
 using namespace CSELIB;
-using namespace CSEDRV;
-
 
 #define TO_LITERAL(name)                L#name
 #define ADD_LIST(flags, slist, name)    if ((flags) & (FCTX_FLAGS_ ## name)) slist.push_back(TO_LITERAL(name))
@@ -31,6 +29,8 @@ static std::wstring flagsToStringW(DWORD argFlags)
 
     return JoinStrings(strs, L", ", true);
 }
+
+namespace CSEDRV {
 
 std::wstring FileContext::str() const
 {
@@ -83,5 +83,7 @@ std::wstring OpenFileContext::str() const
 
     return ss.str();
 }
+
+}   // namespace CSEDRV
 
 // EOF

@@ -1,8 +1,8 @@
 #include "CSDriverBase.hpp"
 
 using namespace CSELIB;
-using namespace CSEDRV;
 
+namespace CSEDRV {
 
 void CSDriverBase::onIdle()
 {
@@ -149,5 +149,7 @@ bool CSDriverBase::onNotif(const std::wstring& argNotifName)
 
     return false;
 }
+
+}   // namespace CSEDRV
 
 // EOF

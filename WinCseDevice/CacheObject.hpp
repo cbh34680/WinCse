@@ -1,6 +1,6 @@
 #pragma once
 
-#include "SdkS3Common.h"
+#include "CSDeviceCommon.h"
 
 // HeadObject, ListObjectsV2 から取得したデータをキャッシュする
 // どちらも型が異なるだけ (DirEntryType, DirEntryListType) なのでテンプレートにして
@@ -29,7 +29,7 @@
 
 #define THREAD_SAFE()       std::lock_guard<std::mutex> lock_{ mGuard }
 
-namespace CSESS3
+namespace CSEDVC
 {
 
 template<typename T>
@@ -270,27 +270,27 @@ public:
     }
 };
 
-}	// namespace CSESS3
+}	// namespace CSEDVC
 
 #undef THREAD_SAFE
 
 #pragma warning(pop)
 
-namespace CSESS3
+namespace CSEDVC
 {
 
 class CacheHeadObject final : public ObjectCacheTmpl<CSELIB::DirEntryType>
 {
 public:
-    WINCSESDKS3_API void coReport(CALLER_ARG FILE* fp) const override;
+    WINCSEDEVICE_API void coReport(CALLER_ARG FILE* fp) const override;
 };
 
 class CacheListObjects final : public ObjectCacheTmpl<CSELIB::DirEntryListType>
 {
 public:
-    WINCSESDKS3_API void coReport(CALLER_ARG FILE* fp) const override;
+    WINCSEDEVICE_API void coReport(CALLER_ARG FILE* fp) const override;
 };
 
-}	// namespace CSESS3
+}	// namespace CSEDVC
 
 // EOF

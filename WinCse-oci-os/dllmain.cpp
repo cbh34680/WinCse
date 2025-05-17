@@ -4,6 +4,7 @@
 #pragma comment(lib, "aws-cpp-sdk-core.lib")
 #pragma comment(lib, "aws-cpp-sdk-s3.lib")
 #pragma comment(lib, "WinCseLib.lib")
+#pragma comment(lib, "WinCseDevice.lib")
 #pragma comment(lib, "WinCse-sdk-s3.lib")
 
 #pragma warning(disable: 4100)

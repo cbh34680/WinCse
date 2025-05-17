@@ -1,8 +1,8 @@
 #include "NotifListener.hpp"
 
 using namespace CSELIB;
-using namespace CSEDRV;
 
+namespace CSEDRV {
 
 std::unique_ptr<NotifListener> NotifListener::create(const std::list<ICSService*>& argServices)
 {
@@ -181,5 +181,6 @@ void NotifListener::listen()
 	traceW(L"exit listen");
 }
 
+}	// namespace CSEDRV
 
 // EOF

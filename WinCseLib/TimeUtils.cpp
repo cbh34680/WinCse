@@ -1,7 +1,6 @@
 #include "WinCseLib.h"
 #include <iomanip>
 
-
 namespace CSELIB {
 
 // UTC ƒ~ƒŠ•b‚ð YYYY-MM-DD HH:MI:SS.NNN •¶Žš—ñ‚É•ÏŠ·

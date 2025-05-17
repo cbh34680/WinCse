@@ -1,9 +1,7 @@
-#include "ExecuteApi.hpp"
+#include "ApiClient.hpp"
 #include "aws_sdk_s3.h"
 
 using namespace CSELIB;
-using namespace CSESS3;
-
 
 static std::shared_ptr<Aws::StringStream> makeStreamFromFile(CALLER_ARG const std::filesystem::path& argInputPath,
     FILEIO_OFFSET_T argOffset, FILEIO_LENGTH_T argLength)
@@ -133,7 +131,9 @@ static Aws::Map<Aws::String, Aws::String> makeUploadMetadata(CALLER_ARG const FS
     return metadata;
 }
 
-bool ExecuteApi::uploadSimple(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argInputPath)
+namespace CSESS3 {
+
+bool ApiClient::uploadSimple(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argInputPath)
 {
     NEW_LOG_BLOCK();
 
@@ -193,14 +193,14 @@ bool ExecuteApi::uploadSimple(CALLER_ARG const ObjectKey& argObjKey, const FSP_F
 
 struct UploadFilePartTask : public IOnDemandTask
 {
-    ExecuteApi* mThat;
+    ApiClient* mThat;
     const ObjectKey mObjKey;
     const std::filesystem::path mInputPath;
     Aws::String mUploadId;
     std::shared_ptr<UploadFilePartType> mFilePart;
 
     UploadFilePartTask(
-        ExecuteApi* argThat,
+        ApiClient* argThat,
         const ObjectKey& argObjKey,
         const std::filesystem::path& argInputPath,
         const Aws::String& argUploadId,
@@ -247,7 +247,7 @@ struct UploadFilePartTask : public IOnDemandTask
     }
 };
 
-std::optional<Aws::String> ExecuteApi::uploadPart(CALLER_ARG
+std::optional<Aws::String> ApiClient::uploadPart(CALLER_ARG
     const ObjectKey& argObjKey, const std::filesystem::path& argInputPath, const Aws::String& argUploadId,
     const std::shared_ptr<UploadFilePartType>& argFilePart)
 {
@@ -295,7 +295,7 @@ std::optional<Aws::String> ExecuteApi::uploadPart(CALLER_ARG
     //return result;
 }
 
-bool ExecuteApi::uploadMultipart(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath)
+bool ApiClient::uploadMultipart(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(argSourcePath);
@@ -439,5 +439,7 @@ bool ExecuteApi::uploadMultipart(CALLER_ARG const ObjectKey& argObjKey, const FS
 
     return true;
 }
+
+}   // namespace CSESS3
 
 // EOF

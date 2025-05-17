@@ -1,7 +1,6 @@
 #include "WinCseLib.h"
 
-using namespace CSELIB;
-
+namespace CSELIB {
 
 std::atomic<int> DirectoryEntry::mLastInstanceId = 0;
 
@@ -241,5 +240,7 @@ DirEntryType DirectoryEntry::makeFileEntry(const std::wstring& argName, UINT64 a
 
 	return std::make_shared<DirectoryEntry>(FileTypeEnum::File, argName, argFileSize, argFileTime);
 }
+
+}	// namespace CSELIB
 
 // EOF

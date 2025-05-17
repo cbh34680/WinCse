@@ -1,14 +1,21 @@
 #include "CacheListBuckets.hpp"
 
 using namespace CSELIB;
-using namespace CSESS3;
 
+#define LN              L"\n"
+#define INDENT1         L"\t"
+#define INDENT2         L"\t\t"
+#define INDENT3         L"\t\t\t"
+#define INDENT4         L"\t\t\t\t"
+#define INDENT5         L"\t\t\t\t\t"
 
 #if defined(THREAD_SAFE)
 #error "THREAD_SAFFE(): already defined"
 #endif
 
 #define THREAD_SAFE() std::lock_guard<std::mutex> lock_{ mGuard }
+
+namespace CSEDVC {
 
 std::chrono::system_clock::time_point CacheListBuckets::clbGetLastSetTime(CALLER_ARG0) const
 {
@@ -132,14 +139,6 @@ void CacheListBuckets::clbAddBucketRegion(CALLER_ARG const std::wstring& argBuck
     mBucketRegions[argBucketName] = argBucketRegion;
 }
 
-
-#define LN              L"\n"
-#define INDENT1         L"\t"
-#define INDENT2         L"\t\t"
-#define INDENT3         L"\t\t\t"
-#define INDENT4         L"\t\t\t\t"
-#define INDENT5         L"\t\t\t\t\t"
-
 void CacheListBuckets::clbReport(CALLER_ARG FILE* fp) const
 {
     THREAD_SAFE();
@@ -172,5 +171,7 @@ void CacheListBuckets::clbReport(CALLER_ARG FILE* fp) const
         fwprintf(fp, INDENT3 L"bucket=[%s] region=[%s]" LN, it.first.c_str(), it.second.c_str());
     }
 }
+
+}   // namespace CSEDVC
 
 // EOF

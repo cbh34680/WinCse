@@ -1,46 +1,56 @@
 #pragma once
 
 #include "SdkS3Common.h"
-#include "RuntimeEnv.hpp"
-#include "aws_sdk_s3_client.h"
 
 namespace CSESS3
 {
 
 using UploadFilePartType = CSELIB::FilePart<std::optional<Aws::String>>;
 
-class ExecuteApi final
+class ApiClient : public CSEDVC::IApiClient
 {
-private:
-	CSELIB::IWorker*					mDelayedWorker;
-	const RuntimeEnv* const				mRuntimeEnv;
-	Aws::S3::S3Client*					mS3Client;
+protected:
+	CSELIB::IWorker* const				mDelayedWorker;
+	const CSEDVC::RuntimeEnv* const		mRuntimeEnv;
+	std::wstring						mClientRegion;
+	Aws::S3::S3Client* const			mS3Client;
 
-	WINCSESDKS3_API bool isInBucketFilters(const std::wstring& argBucket) const;
+	virtual std::string getDefaultBucketRegion() const
+	{
+		return Aws::Region::US_EAST_1;
+	}
 
 	WINCSESDKS3_API bool uploadSimple(CALLER_ARG const CSELIB::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath);
 	WINCSESDKS3_API bool uploadMultipart(CALLER_ARG const CSELIB::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath);
 
 public:
-	// AWS SDK API Çé¿çs
+	ApiClient(const CSEDVC::RuntimeEnv* argRuntimeEnv, CSELIB::IWorker* argDelayedWorker, const std::wstring& argClientRegion, Aws::S3::S3Client* argS3Client)
+		:
+		mDelayedWorker(argDelayedWorker),
+		mRuntimeEnv(argRuntimeEnv),
+		mClientRegion(argClientRegion),
+		mS3Client(argS3Client)
+	{
+	}
 
-	WINCSESDKS3_API bool shouldIgnoreFileName(const std::filesystem::path& argWinPath) const;
-
-	WINCSESDKS3_API bool Ping(CALLER_ARG0) const;
-	WINCSESDKS3_API bool ListBuckets(CALLER_ARG CSELIB::DirEntryListType* pDirEntryList) const;
-	WINCSESDKS3_API bool GetBucketRegion(CALLER_ARG const std::wstring& argBucket, std::wstring* pRegion) const;
-	WINCSESDKS3_API bool HeadObject(CALLER_ARG const CSELIB::ObjectKey& argObjKey, CSELIB::DirEntryType* pDirEntry) const;
-	WINCSESDKS3_API bool ListObjects(CALLER_ARG const CSELIB::ObjectKey& argObjKey, CSELIB::DirEntryListType* pDirEntryList) const;
-	WINCSESDKS3_API bool DeleteObjects(CALLER_ARG const std::wstring& argBucket, const std::list<std::wstring>& argKeys) const;
-	WINCSESDKS3_API bool DeleteObject(CALLER_ARG const CSELIB::ObjectKey& argObjKey) const;
-	WINCSESDKS3_API bool PutObject(CALLER_ARG const CSELIB::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath);
-	WINCSESDKS3_API CSELIB::FILEIO_LENGTH_T GetObjectAndWriteFile(CALLER_ARG const CSELIB::ObjectKey& argObjKey, const std::filesystem::path& argOutputPath, CSELIB::FILEIO_LENGTH_T argOffset, CSELIB::FILEIO_LENGTH_T argLength) const;
-
-public:
-	WINCSESDKS3_API ExecuteApi(CSELIB::IWorker* argDelayedWorker, const RuntimeEnv* argRuntimeEnv, Aws::S3::S3Client* argS3Client);
+	bool canAccessRegion(CALLER_ARG const std::wstring& argRegion) override
+	{
+		return argRegion == mClientRegion;
+	}
 
 	WINCSESDKS3_API std::optional<Aws::String> uploadPart(CALLER_ARG const CSELIB::ObjectKey& argObjKey,
 		const std::filesystem::path& argInputPath, const Aws::String& argUploadId, const std::shared_ptr<UploadFilePartType>& argFilePart);
+
+	// AWS SDK API Çé¿çs
+
+	WINCSESDKS3_API bool ListBuckets(CALLER_ARG CSELIB::DirEntryListType* pDirEntryList) override;
+	WINCSESDKS3_API bool GetBucketRegion(CALLER_ARG const std::wstring& argBucket, std::wstring* pBuketRegion) override;
+	WINCSESDKS3_API bool HeadObject(CALLER_ARG const CSELIB::ObjectKey& argObjKey, CSELIB::DirEntryType* pDirEntry) override;
+	WINCSESDKS3_API bool ListObjects(CALLER_ARG const CSELIB::ObjectKey& argObjKey, CSELIB::DirEntryListType* pDirEntryList) override;
+	WINCSESDKS3_API bool DeleteObjects(CALLER_ARG const std::wstring& argBucket, const std::list<std::wstring>& argKeys) override;
+	WINCSESDKS3_API bool DeleteObject(CALLER_ARG const CSELIB::ObjectKey& argObjKey) override;
+	WINCSESDKS3_API bool PutObject(CALLER_ARG const CSELIB::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath) override;
+	WINCSESDKS3_API CSELIB::FILEIO_LENGTH_T GetObjectAndWriteFile(CALLER_ARG const CSELIB::ObjectKey& argObjKey, const std::filesystem::path& argOutputPath, CSELIB::FILEIO_LENGTH_T argOffset, CSELIB::FILEIO_LENGTH_T argLength) override;
 };
 
 template<typename T>
@@ -133,7 +143,5 @@ ReturnT executeWithRetry(
 }
 
 }	// namespace CSESS3
-
-#define AWS_DEFAULT_REGION		(Aws::Region::US_EAST_1)
 
 // EOF

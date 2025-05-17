@@ -1,24 +1,6 @@
 #include "CSDriverBase.hpp"
 
 using namespace CSELIB;
-using namespace CSEDRV;
-
-
-NTSTATUS CSDriverBase::RelayGetSecurityByName(PCWSTR argFileName, PUINT32 argFileAttributes, PSECURITY_DESCRIPTOR argSecurityDescriptor, PSIZE_T argSecurityDescriptorSize)
-{
-    StatsIncr(RelayGetSecurityByName);
-
-    NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
-
-    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, argFileName };
-    {
-        const auto safeShare{ unsafeShare.lock() };
-
-        ntstatus = this->GetSecurityByName(argFileName, argFileAttributes, argSecurityDescriptor, argSecurityDescriptorSize);
-    }
-
-    return ntstatus;
-}
 
 #define RETURN_IF_READONLY()		if (mRuntimeEnv->ReadOnly) return STATUS_ACCESS_DENIED
 
@@ -43,6 +25,23 @@ do { \
         return STATUS_ACCESS_DENIED; \
 } while (0)
 
+namespace CSEDRV {
+
+NTSTATUS CSDriverBase::RelayGetSecurityByName(PCWSTR argFileName, PUINT32 argFileAttributes, PSECURITY_DESCRIPTOR argSecurityDescriptor, PSIZE_T argSecurityDescriptorSize)
+{
+    StatsIncr(RelayGetSecurityByName);
+
+    NTSTATUS ntstatus = STATUS_INVALID_DEVICE_REQUEST;
+
+    UnprotectedShare<FileNameGuard> unsafeShare{ &mFileNameGuard, argFileName };
+    {
+        const auto safeShare{ unsafeShare.lock() };
+
+        ntstatus = this->GetSecurityByName(argFileName, argFileAttributes, argSecurityDescriptor, argSecurityDescriptorSize);
+    }
+
+    return ntstatus;
+}
 
 NTSTATUS CSDriverBase::RelayOpen(PCWSTR argWinPath, UINT32 argCreateOptions, UINT32 argGrantedAccess, IFileContext** argFileContext, FSP_FSCTL_FILE_INFO* argFileInfo)
 {
@@ -494,5 +493,7 @@ VOID CSDriverBase::RelayOnSvcStop()
         service->OnSvcStop();
     }
 }
+
+}   // namespace CSEDRV
 
 // EOF

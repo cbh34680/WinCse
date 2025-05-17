@@ -1,7 +1,8 @@
 #include "FileContextSweeper.hpp"
 
 using namespace CSELIB;
-using namespace CSEDRV;
+
+namespace CSEDRV {
 
 //
 // エクスプローラーを開いたまま切断すると WinFsp の Close が実行されない
@@ -51,5 +52,7 @@ void FileContextSweeper::remove(FileContext* ctx)
 
 	mOpenAddrs.erase(ctx);
 }
+
+}	// namespace CSEDRV
 
 // EOF

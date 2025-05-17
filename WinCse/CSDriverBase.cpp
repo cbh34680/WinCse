@@ -2,14 +2,11 @@
 #include <iostream>
 
 using namespace CSELIB;
-using namespace CSEDRV;
-
 
 static PCWSTR CACHE_DATA_DIR_FNAME		= L"cache\\data";
 static PCWSTR CACHE_REPORT_DIR_FNAME	= L"cache\\report";
 
-
-static std::list<ICSService*> toServices(CSDriverBase* argThat, ICSDevice* argCSDevice, const std::map<std::wstring, IWorker*>& argWorkers)
+static std::list<ICSService*> toServices(CSEDRV::CSDriverBase* argThat, ICSDevice* argCSDevice, const std::map<std::wstring, IWorker*>& argWorkers)
 {
 	std::list<ICSService*> services{ argThat, argCSDevice };
 
@@ -18,6 +15,8 @@ static std::list<ICSService*> toServices(CSDriverBase* argThat, ICSDevice* argCS
 
 	return services;
 }
+
+namespace CSEDRV {
 
 CSDriverBase::CSDriverBase(
 	const std::wstring& argCSDeviceType,
@@ -36,10 +35,6 @@ CSDriverBase::CSDriverBase(
 	APP_ASSERT(argCSDevice);
 }
 
-//
-// プログラム引数 "-u" から算出されたディレクトリから ini ファイルを読み
-// S3 クライアントを生成する
-//
 NTSTATUS CSDriverBase::PreCreateFilesystem(FSP_SERVICE*, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* argVolumeParams)
 {
 	NEW_LOG_BLOCK();
@@ -259,5 +254,7 @@ void CSDriverBase::applyDefaultFileAttributes(FSP_FSCTL_FILE_INFO* pFileInfo) co
 		pFileInfo->FileAttributes |= mRuntimeEnv->DefaultFileAttributes;
 	}
 }
+
+}	// namespace CSEDRV
 
 // EOF

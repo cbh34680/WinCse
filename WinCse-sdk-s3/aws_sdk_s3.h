@@ -13,6 +13,8 @@
 #endif
 
 #pragma warning(push, 0)
+#include <aws/core/auth/AWSCredentials.h>
+
 #include <aws/s3/model/GetBucketLocationRequest.h>
 #include <aws/s3/model/ListBucketsRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>

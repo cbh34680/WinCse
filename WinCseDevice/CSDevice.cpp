@@ -1,8 +1,8 @@
 #include "CSDevice.hpp"
 
 using namespace CSELIB;
-using namespace CSESS3;
 
+namespace CSEDVC {
 
 CSDevice::~CSDevice()
 {
@@ -28,24 +28,6 @@ struct ListBucketsTask : public IOnDemandTask
         mThat->listBuckets(START_CALLER nullptr);
     }
 };
-
-NTSTATUS CSDevice::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
-{
-    NEW_LOG_BLOCK();
-
-    const auto ntstatus = CSDeviceBase::OnSvcStart(argWorkDir, FileSystem);
-    if (!NT_SUCCESS(ntstatus))
-    {
-        errorW(L"fault: AwsS3A::OnSvcStart");
-        return ntstatus;
-    }
-
-    // バケット一覧の先読み
-
-    getWorker(L"delayed")->addTask(new ListBucketsTask{ this });
-
-    return STATUS_SUCCESS;
-}
 
 bool CSDevice::headBucket(CALLER_ARG const std::wstring& argBucketName, DirEntryType* pDirEntry)
 {
@@ -206,14 +188,14 @@ bool CSDevice::listObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryListTy
 FILEIO_LENGTH_T CSDevice::getObjectAndWriteFile(CALLER_ARG const ObjectKey& argObjKey,
     const std::filesystem::path& argOutputPath, FILEIO_OFFSET_T argOffset, FILEIO_LENGTH_T argLength)
 {
-    return mExecuteApi->GetObjectAndWriteFile(CONT_CALLER argObjKey, argOutputPath, argOffset, argLength);
+    return mApiClient->GetObjectAndWriteFile(CONT_CALLER argObjKey, argOutputPath, argOffset, argLength);
 }
 
 bool CSDevice::putObject(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath)
 {
     NEW_LOG_BLOCK();
 
-    if (!mExecuteApi->PutObject(CONT_CALLER argObjKey, argFileInfo, argSourcePath))
+    if (!mApiClient->PutObject(CONT_CALLER argObjKey, argFileInfo, argSourcePath))
     {
         errorW(L"fault: PutObject argObjKey=%s", argObjKey.c_str());
         return false;
@@ -231,7 +213,7 @@ bool CSDevice::deleteObject(CALLER_ARG const ObjectKey& argObjKey)
 {
     NEW_LOG_BLOCK();
 
-    if (!mExecuteApi->DeleteObject(CONT_CALLER argObjKey))
+    if (!mApiClient->DeleteObject(CONT_CALLER argObjKey))
     {
         errorW(L"fault: DeleteObject");
         return false;
@@ -249,7 +231,7 @@ bool CSDevice::deleteObjects(CALLER_ARG const std::wstring& argBucket, const std
 {
     NEW_LOG_BLOCK();
 
-    if (!mExecuteApi->DeleteObjects(CONT_CALLER argBucket, argKeys))
+    if (!mApiClient->DeleteObjects(CONT_CALLER argBucket, argKeys))
     {
         traceW(L"fault: DeleteObject");
         return false;
@@ -274,5 +256,6 @@ bool CSDevice::deleteObjects(CALLER_ARG const std::wstring& argBucket, const std
     return true;
 }
 
+}   // namespace CSEDVC
 
 // EOF

@@ -2,8 +2,6 @@
 #include <numeric>
 
 using namespace CSELIB;
-using namespace CSEDRV;
-
 
 #define ENABLE_WORKER		(1)
 
@@ -12,6 +10,8 @@ static const int WORKER_MAX = 1;
 #else
 static const int WORKER_MAX = 0;
 #endif
+
+namespace CSEDRV {
 
 ScheduledWorker::ScheduledWorker(const std::wstring& argIniSection)
 	:
@@ -254,7 +254,11 @@ std::deque<std::shared_ptr<IScheduledTask>> ScheduledWorker::getTasks() const
 {
 	THREAD_SAFE();
 
-	return mTasks;
+	auto copy{ mTasks };
+
+	return copy;
 }
+
+}	// namespace CSEDRV
 
 // EOF

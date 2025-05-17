@@ -3,7 +3,6 @@
 #include <cwctype>
 #include <algorithm>
 
-
 namespace CSELIB {
 
 // wstring ‚©‚ç string ‚Ö‚Ì•ÏŠ·

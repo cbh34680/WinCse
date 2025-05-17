@@ -13,8 +13,7 @@
 
 #pragma warning(push, 0)
 #include <aws/core/Aws.h>
-#include <aws/core/auth/AWSCredentials.h>
-//#include <aws/core/auth/AWSCredentialsProvider.h>
+//#include <aws/core/auth/AWSCredentials.h>
 #include <aws/s3/S3Client.h>
 #pragma warning(pop)
 

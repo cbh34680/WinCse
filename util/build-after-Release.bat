@@ -21,7 +21,7 @@ if not "%1"=="" xcopy /EXCLUDE:util\xcopy-excl-google-cloud-cpp-dll.txt /D /Y /I
 
 call %~dp0setvars.bat
 
-call "%ProgramFiles(x86)%\WinFsp\bin\fsreg.bat" %REGKEY% %~dp0..\x64\%1\WinCse.exe "-u %%%%1 -m %%%%2 -d -1 -D %~dp0..\trace\winfsp.log -T %~dp0..\trace" "D:P(A;;RPWPLC;;;WD)"
+call "%ProgramFiles(x86)%\WinFsp\bin\fsreg.bat" %REGKEY% %~dp0..\x64\Release\WinCse.exe "-u %%%%1 -m %%%%2 -d -1 -D %~dp0..\trace\winfsp.log -T %~dp0..\trace" "D:P(A;;RPWPLC;;;WD)"
 reg query HKLM\Software\WinFsp\Services\%REGKEY% /s /reg:32
 
 popd

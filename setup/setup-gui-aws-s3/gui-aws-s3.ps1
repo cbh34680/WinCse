@@ -445,19 +445,20 @@ $btn_reg.Add_Click({
         return
     }
 
-    if ($DllType -eq "oci-os") {
+    if ($tbx_region.Text -eq "") {
+        # リージョンは必須
 
+        Msg-Warn -Text "The region value cannot be left empty."
+        $tbx_region.Focus()
+        return
+    }
+
+    if ($DllType -eq "oci-os") {
         # oci の場合は namespace と region を使って URL を作るので必須
 
         if ($tbx_ns.Text -eq "") {
             Msg-Warn -Text "The namespace value cannot be left empty."
             $tbx_ns.Focus()
-            return
-        }
-
-        if ($tbx_region.Text -eq "") {
-            Msg-Warn -Text "The region value cannot be left empty."
-            $tbx_region.Focus()
             return
         }
     }

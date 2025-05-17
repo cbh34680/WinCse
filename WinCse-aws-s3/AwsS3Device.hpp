@@ -1,32 +1,30 @@
 #pragma once
 
-#include "CSDevice.hpp"
+#include "SdkS3Device.hpp"
 
 namespace CSEAS3
 {
 
-class AwsS3Device : public CSESS3::CSDevice
+class AwsS3Device : public CSESS3::SdkS3Device
 {
 private:
 	std::unique_ptr<Aws::SDKOptions>	mSdkOptions;
-	std::wstring						mRegion;
+	std::wstring						mClientRegion;
 	std::unique_ptr<Aws::S3::S3Client>	mS3Client;
 
 protected:
 	std::wstring getClientRegion() override
 	{
-		return mRegion;
+		return mClientRegion;
 	}
 
-	Aws::S3::S3Client* getClient() override
+	Aws::S3::S3Client* getS3Client() override
 	{
-		APP_ASSERT(mS3Client);
-
 		return mS3Client.get();
 	}
 
 public:
-	AwsS3Device(const std::wstring& argIniSection, const std::map<std::wstring, CSELIB::IWorker*>& argWorkers);
+	using CSESS3::SdkS3Device::SdkS3Device;
 	~AwsS3Device();
 
 	NTSTATUS OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;

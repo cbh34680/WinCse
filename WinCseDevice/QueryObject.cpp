@@ -1,8 +1,8 @@
 #include "QueryObject.hpp"
 
 using namespace CSELIB;
-using namespace CSESS3;
 
+namespace CSEDVC {
 
 bool QueryObject::qoHeadObjectFromCache(CALLER_ARG const ObjectKey& argObjKey, DirEntryType* pDirEntry) const
 {
@@ -71,7 +71,7 @@ bool QueryObject::qoHeadObject(CALLER_ARG const ObjectKey& argObjKey, DirEntryTy
     {
         // HeadObject API の実行
 
-        if (!mExecuteApi->HeadObject(CONT_CALLER argObjKey, &dirEntry))
+        if (!mApiClient->HeadObject(CONT_CALLER argObjKey, &dirEntry))
         {
             // ネガティブ・キャッシュに登録
 
@@ -124,7 +124,7 @@ bool QueryObject::qoHeadObjectOrListObjects(CALLER_ARG const ObjectKey& argObjKe
 
     if (!mCacheHeadObject.coGet(CONT_CALLER argObjKey, &dirEntry))
     {
-        if (!mExecuteApi->HeadObject(CONT_CALLER argObjKey, &dirEntry))
+        if (!mApiClient->HeadObject(CONT_CALLER argObjKey, &dirEntry))
         {
             // 下位の層にオブジェクトが存在するが、自層に空のディレクトリ・オブジェクト
             // は存在しない状況
@@ -167,7 +167,7 @@ bool QueryObject::qoHeadObjectOrListObjects(CALLER_ARG const ObjectKey& argObjKe
             {
                 // 存在しない場合は親のディレクトリに対して ListObjectsV2() API を実行する
 
-                if (!mExecuteApi->ListObjects(CONT_CALLER *optParentDir, &dirEntryList))
+                if (!mApiClient->ListObjects(CONT_CALLER *optParentDir, &dirEntryList))
                 {
                     // エラーの時はネガティブ・キャッシュに登録
 
@@ -245,7 +245,7 @@ bool QueryObject::qoListObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryL
     {
         // ポジティブ・キャッシュ中に見つからない
 
-        if (!mExecuteApi->ListObjects(CONT_CALLER argObjKey, &dirEntryList))
+        if (!mApiClient->ListObjects(CONT_CALLER argObjKey, &dirEntryList))
         {
             // ネガティブ・キャッシュに登録
 
@@ -270,5 +270,7 @@ bool QueryObject::qoListObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryL
 
     return true;
 }
+
+}   // namespace CSEDVC
 
 // EOF

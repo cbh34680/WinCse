@@ -1,14 +1,12 @@
 #include "CSDeviceBase.hpp"
 
 using namespace CSELIB;
-using namespace CSESS3;
-
 
 struct TimerTask : public IScheduledTask
 {
-    CSDeviceBase* mThat;
+    CSEDVC::CSDeviceBase* mThat;
 
-    TimerTask(CSDeviceBase* argThat)
+    TimerTask(CSEDVC::CSDeviceBase* argThat)
         :
         mThat(argThat)
     {
@@ -29,9 +27,9 @@ struct TimerTask : public IScheduledTask
 
 struct IdleTask : public IScheduledTask
 {
-    CSDeviceBase* mThat;
+    CSEDVC::CSDeviceBase* mThat;
 
-    IdleTask(CSDeviceBase* argThat)
+    IdleTask(CSEDVC::CSDeviceBase* argThat)
         :
         mThat(argThat)
     {
@@ -49,6 +47,8 @@ struct IdleTask : public IScheduledTask
         mThat->onIdle();
     }
 };
+
+namespace CSEDVC {
 
 NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
 {
@@ -172,7 +172,6 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
         GetIniIntW(confPath,    mIniSection,    L"max_display_buckets",              8,     0, INT_MAX - 1),
         GetIniIntW(confPath,    mIniSection,    L"max_display_objects",           1000,     0, INT_MAX - 1),
         GetIniIntW(confPath,    mIniSection,    L"object_cache_expiry_min",          5,     1,          60),
-        this->getClientRegion(),
         GetIniBoolW(confPath,   mIniSection,    L"strict_bucket_region",        false),
         GetIniBoolW(confPath,   mIniSection,    L"strict_file_timestamp",       false),
         GetIniIntW(confPath,	mIniSection,	L"transfer_write_size_mib",			10,     5,          100)
@@ -182,28 +181,28 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
 
     // API 実行オブジェクト
 
-    auto execApi{ std::make_unique<ExecuteApi>(getWorker(L"delayed"), runtimeEnv.get(), this->getClient()) };
-    APP_ASSERT(execApi);
+    auto apiClient{ std::unique_ptr<IApiClient>{ this->makeApiClient(runtimeEnv.get(), getWorker(L"delayed")) } };
+    APP_ASSERT(apiClient);
+    
+    // (API 実行オブジェクトを使う) クエリ・オブジェクト
 
-    if (!execApi->Ping(START_CALLER0))
+    auto queryBucket{ std::make_unique<QueryBucket>(runtimeEnv.get(), apiClient.get()) };
+    APP_ASSERT(queryBucket);
+
+    if (!queryBucket->qbListBuckets(START_CALLER nullptr))
     {
-        errorW(L"fault: Ping");
+        errorW(L"fault: initial qbListBuckets");
         return STATUS_NETWORK_ACCESS_DENIED;
     }
 
-    // (API 実行オブジェクトを使う) クエリ・オブジェクト
-
-    auto queryBucket{ std::make_unique<QueryBucket>(runtimeEnv.get(), execApi.get()) };
-    APP_ASSERT(queryBucket);
-
-    auto queryObject{ std::make_unique<QueryObject>(runtimeEnv.get(), execApi.get()) };
+    auto queryObject{ std::make_unique<QueryObject>(runtimeEnv.get(), apiClient.get()) };
     APP_ASSERT(queryObject);
 
     // メンバに保存
 
     //mFileSystem     = FileSystem;
     mRuntimeEnv     = std::move(runtimeEnv);
-    mExecuteApi     = std::move(execApi);
+    mApiClient      = std::move(apiClient);
     mQueryBucket    = std::move(queryBucket);
     mQueryObject    = std::move(queryObject);
 
@@ -282,5 +281,7 @@ bool CSDeviceBase::onNotif(const std::wstring& argNotifName)
 
     return false;
 }
+
+}   //  namespace CSEDVC
 
 // EOF

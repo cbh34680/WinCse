@@ -1,8 +1,6 @@
 #include "CacheObject.hpp"
 
 using namespace CSELIB;
-using namespace CSESS3;
-
 
 #define LN              L"\n"
 #define INDENT1         L"\t"
@@ -10,6 +8,8 @@ using namespace CSESS3;
 #define INDENT3         L"\t\t\t"
 #define INDENT4         L"\t\t\t\t"
 #define INDENT5         L"\t\t\t\t\t"
+
+namespace CSEDVC {
 
 void CacheHeadObject::coReport(CALLER_ARG FILE* fp) const
 {
@@ -115,5 +115,7 @@ void CacheListObjects::coReport(CALLER_ARG FILE* fp) const
         fwprintf(fp, INDENT2 L"LastAccessTime=%s"       LN, TimePointToLocalTimeStringW(it.second.mLastAccessTime).c_str());
     }
 }
+
+}   // namespace CSEDVC
 
 // EOF

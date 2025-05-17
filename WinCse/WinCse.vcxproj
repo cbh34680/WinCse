@@ -115,7 +115,7 @@
       <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>$(SolutionDir)util\build-after.bat $(Configuration)</Command>
+      <Command>$(SolutionDir)util\build-after-$(Configuration).bat</Command>
     </PostBuildEvent>
     <PreBuildEvent>
       <Command>$(SolutionDir)util\build-before.bat</Command>
@@ -142,7 +142,7 @@
       <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>$(SolutionDir)util\build-after.bat $(Configuration)</Command>
+      <Command>$(SolutionDir)util\build-after-$(Configuration).bat</Command>
     </PostBuildEvent>
     <PreBuildEvent>
       <Command>$(SolutionDir)util\build-before.bat</Command>
@@ -152,7 +152,6 @@
     <ClCompile Include="CSDriver.cpp" />
     <ClCompile Include="CSDriverBase_cb.cpp" />
     <ClCompile Include="CSDriverBase.cpp" />
-    <ClCompile Include="CSDriverCommon.cpp" />
     <ClCompile Include="CSDriver_cb_util.cpp" />
     <ClCompile Include="CSDriverBase_event.cpp" />
     <ClCompile Include="FileContext.cpp" />
