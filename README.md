@@ -21,9 +21,9 @@ WinCse is an application that integrates object storage into Windows Explorer, a
 
 ## Usage
 1. Run the appropriate script **with administrator privileges**, depending on the storage type:
-   - **AWS S3** Å® `setup/install-aws-s3.bat`
-   - **GCP GS** Å® `setup/install-gcp-gs.bat`
-   - **OCI OS** Å® `setup/install-oci-os.bat`
+   - **AWS S3** &rarr; `setup/install-aws-s3.bat`
+   - **GCP GS** &rarr; `setup/install-gcp-gs.bat`
+   - **OCI OS** &rarr; `setup/install-oci-os.bat`
 2. When the form screen appears, enter your authentication information and click **Create**.  
 3. Run `mount.bat` from the displayed Explorer directory to mount the storage.  
 4. Access the bucket files through Windows Explorer.  

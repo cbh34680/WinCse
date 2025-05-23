@@ -41,9 +41,9 @@ WinCse は、オブジェクト・ストレージを Windows Explorer に統合�
 
 ## 使用方法
 1. ストレージ種別に応じて、以下のスクリプトを **管理者権限で実行**：
-   - **AWS S3** → `setup/install-aws-s3.bat`
-   - **GCP GS** → `setup/install-gcp-gs.bat`
-   - **OCI OS** → `setup/install-oci-os.bat`
+   - **AWS S3** &rarr; `setup/install-aws-s3.bat`
+   - **GCP GS** &rarr; `setup/install-gcp-gs.bat`
+   - **OCI OS** &rarr; `setup/install-oci-os.bat`
 2. フォーム画面が表示されたら、認証情報を入力し **作成** ボタンを押す。
 3. Explorer のディレクトリから `mount.bat` を実行し、ストレージをマウント。
 4. Windows Explorer でバケットのファイルにアクセス可能になる。
