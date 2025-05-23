@@ -11,7 +11,6 @@ namespace CSEDRV
 bool resolveCacheFilePath(const std::filesystem::path& argDir, const std::wstring& argWinPath, std::filesystem::path* pPath);
 NTSTATUS syncAttributes(const CSELIB::DirEntryType& remoteDirEntry, const std::filesystem::path& cacheFilePath);
 
-
 class CSDriver final : public CSDriverBase
 {
 private:
@@ -22,8 +21,9 @@ private:
 
 	CSELIB::DirEntryType getDirEntryByWinPath(CALLER_ARG const std::filesystem::path& argWinPath) const;
 	NTSTATUS canCreateObject(CALLER_ARG const std::filesystem::path& argWinPath, bool argIsDir, std::optional<CSELIB::ObjectKey>* pOptObjKey);
-	NTSTATUS syncContent(FileContext* ctx, CSELIB::FILEIO_OFFSET_T argReadOffset, CSELIB::FILEIO_LENGTH_T argReadLength);
-	NTSTATUS updateFileInfo(FileContext* ctx, FSP_FSCTL_FILE_INFO* pFileInfo, bool argRemoteSizeAware);
+	NTSTATUS syncContent(CALLER_ARG FileContext* ctx, CSELIB::FILEIO_OFFSET_T argReadOffset, CSELIB::FILEIO_LENGTH_T argReadLength);
+	NTSTATUS updateFileInfo(CALLER_ARG FileContext* ctx, FSP_FSCTL_FILE_INFO* pFileInfo, bool argRemoteSizeAware);
+	void UploadWhenClosing(CALLER_ARG  FileContext* ctx);
 
 protected:
 	// CSDriverBase ÇåoóRÇµÇƒåƒÇ—èoÇ≥ÇÍÇÈä÷êî

@@ -104,87 +104,6 @@ exit:
     return ret;
 }
 
-LSTATUS GetCryptKeyFromRegistryA(std::string* pOutput)
-{
-    std::wstring output;
-
-    const auto lstatus = GetCryptKeyFromRegistryW(&output);
-    if (lstatus == ERROR_SUCCESS)
-    {
-        *pOutput = WC2MB(output);
-    }
-
-    return lstatus;
-}
-
-LSTATUS GetCryptKeyFromRegistryW(std::wstring* pOutput)
-{
-    HKEY hKey = NULL;
-    LSTATUS lstatus = ERROR_SUCCESS;
-    DWORD dataType = 0;
-    DWORD dataSize = 0;
-    BYTE data[BUFSIZ];     // データのバッファ
-
-    // レジストリキーを開く
-
-    lstatus = ::RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Cryptography", 0, KEY_READ, &hKey);
-    if (lstatus != ERROR_SUCCESS)
-    {
-        goto exit;
-    }
-
-    // 値のデータサイズを取得
-
-    lstatus = ::RegQueryValueExW(hKey, L"MachineGuid", NULL, &dataType, NULL, &dataSize);
-    if (lstatus != ERROR_SUCCESS)
-    {
-        goto exit;
-    }
-
-    if (dataSize > sizeof(data))
-    {
-        lstatus = ERROR_MORE_DATA;
-        goto exit;
-    }
-
-    if (dataType != REG_SZ)
-    {
-        lstatus = ERROR_INVALID_DATATYPE;
-        goto exit;
-    }
-
-    // 値のデータを取得
-    lstatus = ::RegQueryValueExW(hKey, L"MachineGuid", NULL, &dataType, data, &dataSize);
-    if (lstatus != ERROR_SUCCESS)
-    {
-        goto exit;
-    }
-
-    if (dataSize > sizeof(data))
-    {
-        lstatus = ERROR_MORE_DATA;
-        goto exit;
-    }
-
-    {
-        // "1111-2222-3333" から "-" を削除
-
-        std::wstring output{ (wchar_t*)data };
-
-        output.erase(std::remove(output.begin(), output.end(), L'-'), output.end());
-
-        *pOutput = output;
-    }
-
-exit:
-    if (hKey)
-    {
-        ::RegCloseKey(hKey);
-    }
-
-    return lstatus;
-}
-
 static std::string BytesToHex(const BYTE* bytes, const size_t bytesSize)
 {
     std::ostringstream ss;
@@ -368,7 +287,6 @@ bool DecryptCredentialStringW(const std::wstring& argSecretKey, std::wstring* pI
 
     return false;
 }
-
 
 } // namespace CSELIB
 

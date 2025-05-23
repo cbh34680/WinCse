@@ -192,7 +192,7 @@ NTSTATUS syncAttributes(const DirEntryType& remoteDirEntry, const std::filesyste
 
 }   // syncAttributes
 
-NTSTATUS CSDriver::updateFileInfo(FileContext* ctx, FSP_FSCTL_FILE_INFO* pFileInfo, bool argRemoteSizeAware)
+NTSTATUS CSDriver::updateFileInfo(CALLER_ARG FileContext* ctx, FSP_FSCTL_FILE_INFO* pFileInfo, bool argRemoteSizeAware)
 {
     NEW_LOG_BLOCK();
 
@@ -228,7 +228,7 @@ NTSTATUS CSDriver::updateFileInfo(FileContext* ctx, FSP_FSCTL_FILE_INFO* pFileIn
     return STATUS_SUCCESS;
 }
 
-NTSTATUS CSDriver::syncContent(FileContext* ctx, FILEIO_OFFSET_T argReadOffset, FILEIO_LENGTH_T argReadLength)
+NTSTATUS CSDriver::syncContent(CALLER_ARG FileContext* ctx, FILEIO_OFFSET_T argReadOffset, FILEIO_LENGTH_T argReadLength)
 {
     NEW_LOG_BLOCK();
 

@@ -236,9 +236,7 @@ NTSTATUS CSDriver::Open(const std::filesystem::path& argWinPath, UINT32 argCreat
 }
 
 #pragma warning(suppress: 4100)
-NTSTATUS CSDriver::Create(const std::filesystem::path& argWinPath, UINT32 argCreateOptions,
-    UINT32 argGrantedAccess, UINT32 argFileAttributes, PSECURITY_DESCRIPTOR argSecurityDescriptor,
-    UINT64 argAllocationSize, FileContext** pFileContext, FSP_FSCTL_FILE_INFO* pFileInfo)
+NTSTATUS CSDriver::Create(const std::filesystem::path& argWinPath, UINT32 argCreateOptions, UINT32 argGrantedAccess, UINT32 argFileAttributes, PSECURITY_DESCRIPTOR argSecurityDescriptor, UINT64 argAllocationSize, FileContext** pFileContext, FSP_FSCTL_FILE_INFO* pFileInfo)
 {
     NEW_LOG_BLOCK();
 
@@ -262,7 +260,7 @@ NTSTATUS CSDriver::Create(const std::filesystem::path& argWinPath, UINT32 argCre
     {
         if (ntstatus != STATUS_OBJECT_NAME_COLLISION)
         {
-            errorW(L"fault: canCreateObject argWinPath=%s", argWinPath.c_str());
+            errorW(L"fault: canCreateObject argWinPath=%s ntstatus=%ld", argWinPath.c_str(), ntstatus);
         }
 
         return ntstatus;
@@ -368,6 +366,73 @@ NTSTATUS CSDriver::Create(const std::filesystem::path& argWinPath, UINT32 argCre
 	return STATUS_SUCCESS;
 }
 
+void CSDriver::UploadWhenClosing(CALLER_ARG FileContext* ctx)
+{
+    NEW_LOG_BLOCK();
+
+    // 内容に変更があり、リモートへの反映が必要な状態
+
+    const auto& dirEntry{ ctx->getDirEntry() };
+    const auto objKey{ ctx->getObjectKey() };
+
+    switch (dirEntry->mFileType)
+    {
+        case FileTypeEnum::File:
+        {
+            //::SwitchToThread();
+
+            // キャッシュファイルのパスを取得
+
+            std::filesystem::path cacheFilePath;
+
+            if (!GetFileNameFromHandle(ctx->getHandle(), &cacheFilePath))
+            {
+                errorW(L"fault: GetFileNameFromHandle ctx=%s", ctx->str().c_str());
+                break;
+            }
+
+            // 未ダウンロード部分を取得する
+
+            auto ntstatus = this->syncContent(CONT_CALLER ctx, 0, (FILEIO_LENGTH_T)dirEntry->mFileInfo.FileSize);
+            if (!NT_SUCCESS(ntstatus))
+            {
+                errorW(L"fault: syncContent ctx=%s", ctx->str().c_str());
+                break;
+            }
+
+            // アップロードの実行
+
+            if (!mDevice->putObject(START_CALLER objKey, dirEntry->mFileInfo, cacheFilePath.c_str()))
+            {
+                errorW(L"fault: putObject objKey=%s", objKey.c_str());
+                break;
+            }
+
+            traceW(L"success: putObject objKey=%s", objKey.c_str());
+
+            // キャッシュの更新
+            // robocopy 対策
+
+            mDevice->headObject(START_CALLER objKey, nullptr);
+
+            if (mRuntimeEnv->DeleteAfterUpload)
+            {
+                // アップロード後にファイルを削除
+
+                if (!::DeleteFileW(cacheFilePath.c_str()))
+                {
+                    const auto lerr = ::GetLastError();
+                    errorW(L"fault: DeleteFileW lerr=%lu cacheFilePath=%s", lerr, cacheFilePath.c_str());
+                }
+
+                traceW(L"success: DeleteFileW cacheFilePath=%s", cacheFilePath.c_str());
+            }
+
+            break;
+        }
+    }
+}
+
 VOID CSDriver::Close(FileContext* ctx)
 {
     NEW_LOG_BLOCK();
@@ -382,67 +447,7 @@ VOID CSDriver::Close(FileContext* ctx)
     }
     else if (ctx->mFlags & FCTX_FLAGS_MODIFY)
     {
-        // 内容に変更があり、リモートへの反映が必要な状態
-
-        const auto& dirEntry{ ctx->getDirEntry() };
-        const auto objKey{ ctx->getObjectKey() };
-
-        switch (dirEntry->mFileType)
-        {
-            case FileTypeEnum::File:
-            {
-                //::SwitchToThread();
-
-                // キャッシュファイルのパスを取得
-
-                std::filesystem::path cacheFilePath;
-
-                if (!GetFileNameFromHandle(ctx->getHandle(), &cacheFilePath))
-                {
-                    errorW(L"fault: GetFileNameFromHandle ctx=%s", ctx->str().c_str());
-                    break;
-                }
-
-                // 未ダウンロード部分を取得する
-
-                auto ntstatus = this->syncContent(ctx, 0, (FILEIO_LENGTH_T)dirEntry->mFileInfo.FileSize);
-                if (!NT_SUCCESS(ntstatus))
-                {
-                    errorW(L"fault: syncContent ctx=%s", ctx->str().c_str());
-                    break;
-                }
-
-                // アップロードの実行
-
-                if (!mDevice->putObject(START_CALLER objKey, dirEntry->mFileInfo, cacheFilePath.c_str()))
-                {
-                    errorW(L"fault: putObject objKey=%s", objKey.c_str());
-                    break;
-                }
-
-                traceW(L"success: putObject objKey=%s", objKey.c_str());
-
-                // キャッシュの更新
-                // robocopy 対策
-
-                mDevice->headObject(START_CALLER objKey, nullptr);
-
-                if (mRuntimeEnv->DeleteAfterUpload)
-                {
-                    // アップロード後にファイルを削除
-
-                    if (!::DeleteFileW(cacheFilePath.c_str()))
-                    {
-                        const auto lerr = ::GetLastError();
-                        errorW(L"fault: DeleteFileW lerr=%lu cacheFilePath=%s", lerr, cacheFilePath.c_str());
-                    }
-
-                    traceW(L"success: DeleteFileW cacheFilePath=%s", cacheFilePath.c_str());
-                }
-
-                break;
-            }
-        }
+        this->UploadWhenClosing(START_CALLER ctx);
     }
 
     // オープン中の情報から削除
@@ -458,6 +463,7 @@ VOID CSDriver::Close(FileContext* ctx)
     delete ctx;
 }
 
+#pragma warning(suppress: 4100)
 VOID CSDriver::Cleanup(FileContext* ctx, PCWSTR argWinPath, ULONG argFlags)
 {
     NEW_LOG_BLOCK();
@@ -549,7 +555,7 @@ NTSTATUS CSDriver::Flush(FileContext* ctx, FSP_FSCTL_FILE_INFO* pFileInfo)
 
     // ファイルサイズに変更はないので、Write と同じ扱いで良いはず (true)
 
-    return this->updateFileInfo(ctx, pFileInfo, true);
+    return this->updateFileInfo(START_CALLER ctx, pFileInfo, true);
     //return GetFileInfoInternal(Handle, pFileInfo);
 }
 
@@ -587,6 +593,7 @@ NTSTATUS CSDriver::GetSecurity(FileContext* ctx, PSECURITY_DESCRIPTOR argSecurit
     return STATUS_SUCCESS;
 }
 
+#pragma warning(suppress: 4100)
 NTSTATUS CSDriver::Overwrite(FileContext* ctx, UINT32 argFileAttributes, BOOLEAN argReplaceFileAttributes, UINT64 argAllocationSize, FSP_FSCTL_FILE_INFO* pFileInfo)
 {
     NEW_LOG_BLOCK();
@@ -642,7 +649,7 @@ NTSTATUS CSDriver::Overwrite(FileContext* ctx, UINT32 argFileAttributes, BOOLEAN
 
     // キャッシュファイルが切り詰められているので、ファイル情報を優先(false)する
 
-    return this->updateFileInfo(ctx, pFileInfo, false);
+    return this->updateFileInfo(START_CALLER ctx, pFileInfo, false);
     //return GetFileInfoInternal(Handle, pFileInfo);
 }
 
@@ -654,7 +661,7 @@ NTSTATUS CSDriver::Read(FileContext* ctx, PVOID argBuffer, UINT64 argOffset, ULO
 
     // リモートの内容と部分同期 (argOffset + argLengh の範囲)
 
-    const auto ntstatus = this->syncContent(ctx, (FILEIO_OFFSET_T)argOffset, argLength);
+    const auto ntstatus = this->syncContent(START_CALLER ctx, (FILEIO_OFFSET_T)argOffset, argLength);
     if (!NT_SUCCESS(ntstatus))
     {
         errorW(L"fault: syncContent ctx=%s", ctx->str().c_str());
@@ -952,6 +959,7 @@ NTSTATUS CSDriver::ReadDirectory(FileContext* ctx, PCWSTR argPattern, PWSTR argM
     return STATUS_SUCCESS;
 }
 
+#pragma warning(suppress: 4100)
 NTSTATUS CSDriver::Rename(FileContext* ctx, const std::filesystem::path& argSrcWinPath, const std::filesystem::path& argDstWinPath, BOOLEAN argReplaceIfExists)
 {
     NEW_LOG_BLOCK();
@@ -1040,64 +1048,6 @@ NTSTATUS CSDriver::Rename(FileContext* ctx, const std::filesystem::path& argSrcW
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-#if 0
-    if (isDir)
-    {
-        // リモートにディレクトリを作成
-
-        if (!mDevice->putObject(START_CALLER dstObjKey, dstDirInfoPtr->FileInfo, nullptr))
-        {
-            errorW(L"fault: putObject dstObjKey=%s", dstObjKey.c_str());
-            return FspNtStatusFromWin32(ERROR_IO_DEVICE);
-        }
-    }
-    else
-    {
-        // 未ダウンロード部分を取得する
-
-        ntstatus = this->syncContent(ctx, 0, (FILEIO_LENGTH_T)ctx->getDirEntry()->mFileInfo.FileSize);
-        if (!NT_SUCCESS(ntstatus))
-        {
-            errorW(L"fault: syncContent ctx=%s", ctx->str().c_str());
-            return ntstatus;
-        }
-
-        // リネーム元のキャッシュ・ファイル名を取得
-
-        std::filesystem::path orgCacheFilePath;
-
-        if (!GetFileNameFromHandle(ctx->getHandle(), &orgCacheFilePath))
-        {
-            errorW(L"fault: GetFileNameFromHandle ctx=%s", ctx->str().c_str());
-            return FspNtStatusFromWin32(::GetLastError());
-        }
-
-        // リネーム先のキャッシュ・ファイル名を作成
-
-        std::filesystem::path dstCacheFilePath;
-
-        if (!resolveCacheFilePath(mRuntimeEnv->CacheDataDir, argDstWinPath, &dstCacheFilePath))
-        {
-            errorW(L"fault: resolveCacheFilePath argDstWinPath=%s", argDstWinPath.c_str());
-            return FspNtStatusFromWin32(ERROR_WRITE_FAULT);
-        }
-
-        // キャッシュ・ファイルのリネーム
-
-        traceW(L"MoveFileExW orgCacheFilePath=%s, dstCacheFilePath=%s", orgCacheFilePath.c_str(), dstCacheFilePath.c_str());
-
-        if (!::MoveFileExW(orgCacheFilePath.c_str(), dstCacheFilePath.c_str(), MOVEFILE_REPLACE_EXISTING))
-        {
-            const auto lerr = ::GetLastError();
-            errorW(L"fault: MoveFileExW lerr=%lu orgCacheFilePath=%s, dstCacheFilePath=%s", lerr, orgCacheFilePath.c_str(), dstCacheFilePath.c_str());
-
-            return FspNtStatusFromWin32(lerr);
-        }
-    }
-
-    // ファイルの場合は Close で PutObject によりリモートに反映される
-
-#else
     // リモートのオブジェクトをコピー
 
     if (!mDevice->copyObject(START_CALLER srcObjKey, dstObjKey))
@@ -1143,7 +1093,6 @@ NTSTATUS CSDriver::Rename(FileContext* ctx, const std::filesystem::path& argSrcW
         }
     }
 
-#endif
     // リモートのリネーム元を削除
 
     traceW(L"deleteObject srcObjKey=%s", srcObjKey.c_str());
@@ -1169,6 +1118,7 @@ NTSTATUS CSDriver::Rename(FileContext* ctx, const std::filesystem::path& argSrcW
 	return STATUS_SUCCESS;
 }
 
+#pragma warning(suppress: 4100)
 NTSTATUS CSDriver::SetBasicInfo(FileContext* ctx, UINT32 argFileAttributes, UINT64 argCreationTime, UINT64 argLastAccessTime, UINT64 argLastWriteTime, UINT64 argChangeTime, FSP_FSCTL_FILE_INFO* pFileInfo)
 {
     NEW_LOG_BLOCK();
@@ -1216,7 +1166,7 @@ NTSTATUS CSDriver::SetBasicInfo(FileContext* ctx, UINT32 argFileAttributes, UINT
 
             // ファイルサイズに変更はないので Write と同じ扱い(true)
 
-            return this->updateFileInfo(ctx, pFileInfo, true);
+            return this->updateFileInfo(START_CALLER ctx, pFileInfo, true);
             //return GetFileInfoInternal(Handle, pFileInfo);
 
             break;
@@ -1234,7 +1184,7 @@ NTSTATUS CSDriver::SetFileSize(FileContext* ctx, UINT64 argNewSize, BOOLEAN argS
 
     // 未ダウンロード部分を取得する
 
-    auto ntstatus = this->syncContent(ctx, 0, (FILEIO_LENGTH_T)argNewSize);
+    auto ntstatus = this->syncContent(START_CALLER ctx, 0, (FILEIO_LENGTH_T)argNewSize);
     if (!NT_SUCCESS(ntstatus))
     {
         errorW(L"fault: syncContent ctx=%s", ctx->str().c_str());
@@ -1280,15 +1230,17 @@ NTSTATUS CSDriver::SetFileSize(FileContext* ctx, UINT64 argNewSize, BOOLEAN argS
 
     // ファイルサイズの変更に必要な部分は同期されており、ローカルのファイルサイズを優先(false)する
 
-    return this->updateFileInfo(ctx, pFileInfo, false);
+    return this->updateFileInfo(START_CALLER ctx, pFileInfo, false);
     //return GetFileInfoInternal(Handle, pFileInfo);
 }
 
+#pragma warning(suppress: 4100)
 NTSTATUS CSDriver::SetSecurity(FileContext* argFileContext, SECURITY_INFORMATION argSecurityInformation, PSECURITY_DESCRIPTOR argModificationDescriptor)
 {
 	return STATUS_INVALID_DEVICE_REQUEST;
 }
 
+#pragma warning(suppress: 4100)
 NTSTATUS CSDriver::Write(FileContext* ctx, PVOID argBuffer, UINT64 argOffset, ULONG argLength, BOOLEAN argWriteToEndOfFile, BOOLEAN argConstrainedIo, PULONG argBytesTransferred, FSP_FSCTL_FILE_INFO* pFileInfo)
 {
     NEW_LOG_BLOCK();
@@ -1297,7 +1249,7 @@ NTSTATUS CSDriver::Write(FileContext* ctx, PVOID argBuffer, UINT64 argOffset, UL
 
     // リモートの内容と部分同期 (argOffset + argLengh の範囲)
 
-    auto ntstatus = this->syncContent(ctx, (FILEIO_OFFSET_T)argOffset, (FILEIO_LENGTH_T)argLength);
+    auto ntstatus = this->syncContent(START_CALLER ctx, (FILEIO_OFFSET_T)argOffset, (FILEIO_LENGTH_T)argLength);
     if (!NT_SUCCESS(ntstatus))
     {
         errorW(L"fault: syncContent ctx=%s", ctx->str().c_str());
@@ -1342,10 +1294,11 @@ NTSTATUS CSDriver::Write(FileContext* ctx, PVOID argBuffer, UINT64 argOffset, UL
 
     // Write に必要な部分のみ同期しているため、リモートのファイルサイズを優先(true)する
 
-    return this->updateFileInfo(ctx, pFileInfo, true);
+    return this->updateFileInfo(START_CALLER ctx, pFileInfo, true);
     //return GetFileInfoInternal(Handle, pFileInfo);
 }
 
+#pragma warning(suppress: 4100)
 NTSTATUS CSDriver::SetDelete(FileContext* ctx, PCWSTR argFileName, BOOLEAN argDeleteFile)
 {
     NEW_LOG_BLOCK();

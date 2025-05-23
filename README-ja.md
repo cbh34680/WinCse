@@ -1,33 +1,53 @@
 # WinCse &middot; Windows Cloud Storage Explorer
 
-WinCse は、AWS S3 バケットを Windows Explorer に統合するアプリケーションで、S3 バケットをローカルのファイルシステムのように扱うことができます。  
-  
-## 更新情報
-**2025/5/15 15:34**  
-間違って古いファイル (`0-250220-2315.zip`) を [リリースページ](https://github.com/cbh34680/WinCse/releases) にアップロードしていました。  
-現在は正しいもの (`0-250512-1345.zip`) に修正しています。
+WinCse は、オブジェクト・ストレージを Windows Explorer に統合するアプリケーションで、バケットをローカルのファイルシステムのように扱うことができます。  
 
 ## 主な機能
-- Windows ファイル共有のような感覚で S3 上のファイルを操作できます。
-- マウント時に表示する S3 バケットの名前や数を調整可能です。
-- S3 バケットを読み取り専用モードでマウントすることができます。
+- Windows ファイル共有のような感覚でオブジェクト・ストレージのファイルを操作できます。
+- マウント時に表示する バケットの名前や数を調整可能です。
+- 読み取り専用モードでマウントすることができます。
+- AWS S3, Google Cloud Storage, OCI Object Storage で動作します。
 
 ## システム要件
-- Windows 10 以降を推奨
+- Windows 11 以降を推奨
 - [WinFsp](http://www.secfs.net/winfsp/)
 - [AWS SDK for C++](https://github.com/aws/aws-sdk-cpp)
+- [Google Cloud Platform C++ Client Libraries](https://github.com/googleapis/google-cloud-cpp)
 
 ## インストール手順
 1. [WinFsp](https://winfsp.dev/rel/) をインストールする。
-2. [リリースページ](https://github.com/cbh34680/WinCse/releases) から WinCse (AWS SDK for C++ を内包) をダウンロードする。
+2. [リリースページ](https://github.com/cbh34680/WinCse/releases) から WinCse (必要な DLL は内包しています) をダウンロードする。
+
+# WinCse ・ Windows Cloud Storage Explorer
+
+WinCse は、オブジェクト・ストレージを Windows Explorer に統合し、ローカルのファイルシステムのように扱えるアプリケーションです。
+
+## 主な機能
+- Windows ファイル共有のような感覚で操作可能
+- 表示するバケットの名前や数を調整可能
+- 読み取り専用モード対応
+- **AWS S3 / Google Cloud Storage / OCI Object Storage に対応**
+
+## システム要件
+- Windows 11 以降推奨
+- [WinFsp](http://www.secfs.net/winfsp/)
+- 必要な SDK
+  - [AWS SDK for C++](https://github.com/aws/aws-sdk-cpp)
+  - [Google Cloud Platform C++ Client Libraries](https://github.com/googleapis/google-cloud-cpp)
+
+## インストール手順
+1. [WinFsp](https://winfsp.dev/rel/) をインストール
+2. [リリースページ](https://github.com/cbh34680/WinCse/releases) から WinCse をダウンロード
 
 ## 使用方法
-1. `setup/install-aws-s3.bat` を管理者権限で実行する。
-2. フォーム画面が表示されたら、AWS の認証情報を入力する。
-3. **作成** ボタンを押す。
-4. 表示された Explorer のディレクトリから `mount.bat` を実行する。
-5. フォーム画面で選択したドライブで、Windows Explorer から S3 バケットにアクセスできるようになる。
-6. `un-mount.bat` を実行すると、マウントしたドライブを解除できる。
+1. ストレージ種別に応じて、以下のスクリプトを **管理者権限で実行**：
+   - **AWS S3** → `setup/install-aws-s3.bat`
+   - **GCP GS** → `setup/install-gcp-gs.bat`
+   - **OCI OS** → `setup/install-oci-os.bat`
+2. フォーム画面が表示されたら、認証情報を入力し **作成** ボタンを押す。
+3. Explorer のディレクトリから `mount.bat` を実行し、ストレージをマウント。
+4. Windows Explorer でバケットのファイルにアクセス可能になる。
+5. `un-mount.bat` を実行すると、マウントしたドライブを解除できる。
 
 ## アンインストール方法
 1. マウントしたドライブをアンマウントする。
@@ -48,6 +68,7 @@ WinCse は、AWS S3 バケットを Windows Explorer に統合するアプリケ
 
 ## 注意事項
 - 本ソフトウェアは Windows 11 のみで動作確認されています。他のバージョンとの互換性は保証されていません。
+- OCI Object Storage への接続は [OCI_AWS_CPP_SDK_S3_Examples](https://github.com/tonymarkel/OCI_AWS_CPP_SDK_S3_Examples) を参考にしています。
 
 ## ライセンス
 本プロジェクトは [GPLv3](https://www.gnu.org/licenses/gpl-3.0.html) および [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0) のもとでライセンスされています。

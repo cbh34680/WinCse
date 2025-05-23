@@ -174,7 +174,7 @@ void ScheduledWorker::listen(int argThreadIndex, HANDLE argStarted)
 					// --> スケジュール起動なので SetEvent は発生しないはず
 
 					const auto lerr = ::GetLastError();
-					traceW(L"%s(%d): wait for signal: error reason=%lu lerr=%lu, break", klassNameCstr, argThreadIndex, reason, lerr);
+					errorW(L"%s(%d): wait for signal: error reason=%lu lerr=%lu, break", klassNameCstr, argThreadIndex, reason, lerr);
 
 					break;
 				}

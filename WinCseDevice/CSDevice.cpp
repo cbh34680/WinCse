@@ -1,4 +1,5 @@
 #include "CSDevice.hpp"
+#include <urlmon.h>
 
 using namespace CSELIB;
 
@@ -189,6 +190,58 @@ CSELIB::FILEIO_LENGTH_T writeFileFromStream(CALLER_ARG
     return argInputLength;
 }
 
+std::wstring getContentType(CALLER_ARG PCWSTR argInputPath, const std::wstring& argKey)
+{
+    NEW_LOG_BLOCK();
+
+    FileHandle file = ::CreateFileW(
+        argInputPath,
+        GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL);
+
+    if (file.valid())
+    {
+        BYTE bytes[256];
+        DWORD bytesRead;
+
+        if (::ReadFile(file.handle(), bytes, sizeof(bytes), &bytesRead, NULL))
+        {
+            LPWSTR mimeType = nullptr;
+
+            HRESULT hr = ::FindMimeFromData(nullptr, nullptr, bytes, bytesRead, nullptr, 0, &mimeType, 0);
+            if (SUCCEEDED(hr))
+            {
+                std::wstring ret{ mimeType };
+                ::CoTaskMemFree(mimeType);
+
+                return ret;
+            }
+            else
+            {
+                traceW(L"fault: FindMimeFromData");
+            }
+        }
+        else
+        {
+            const auto lerr = ::GetLastError();
+            traceW(L"fault: ReadFile lerr=%lu", lerr);
+        }
+
+        file.close();
+    }
+    else
+    {
+        const auto lerr = ::GetLastError();
+        traceW(L"fault: CreateFileW lerr=%lu", lerr);
+    }
+
+    return GetMimeTypeFromFileName(argKey);
+}
+
 CSDevice::~CSDevice()
 {
     this->OnSvcStop();
@@ -214,17 +267,17 @@ struct ListBucketsTask : public IOnDemandTask
     }
 };
 
-bool CSDevice::headBucket(CALLER_ARG const std::wstring& argBucketName, DirEntryType* pDirEntry)
+bool CSDevice::headBucket(CALLER_ARG const std::wstring& argBucketName, CSELIB::DirEntryType* pDirEntry)
 {
     return mQueryBucket->qbHeadBucket(CONT_CALLER argBucketName, pDirEntry);
 }
 
-bool CSDevice::listBuckets(CALLER_ARG DirEntryListType* pDirEntryList)
+bool CSDevice::listBuckets(CALLER_ARG CSELIB::DirEntryListType* pDirEntryList)
 {
     return mQueryBucket->qbListBuckets(CONT_CALLER pDirEntryList);
 }
 
-bool CSDevice::headObject(CALLER_ARG const ObjectKey& argObjKey, DirEntryType* pDirEntry)
+bool CSDevice::headObject(CALLER_ARG const CSELIB::ObjectKey& argObjKey, CSELIB::DirEntryType* pDirEntry)
 {
     APP_ASSERT(argObjKey.isObject());
 
@@ -244,7 +297,7 @@ bool CSDevice::headObject(CALLER_ARG const ObjectKey& argObjKey, DirEntryType* p
     }
 }
 
-bool CSDevice::headObjectOrCache_(CALLER_ARG const ObjectKey& argObjKey, DirEntryType* pDirEntry)
+bool CSDevice::headObjectOrCache_(CALLER_ARG const CSELIB::ObjectKey& argObjKey, CSELIB::DirEntryType* pDirEntry)
 {
     // listDisplayObjects ‚Ì’†‚Å‚Ì‚Ý—˜—p‚³‚ê‚éŠÖ”
 
@@ -262,7 +315,7 @@ bool CSDevice::headObjectOrCache_(CALLER_ARG const ObjectKey& argObjKey, DirEntr
     }
 }
 
-bool CSDevice::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryListType* pDirEntryList)
+bool CSDevice::listDisplayObjects(CALLER_ARG const CSELIB::ObjectKey& argObjKey, CSELIB::DirEntryListType* pDirEntryList)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(argObjKey.meansDir());
@@ -363,20 +416,20 @@ bool CSDevice::listDisplayObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntr
     return true;
 }
 
-bool CSDevice::listObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryListType* pDirEntryList)
+bool CSDevice::listObjects(CALLER_ARG const CSELIB::ObjectKey& argObjKey, CSELIB::DirEntryListType* pDirEntryList)
 {
     APP_ASSERT(argObjKey.meansDir());
 
     return mQueryObject->qoListObjects(CONT_CALLER argObjKey, pDirEntryList);
 }
 
-FILEIO_LENGTH_T CSDevice::getObjectAndWriteFile(CALLER_ARG const ObjectKey& argObjKey,
+FILEIO_LENGTH_T CSDevice::getObjectAndWriteFile(CALLER_ARG const CSELIB::ObjectKey& argObjKey,
     const std::filesystem::path& argOutputPath, FILEIO_OFFSET_T argOffset, FILEIO_LENGTH_T argLength)
 {
     return mApiClient->GetObjectAndWriteFile(CONT_CALLER argObjKey, argOutputPath, argOffset, argLength);
 }
 
-bool CSDevice::putObject(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argInputPath)
+bool CSDevice::putObject(CALLER_ARG const CSELIB::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argInputPath)
 {
     NEW_LOG_BLOCK();
 
@@ -394,7 +447,7 @@ bool CSDevice::putObject(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSCTL_
     return true;
 }
 
-bool CSDevice::copyObject(CALLER_ARG const ObjectKey& argSrcObjKey, const ObjectKey& argDstObjKey)
+bool CSDevice::copyObject(CALLER_ARG const CSELIB::ObjectKey& argSrcObjKey, const CSELIB::ObjectKey& argDstObjKey)
 {
     NEW_LOG_BLOCK();
 
@@ -416,7 +469,7 @@ bool CSDevice::copyObject(CALLER_ARG const ObjectKey& argSrcObjKey, const Object
     return true;
 }
 
-bool CSDevice::deleteObject(CALLER_ARG const ObjectKey& argObjKey)
+bool CSDevice::deleteObject(CALLER_ARG const CSELIB::ObjectKey& argObjKey)
 {
     NEW_LOG_BLOCK();
 

@@ -22,7 +22,6 @@ void CSDriverBase::onIdle()
     //
     // 最終アクセス日時から一定時間経過したキャッシュ・ファイルを削除する
 
-
     const auto duration = now.time_since_epoch();
     const auto nowMillis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
 
@@ -51,7 +50,26 @@ void CSDriverBase::onIdle()
             else
             {
                 const auto lerr = ::GetLastError();
-                errorW(L"fault: Remove error lerr=%lu", lerr);
+
+                bool warn = false;
+
+                switch (lerr)
+                {
+                    case STATUS_SHARING_VIOLATION:
+                    {
+                        warn = true;
+                        break;
+                    }
+                }
+
+                if (warn)
+                {
+                    traceW(L"warn: Remove error lerr=%lu", lerr);
+                }
+                else
+                {
+                    errorW(L"fault: Remove error lerr=%lu", lerr);
+                }
             }
         }
         else
@@ -84,7 +102,25 @@ void CSDriverBase::onIdle()
             {
                 const auto lerr = ::GetLastError();
 
-                errorA("fault: Remove error lerr=%lu ec=%s", lerr, ec.message().c_str());
+                bool warn = false;
+
+                switch (lerr)
+                {
+                    case ERROR_DIR_NOT_EMPTY:
+                    {
+                        warn = true;
+                        break;
+                    }
+                }
+
+                if (warn)
+                {
+                    traceA("warn: Remove error lerr=%lu ec=%s", lerr, ec.message().c_str());
+                }
+                else
+                {
+                    errorA("fault: Remove error lerr=%lu ec=%s", lerr, ec.message().c_str());
+                }
             }
             else
             {

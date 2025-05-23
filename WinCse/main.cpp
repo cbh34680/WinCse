@@ -28,8 +28,9 @@ static WCHAR PROGNAME[] = L"WinCse";
 static void app_terminate();
 static void app_sighandler(int signum);
 
-static WCHAR WINCSE_BUILD_TIME[] = L"Build: 2025/05/12 13:45 JST";
-static WCHAR AWS_SDK_CPP_COMMIT[] = L"aws-sdk-cpp: Commit 6b03639";
+static WCHAR WINCSE_BUILD_TIME[] = L"Build: 2025-05-24 01:25 JST";
+static WCHAR AWS_SDK_CPP_VERSION[] = L"aws-sdk-cpp: 1.11.571";
+static WCHAR GOOGLE_CLOUD_CPP_COMMIT[] = L"google-cloud-cpp: 67bbff63cb7";
 
 static void writeStats(PCWSTR logDir, const WINFSP_STATS* libStats, const WINCSE_DRIVER_STATS* appStats);
 
@@ -292,7 +293,8 @@ int wmain(int argc, wchar_t** argv)
 
     std::wcout << L"[External Libraries]" << std::endl;
     std::wcout << L"WinFsp: 2.0.23075" << std::endl;
-    std::wcout << AWS_SDK_CPP_COMMIT << std::endl;
+    std::wcout << AWS_SDK_CPP_VERSION << std::endl;
+    std::wcout << GOOGLE_CLOUD_CPP_COMMIT << std::endl;
 
 #ifdef _DEBUG
     ::_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);

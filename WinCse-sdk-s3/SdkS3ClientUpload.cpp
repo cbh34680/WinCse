@@ -47,10 +47,14 @@ bool SdkS3Client::uploadSimple(CALLER_ARG const ObjectKey& argObjKey, const FSP_
     {
         APP_ASSERT(argInputPath);
 
+        // Content-Type の設定
+
+        const auto contentType{ getContentType(CONT_CALLER argInputPath, argObjKey.key()) };
+        request.SetContentType(WC2MB(contentType));
+
         // ファイルの場合はローカル・キャッシュの内容をアップロードする
 
         const auto body{ makeStreamFromFile(CONT_CALLER argInputPath, 0, argFileInfo.FileSize) };
-
         if (!body)
         {
             errorW(L"fault: makeStreamFromFile argInputPath=%s", argInputPath);
@@ -62,12 +66,15 @@ bool SdkS3Client::uploadSimple(CALLER_ARG const ObjectKey& argObjKey, const FSP_
         request.SetBody(body);
     }
 
+    // メタデータを設定
+
     Aws::Map<Aws::String, Aws::String> metadata;
     setMetadataFromFileInfo(CONT_CALLER argFileInfo, &metadata);
-
     request.SetMetadata(metadata);
 
     traceW(L"PutObject argObjKey=%s, argInputPath=%s", argObjKey.c_str(), argInputPath);
+
+    // アップロードの実行
 
     const auto outcome = executeWithRetry(mS3Client, &Aws::S3::S3Client::PutObject, request, mRuntimeEnv->MaxApiRetryCount);
 
@@ -227,11 +234,14 @@ bool SdkS3Client::PutObjectInternal(CALLER_ARG const ObjectKey& argObjKey, const
 
     // メタデータを設定
 
-    //const auto metadata{ makeUploadMetadata(CONT_CALLER argFileInfo) };
     Aws::Map<Aws::String, Aws::String> metadata;
     setMetadataFromFileInfo(CONT_CALLER argFileInfo, &metadata);
-
     createRequest.SetMetadata(metadata);
+
+    // Content-Type の設定
+
+    const auto contentType{ getContentType(CONT_CALLER argInputPath, argObjKey.key()) };
+    createRequest.SetContentType(WC2MB(contentType));
 
     const auto createOutcome = mS3Client->CreateMultipartUpload(createRequest);
     if (!IsSuccess(createOutcome))
@@ -303,7 +313,7 @@ bool SdkS3Client::PutObjectInternal(CALLER_ARG const ObjectKey& argObjKey, const
         return false;
     }
 
-    // アップロード完了
+    // アップロード結果を取得
 
     Aws::S3::Model::CompletedMultipartUpload completedUpload;
     completedUpload.WithParts(completedParts);

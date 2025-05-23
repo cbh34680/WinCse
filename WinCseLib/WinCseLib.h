@@ -138,6 +138,8 @@ WINCSELIB_API std::wstring CreateGuidW();
 WINCSELIB_API bool DecryptAES(const std::vector<BYTE>& key, const std::vector<BYTE>& iv, const std::vector<BYTE>& encrypted, std::vector<BYTE>* pDecrypted);
 WINCSELIB_API LSTATUS GetCryptKeyFromRegistryA(std::string* pOutput);
 WINCSELIB_API LSTATUS GetCryptKeyFromRegistryW(std::wstring* pOutput);
+WINCSELIB_API std::wstring GetMimeTypeFromFileName(const std::filesystem::path& argPath);
+
 WINCSELIB_API NTSTATUS ComputeSHA256A(const std::string& input, std::string* pOutput);
 WINCSELIB_API NTSTATUS ComputeSHA256W(const std::wstring& input, std::wstring* pOutput);
 WINCSELIB_API bool DecryptCredentialStringA(const std::string& argSecretKey, std::string* pInOut);

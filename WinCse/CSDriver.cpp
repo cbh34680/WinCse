@@ -128,7 +128,7 @@ NTSTATUS CSDriver::canCreateObject(CALLER_ARG const std::filesystem::path& argWi
 	{
 		// バケットに対する操作
 
-		if (!mDevice->headBucket(CONT_CALLER refObjKey.bucket(), nullptr))
+		if (mDevice->headBucket(CONT_CALLER refObjKey.bucket(), nullptr))
 		{
 			// "md \bucket\not\exist\yet\dir" を実行するとバケットに対して create が
 			// 呼び出されるが、これに対し STATUS_OBJECT_NAME_COLLISION 以外を返却すると
@@ -145,7 +145,7 @@ NTSTATUS CSDriver::canCreateObject(CALLER_ARG const std::filesystem::path& argWi
 		}
 		else
 		{
-			traceW(L"fault: headBucket refObjKey=%s", refObjKey.c_str());
+			errorW(L"fault: headBucket refObjKey=%s", refObjKey.c_str());
 
 			return STATUS_ACCESS_DENIED;
 		}

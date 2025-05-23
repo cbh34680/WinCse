@@ -177,6 +177,7 @@
     <ClCompile Include="FileUtils.cpp" />
     <ClCompile Include="Logger.cpp" />
     <ClCompile Include="ObjectKey.cpp" />
+    <ClCompile Include="Registry.cpp" />
     <ClCompile Include="StringUtils.cpp" />
     <ClCompile Include="TimeUtils.cpp" />
     <ClCompile Include="WinCseLib.cpp" />

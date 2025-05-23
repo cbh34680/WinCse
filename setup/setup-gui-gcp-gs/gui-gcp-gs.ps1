@@ -518,7 +518,7 @@ call "${FsregBatPath}" -u ${reg_name}
     $mount_bat = @"
 @echo on
 if exist ${drive}:\ net use ${drive}: /delete
-net use ${drive}: "\\${reg_name}\${workdir_drive}$\${workdir_dir}"
+net use ${drive}: "\\${reg_name}\${workdir_drive}$\${workdir_dir}" /persistent:no
 @pause
 "@
 
@@ -655,8 +655,8 @@ ${projid_text}
 
 ; Specifies the number of threads used for file I/O operations.
 ; valid range: 1 to 32
-; default: 4
-#file_io_threads=4
+; default: 8
+#file_io_threads=8
 
 ; Maximum retry count for API execution
 ; Note: Added after v0.250512.1345

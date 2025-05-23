@@ -32,7 +32,18 @@ bool IsSuccess(const google::cloud::Status& status)
 			ss << kv.first << "=" << kv.second << ",";
 		}
 
-		if (statusCode == google::cloud::StatusCode::kNotFound)
+		bool warn = false;
+
+		switch (statusCode)
+		{
+			case google::cloud::StatusCode::kNotFound:
+			{
+				warn = true;
+				break;
+			}
+		}
+
+		if (warn)
 		{
 			traceA("warn: code=%d message=%s reason=%s domain=%s metadata=%s", code, mesg.c_str(), reason.c_str(), domain.c_str(), ss.str().c_str());
 		}
@@ -389,12 +400,20 @@ bool GcpGsClient::PutObject(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSC
 
 	traceW(L"argObjKey=%s argFileInfo=%s argInputPath=%s", argObjKey.c_str(), FileInfoToStringW(argFileInfo).c_str(), argInputPath);
 
+	// メタデータを設定
+
 	google::cloud::storage::ObjectMetadata inMetadata;
 	auto& mutable_metadata = inMetadata.mutable_metadata();
-
 	setMetadataFromFileInfo(CONT_CALLER argFileInfo, &mutable_metadata);
 
-	auto stream = mGsClient->WriteObject(argObjKey.bucketA(), argObjKey.keyA(), google::cloud::storage::WithObjectMetadata(inMetadata));
+	// Content-Type を取得
+
+	const auto contentType{ getContentType(CONT_CALLER argInputPath, argObjKey.key()) };
+
+	// ストリームを生成
+
+	auto stream = mGsClient->WriteObject(argObjKey.bucketA(), argObjKey.keyA(),
+		google::cloud::storage::WithObjectMetadata(inMetadata), google::cloud::storage::ContentType(WC2MB(contentType)));
 
 	if (FA_IS_DIR(argFileInfo.FileAttributes))
 	{
@@ -406,6 +425,8 @@ bool GcpGsClient::PutObject(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSC
 	{
 		APP_ASSERT(argInputPath);
 
+		// ストリームに出力
+
 		const auto nWrite = writeStreamFromFile(CONT_CALLER &stream, argInputPath, 0, argFileInfo.FileSize);
 
 		if (nWrite != static_cast<FILEIO_LENGTH_T>(argFileInfo.FileSize))
@@ -416,6 +437,8 @@ bool GcpGsClient::PutObject(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSC
 	}
 
 	stream.Close();
+
+	// アップロード結果を取得
 
 	const auto& outMetadata = stream.metadata();
 	if (!outMetadata)

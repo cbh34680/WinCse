@@ -70,19 +70,19 @@ void t_CPP_File_Win32()
 	std::cout << "(1) " << ::GetFileAttributesA(path) << std::endl;
 
 	std::error_code ec;
-	std::filesystem::exists(path, ec);
+	std::cout << std::filesystem::exists(path, ec) << std::endl;
 
 	std::cout << ec.value() << " " << ec.message() << std::endl;
 
 	CloseHandle(h1);
 	std::cout << "(2) " << ::GetFileAttributesA(path) << std::endl;
-	std::filesystem::exists(path, ec);
+	std::cout << std::filesystem::exists(path, ec) << std::endl;
 
 	std::cout << ec.value() << " " << ec.message() << std::endl;
 
 	CloseHandle(h2);
 	std::cout << "(3) " << ::GetFileAttributesA(path) << std::endl;
-	std::filesystem::exists(path, ec);
+	std::cout << std::filesystem::exists(path, ec) << std::endl;
 
 	std::cout << ec.value() << " " << ec.message() << std::endl;
 }

@@ -1,6 +1,7 @@
 ﻿// dllmain.cpp : DLL アプリケーションのエントリ ポイントを定義します。
 #include <Windows.h>
 
+#pragma comment(lib, "urlmon.lib")
 #pragma comment(lib, "WinCseLib.lib")
 
 #pragma warning(disable: 4100)

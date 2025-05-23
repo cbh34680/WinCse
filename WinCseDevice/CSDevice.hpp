@@ -13,6 +13,8 @@ WINCSEDEVICE_API CSELIB::FILEIO_LENGTH_T writeFileFromStream(CALLER_ARG
     const std::filesystem::path& argOutputPath, CSELIB::FILEIO_OFFSET_T argOutputOffset,
     const std::istream* argInputStream, CSELIB::FILEIO_LENGTH_T argInputLength);
 
+WINCSEDEVICE_API std::wstring getContentType(CALLER_ARG PCWSTR argInputPath, const std::wstring& argKey);
+
 class CSDevice : public CSDeviceBase
 {
 private:

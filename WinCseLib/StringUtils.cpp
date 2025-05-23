@@ -73,6 +73,7 @@ std::wstring MB2WC(const std::string& str)
 	return std::wstring{ pWstr };
 }
 
+#if 0
 std::wstring SafeSubStringW(const std::wstring& str, std::wstring::size_type pos, std::wstring::size_type len)
 {
 	const auto strSize = str.size();
@@ -86,6 +87,23 @@ std::wstring SafeSubStringW(const std::wstring& str, std::wstring::size_type pos
 
 	return str.substr(pos, len);
 }
+
+#else
+std::wstring SafeSubStringW(const std::wstring& str, std::wstring::size_type pos, std::wstring::size_type len)
+{
+	const auto strSize = str.size();
+
+	if (pos >= strSize)
+	{
+		return L""; // pos‚ª”ÍˆÍŠO‚Ìê‡‚Í‹ó•¶š—ñ‚ğ•Ô‚·
+	}
+
+	len = std::clamp(len, std::wstring::size_type{0}, strSize - pos); // ”ÍˆÍ‚ğ’²®
+
+	return str.substr(pos, len);
+}
+
+#endif
 
 std::string SafeSubStringA(const std::string& str, std::string::size_type pos, std::string::size_type len)
 {
