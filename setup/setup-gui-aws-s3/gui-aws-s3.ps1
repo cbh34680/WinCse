@@ -689,7 +689,7 @@ region=${region}
 
 ; Specifies the number of threads used for file I/O operations.
 ; valid range: 1 to 32
-; default: 8
+; default: Equal to the number of CPU cores
 #file_io_threads=8
 
 ; Maximum retry count for API execution
