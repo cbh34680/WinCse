@@ -1,4 +1,9 @@
-﻿Set-StrictMode -Version 3.0
+﻿# -----------------
+# Arguments
+#
+param([string]$DllType = "aws-s3")
+
+Set-StrictMode -Version 3.0
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -9,24 +14,16 @@ $Error.Clear();
 # Vars
 #
 $CurrentDir      = Get-Location
-
 $AppName         = "WinCse"
-$DllType         = "aws-s3"
 $ExeFileName     = "${AppName}.exe"
 $ConfFileName    = "${AppName}.conf"
 $LogDirName      = "log"
 $WinFspLogFName  = "WinFsp.log"
-
 $RegWinFspPath   = "HKLM:\SOFTWARE\WOW6432Node\WinFsp"
-
-#$EnvPFX86        = [Environment]::GetFolderPath("ProgramFilesX86")
-#$FsregBatPath    = "${EnvPFX86}\WinFsp\bin\fsreg.bat"
 $FsregBatPath    = "%ProgramFiles(x86)%\WinFsp\bin\fsreg.bat"
-
 $RelWorkDir      = "..\work"
 $WorkDir         = [System.IO.Path]::Combine($CurrentDir, $RelWorkDir)
 $WorkDir         = [System.IO.Path]::GetFullPath($WorkDir)
-
 $RelExeDir       = "..\x64\Release"
 $ExeDir          = [System.IO.Path]::Combine($CurrentDir, $RelExeDir)
 $ExeDir          = [System.IO.Path]::GetFullPath($ExeDir)
@@ -38,6 +35,7 @@ $RegDelBatFName    = "reg-del.bat"
 $RegQryBatFName    = "reg-query.bat"
 $MountBatFName     = "mount.bat"
 $UMountBatFName    = "un-mount.bat"
+$TestBootBatFName  = "test-boot.bat"
 $ReadmeFName       = "readme.txt"
 
 $SwitchAdmin     = @"
@@ -162,7 +160,7 @@ if (-not (Test-Path -Path "${RegWinFspPath}\Services")) {
 # Access Key Id
 #
 $lbl_keyid = New-Object System.Windows.Forms.Label -Property @{
-    Location = "40,40"
+    Location = "50,35"
     Size = "130,24"
     BorderStyle = "Fixed3D"
     Text = "Access Key Id"
@@ -171,7 +169,7 @@ $lbl_keyid = New-Object System.Windows.Forms.Label -Property @{
 }
 
 $tbx_keyid = New-Object System.Windows.Forms.TextBox -Property @{
-    Location = "190,42"
+    Location = "200,35"
     Size = "370,24"
     BorderStyle = "Fixed3D"
     Font = $FontL
@@ -181,7 +179,7 @@ $tbx_keyid = New-Object System.Windows.Forms.TextBox -Property @{
 # Secret Access Key
 #
 $lbl_secret = New-Object System.Windows.Forms.Label -Property @{
-    Location = "40,80"
+    Location = "50,75"
     Size = "130,24"
     BorderStyle = "Fixed3D"
     Text = "Secret Access Key"
@@ -190,7 +188,7 @@ $lbl_secret = New-Object System.Windows.Forms.Label -Property @{
 }
 
 $tbx_secret = New-Object System.Windows.Forms.MaskedTextBox -Property @{
-    Location = "190,82"
+    Location = "200,75"
     Size = "370,24"
     BorderStyle = "Fixed3D"
     Font = $FontL
@@ -198,29 +196,10 @@ $tbx_secret = New-Object System.Windows.Forms.MaskedTextBox -Property @{
 }
 
 # -----------------
-# Region
-#
-$lbl_region = New-Object System.Windows.Forms.Label -Property @{
-    Location = "40,120"
-    Size = "130,24"
-    BorderStyle = "Fixed3D"
-    Text = "Region"
-    Font = $FontM
-    TextAlign = $LblTextAlign
-}
-
-$tbx_region = New-Object System.Windows.Forms.TextBox -Property @{
-    Location = "190,122"
-    Size = "170,24"
-    BorderStyle = "Fixed3D"
-    Font = $FontL
-}
-
-# -----------------
 # Encrypt
 #
 $chk_encrypt = New-Object System.Windows.Forms.CheckBox -Property @{
-    Location = "485,120"
+    Location = "495,105"
     Size = "100,24"
     Text = "Encrypt"
     Font = $FontM
@@ -230,10 +209,53 @@ $chk_encrypt = New-Object System.Windows.Forms.CheckBox -Property @{
 }
 
 # -----------------
+# Namespace
+#
+$lbl_ns = New-Object System.Windows.Forms.Label -Property @{
+    Location = "50,115"
+    Size = "130,24"
+    BorderStyle = "Fixed3D"
+    Text = "Namespace"
+    Font = $FontM
+    TextAlign = $LblTextAlign
+}
+
+$tbx_ns = New-Object System.Windows.Forms.TextBox -Property @{
+    Location = "200,115"
+    Size = "170,24"
+    BorderStyle = "Fixed3D"
+    Font = $FontL
+    Enabled = $false
+}
+
+if ($DllType -eq "oci-os") {
+    $tbx_ns.Enabled = $true
+}
+
+# -----------------
+# Region
+#
+$lbl_region = New-Object System.Windows.Forms.Label -Property @{
+    Location = "50,155"
+    Size = "130,24"
+    BorderStyle = "Fixed3D"
+    Text = "Region"
+    Font = $FontM
+    TextAlign = $LblTextAlign
+}
+
+$tbx_region = New-Object System.Windows.Forms.TextBox -Property @{
+    Location = "200,155"
+    Size = "170,24"
+    BorderStyle = "Fixed3D"
+    Font = $FontL
+}
+
+# -----------------
 # Mount Drive
 #
 $lbl_drive = New-Object System.Windows.Forms.Label -Property @{
-    Location = "40,160"
+    Location = "50,195"
     Size = "130,24"
     BorderStyle = "Fixed3D"
     Text = "Mount Drive"
@@ -242,7 +264,7 @@ $lbl_drive = New-Object System.Windows.Forms.Label -Property @{
 }
 
 $cbx_drive = New-Object System.Windows.Forms.ComboBox -Property @{
-    Location = "190,160"
+    Location = "200,195"
     Size = "70,24"
     Font = $FontL
     DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
@@ -294,7 +316,7 @@ if ($cbx_drive.Items.Count -ne 0) {
 # Work Directory
 #
 $lbl_wkdir = New-Object System.Windows.Forms.Label -Property @{
-    Location = "40,200"
+    Location = "50,235"
     Size = "130,24"
     BorderStyle = "Fixed3D"
     Text = "Working Directory"
@@ -303,7 +325,7 @@ $lbl_wkdir = New-Object System.Windows.Forms.Label -Property @{
 }
 
 $txt_wkdir = New-Object System.Windows.Forms.Label -Property @{
-    Location = "190,200"
+    Location = "200,235"
     Size = "330,24"
     BorderStyle = "Fixed3D"
     Text = $WorkDir
@@ -311,7 +333,7 @@ $txt_wkdir = New-Object System.Windows.Forms.Label -Property @{
 }
 
 $btn_wkdir = New-Object System.Windows.Forms.Button -Property @{
-    Location = "525,200"
+    Location = "535,234"
     Size = "32,24"
     Text = "..."
     Font = $FontS
@@ -339,7 +361,7 @@ $btn_wkdir.Add_Click({
 # Application
 #
 $lbl_exe = New-Object System.Windows.Forms.Label -Property @{
-    Location = "40,240"
+    Location = "50,275"
     Size = "130,24"
     BorderStyle = "Fixed3D"
     Text = $ExeFileName
@@ -348,7 +370,7 @@ $lbl_exe = New-Object System.Windows.Forms.Label -Property @{
 }
 
 $txt_exe = New-Object System.Windows.Forms.Label -Property @{
-    Location = "190,240"
+    Location = "200,275"
     Size = "330,24"
     BorderStyle = "Fixed3D"
     Text = $ExePath
@@ -356,7 +378,7 @@ $txt_exe = New-Object System.Windows.Forms.Label -Property @{
 }
 
 $btn_exe = New-Object System.Windows.Forms.Button -Property @{
-    Location = "525,240"
+    Location = "535,274"
     Size = "32,24"
     Text = "..."
     Font = $FontS
@@ -364,10 +386,14 @@ $btn_exe = New-Object System.Windows.Forms.Button -Property @{
 
 $btn_exe.Add_Click({
     $dlg = New-Object System.Windows.Forms.OpenFileDialog
-    $dlg.Filter = "Executable Files (*.exe)|*.exe|All Files (*.*)|*.*"
+    $dlg.Filter = "Executable Files (*.exe)|WinCse.exe|All Files (*.*)|*.*"
 
-    $inidir = Split-Path $txt_exe -Parent
-    $ininame = Split-Path $txt_exe -Leaf
+    $inidir = Split-Path $txt_exe.Text -Parent
+    $ininame = Split-Path $txt_exe.Text -Leaf
+
+    if (-not (Test-Path -Path $inidir)) {
+        $inidir = $CurrentDir
+    }
 
     $dlg.InitialDirectory = $inidir
     $dlg.FileName = $ininame
@@ -377,7 +403,6 @@ $btn_exe.Add_Click({
         $txt_exe.Text = $dlg.FileName
     }
 })
-
 
 # -----------------
 # Create
@@ -415,6 +440,24 @@ $btn_reg.Add_Click({
         return
     }
 
+    if ([string]::IsNullOrEmpty($tbx_region.Text.Trim())) {
+        # リージョンは必須
+
+        Msg-Warn -Text "The region value cannot be left empty."
+        $tbx_region.Focus()
+        return
+    }
+
+    if ($DllType -eq "oci-os") {
+        # oci の場合は namespace と region を使って URL を作るので必須
+
+        if ([string]::IsNullOrEmpty($tbx_ns.Text.Trim())) {
+            Msg-Warn -Text "The namespace value cannot be left empty."
+            $tbx_ns.Focus()
+            return
+        }
+    }
+
     # Values
     $cguid = [guid]::NewGuid().ToString()
     $keyid = $tbx_keyid.Text.Trim()
@@ -424,13 +467,18 @@ $btn_reg.Add_Click({
     $workdir_drive = $workdir.Substring(0, 1)
     $workdir_dir = $workdir.Substring(3)
     $info_log_dir = ";"
+    $ns_text = ""
+
+    if (-not [string]::IsNullOrEmpty($tbx_ns.Text.Trim())) {
+        $ns_text = "namespace=" + $tbx_ns.Text.Trim()
+    }
 
     if ($chk_encrypt.Checked) {
-        if ($keyid -ne "") {
+        if (-not [string]::IsNullOrEmpty($keyid)) {
             $keyid = "{aes256}" + (KeyId-EncryptString -Text $keyid)
         }
 
-        if ($secret -ne "") {
+        if (-not [string]::IsNullOrEmpty($secret)) {
             $secret = "{aes256}" + (Secret-EncryptString -Text $secret)
         }
     }
@@ -451,33 +499,41 @@ $btn_reg.Add_Click({
 
     $reg_name = "${AppName}.${DllType}.${drive}"
 
-    # Write "reg-add.bat"
+    $win_acl = "D:P(A;;RPWPLC;;;WD)"
+
+    #
+    # Create "reg-add.bat"
+    #
     $add_reg_bat = @"
 @echo off
 
 ${SwitchAdmin}
 
 @echo on
-call "${FsregBatPath}" ${reg_name} "${exepath}" "-u %%%%1 -m %%%%2" "D:P(A;;RPWPLC;;;WD)"
+call "${FsregBatPath}" ${reg_name} "${exepath}" "-u %%%%1 -m %%%%2 -T ""${logdir}"" " "${win_acl}"
 @pause
 "@
 
     Set-Content -Path "${workdir}\${RegAddBatFName}" -Value $add_reg_bat
 
-    # Write "reg-add-logging.bat"
+    #
+    # Create "reg-add-logging.bat"
+    #
     $add_reg_log_bat = @"
 @echo off
 
 ${SwitchAdmin}
 
 @echo on
-call "${FsregBatPath}" ${reg_name} "${exepath}" "-u %%%%1 -m %%%%2 -d 1 -D ""${WinFspLog}"" -T ""${logdir}""" "D:P(A;;RPWPLC;;;WD)"
+call "${FsregBatPath}" ${reg_name} "${exepath}" "-u %%%%1 -m %%%%2 -d 1 -D ""${WinFspLog}"" -T ""${logdir}"" " "${win_acl}"
 @pause
 "@
 
     Set-Content -Path "${workdir}\${RegAddLogBatFName}" -Value $add_reg_log_bat
 
-    # Write "reg-del.bat"
+    #
+    # Create "reg-del.bat"
+    #
     $del_reg_bat = @"
 @echo off
 
@@ -491,7 +547,9 @@ call "${FsregBatPath}" -u ${reg_name}
 
     Set-Content -Path "${workdir}\${RegDelBatFName}" -Value $del_reg_bat
 
-    # Write "mount.bat
+    #
+    # Create "mount.bat
+    #
     $mount_bat = @"
 @echo on
 if exist ${drive}:\ net use ${drive}: /delete
@@ -501,7 +559,9 @@ net use ${drive}: "\\${reg_name}\${workdir_drive}$\${workdir_dir}"
 
     Set-Content -Path "${workdir}\${MountBatFName}" -Value $mount_bat
 
-    # Write "reg-query.bat"
+    #
+    # Create "reg-query.bat"
+    #
     $qry_reg_bat = @"
 @echo on
 reg query HKLM\Software\WinFsp\Services\${reg_name} /s /reg:32
@@ -510,7 +570,9 @@ reg query HKLM\Software\WinFsp\Services\${reg_name} /s /reg:32
 
     Set-Content -Path "${workdir}\${RegQryBatFName}" -Value $qry_reg_bat
 
-    # Write "un-mount.bat"
+    #
+    # Create "un-mount.bat"
+    #
     $umount_bat = @"
 @echo off
 
@@ -527,7 +589,25 @@ pause
 
     Set-Content -Path "${workdir}\${UMountBatFName}" -Value $umount_bat
 
-    # Write "readme.txt"
+    #
+    # Create "test-boot.bat"
+    #
+    $test_boot_bat = @"
+@echo off
+
+${SwitchAdmin}
+
+@echo on
+"${exepath}" -C 1 -u \${reg_name}\${workdir_drive}$\${workdir_dir} -m ${drive}: -d 1 -D "${WinFspLog}" -T "${logdir}" > "${workdir}\test-boot.log"
+
+pause
+"@
+
+    Set-Content -Path "${workdir}\${TestBootBatFName}" -Value $test_boot_bat
+
+    #
+    # Create "readme.txt"
+    #
     $readme = @"
 Description of the files in this directory
 
@@ -553,7 +633,9 @@ Description of the files in this directory
 
     Set-Content -Path "${workdir}\${ReadmeFName}" -Value $readme
 
-    # Write conf
+    #
+    # Create WinCse.conf
+    #
     $conf = @"
 ;
 ; ${conf_path}
@@ -565,6 +647,7 @@ type=${DllType}
 ; Note: Only valid on the computer it was created on.
 aws_access_key_id=${keyid}
 aws_secret_access_key=${secret}
+${ns_text}
 region=${region}
 
 ; Client Identifier
@@ -608,6 +691,12 @@ region=${region}
 ; valid range: 1 to 32
 ; default: 4
 #file_io_threads=4
+
+; Maximum retry count for API execution
+; Note: Added after v0.250512.1345
+; valid range: 0 to 5
+; default: 3
+#max_api_retry_count=3
 
 ; Maximum number of display buckets.
 ; valid range: 0 (No restrictions) to INT_MAX
@@ -664,7 +753,9 @@ ${info_log_dir}
 
     Set-Content -Path $conf_path -Value $conf
 
-    # fsreg.bat
+    #
+    # Execute fsreg.bat
+    #
     Start-Process -FilePath "${workdir}\${RegAddBatFName}" -Wait
 
     $reg_path = "${RegWinFspPath}\Services\${reg_name}"
@@ -678,7 +769,9 @@ ${info_log_dir}
 
     $form.Close()
 
+    #
     # Open explorer
+    #
     Start-Process explorer.exe $workdir
 
 })
@@ -701,13 +794,14 @@ $btn_exit.Add_Click({
 # Main Form
 #
 $form = New-Object System.Windows.Forms.Form -Property @{
-    Text = "AWS Credentials and Application Settings"
+    Text = "Credentials and Application Settings - ${DllType}"
     Size = "640,480"
     FormBorderStyle = "Fixed3D"
     AcceptButton = $btn_exit
 }
 
 $ctrls = $lbl_keyid,  $tbx_keyid,  $lbl_secret, $tbx_secret,
+         $lbl_ns,     $tbx_ns,
          $lbl_region, $tbx_region, $chk_encrypt,
          $lbl_drive,  $cbx_drive,
          $lbl_wkdir,  $txt_wkdir,  $btn_wkdir,                             `

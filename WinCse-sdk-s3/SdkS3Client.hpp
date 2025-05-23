@@ -1,0 +1,154 @@
+#pragma once
+
+#include "SdkS3Common.h"
+
+namespace CSESS3
+{
+
+using UploadFilePartType = CSELIB::FilePart<std::optional<Aws::String>>;
+
+class SdkS3Client : public CSEDVC::IApiClient
+{
+protected:
+	CSELIB::IWorker* const				mDelayedWorker;
+	const CSEDVC::RuntimeEnv* const		mRuntimeEnv;
+	std::wstring						mClientRegion;
+	Aws::S3::S3Client* const			mS3Client;
+
+	virtual std::string getDefaultBucketRegion() const
+	{
+		// 古いバケット（2008年以前）
+		// 初期のS3では、バケットはすべて「US Standard（現在の us-east-1）」に作成されていました。
+		// この頃は明示的にリージョン指定をすることがなかったため、古いバケットを操作する際にリージョン情報が見えにくいことがあります。
+
+		return Aws::Region::US_EAST_1;
+	}
+
+	WINCSESDKS3_API bool uploadSimple(CALLER_ARG const CSELIB::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argInputPath);
+	WINCSESDKS3_API bool PutObjectInternal(CALLER_ARG const CSELIB::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argInputPath);
+
+public:
+	SdkS3Client(const CSEDVC::RuntimeEnv* argRuntimeEnv, CSELIB::IWorker* argDelayedWorker, const std::wstring& argClientRegion, Aws::S3::S3Client* argS3Client)
+		:
+		mDelayedWorker(argDelayedWorker),
+		mRuntimeEnv(argRuntimeEnv),
+		mClientRegion(argClientRegion),
+		mS3Client(argS3Client)
+	{
+	}
+
+	bool canAccessRegion(CALLER_ARG const std::wstring& argRegion) override
+	{
+		// クライアントのリージョンと一致したときはアクセス可能なリージョンと判断
+
+		return argRegion == mClientRegion;
+	}
+
+	WINCSESDKS3_API std::optional<Aws::String> uploadPart(CALLER_ARG const CSELIB::ObjectKey& argObjKey,
+		const std::filesystem::path& argInputPath, const Aws::String& argUploadId, const std::shared_ptr<UploadFilePartType>& argFilePart);
+
+	// AWS SDK API を実行
+
+	WINCSESDKS3_API bool ListBuckets(CALLER_ARG CSELIB::DirEntryListType* pDirEntryList) override;
+	WINCSESDKS3_API bool GetBucketRegion(CALLER_ARG const std::wstring& argBucket, std::wstring* pBuketRegion) override;
+	WINCSESDKS3_API bool HeadObject(CALLER_ARG const CSELIB::ObjectKey& argObjKey, CSELIB::DirEntryType* pDirEntry) override;
+	WINCSESDKS3_API bool ListObjects(CALLER_ARG const CSELIB::ObjectKey& argObjKey, CSELIB::DirEntryListType* pDirEntryList) override;
+	WINCSESDKS3_API bool DeleteObjects(CALLER_ARG const std::wstring& argBucket, const std::list<std::wstring>& argKeys) override;
+	WINCSESDKS3_API bool DeleteObject(CALLER_ARG const CSELIB::ObjectKey& argObjKey) override;
+	WINCSESDKS3_API bool PutObject(CALLER_ARG const CSELIB::ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argInputPath) override;
+	WINCSESDKS3_API bool CopyObject(CALLER_ARG const CSELIB::ObjectKey& argSrcObjKey, const CSELIB::ObjectKey& argDstObjKey) override;
+	WINCSESDKS3_API CSELIB::FILEIO_LENGTH_T GetObjectAndWriteFile(CALLER_ARG const CSELIB::ObjectKey& argObjKey, const std::filesystem::path& argOutputPath, CSELIB::FILEIO_LENGTH_T argOffset, CSELIB::FILEIO_LENGTH_T argLength) override;
+};
+
+}	// namespace CSESS3
+
+template<typename T>
+bool IsSuccess(const T& outcome)
+{
+	NEW_LOG_BLOCK();
+
+	const bool isSuccess = outcome.IsSuccess();
+	traceA("isSuccess=%s name=%s", BOOL_CSTRA(isSuccess), typeid(outcome).name());
+
+	if (!isSuccess)
+	{
+		const auto& err{ outcome.GetError() };
+
+		const auto mesg{ err.GetMessage().c_str() };
+		const auto code{ err.GetResponseCode() };
+		const auto type{ err.GetErrorType() };
+		const auto name{ err.GetExceptionName().c_str() };
+
+		if (static_cast<int>(code) == 404)
+		{
+			traceA("warn: type=%d, code=%d, name=%s, message=%s", type, code, name, mesg);
+		}
+		else
+		{
+			errorA("error: type=%d, code=%d, name=%s, message=%s", type, code, name, mesg);
+		}
+	}
+
+	return isSuccess;
+}
+
+template<typename ReturnT, typename RequestT>
+ReturnT executeWithRetry(
+	Aws::S3::S3Client* argClient,
+	ReturnT (Aws::S3::S3Client::*argMethod)(const RequestT&) const,
+	const RequestT& argRequest,
+	int argMaxRetryCount)
+{
+	NEW_LOG_BLOCK();
+
+	ReturnT outcome;
+
+	bool shouldRetry = true;
+	DWORD waitSec = 1;
+	int i = 0;
+
+	do
+	{
+		outcome = (argClient->*argMethod)(argRequest);
+		if (outcome.IsSuccess())
+		{
+			traceW(L"success");
+			shouldRetry = false;
+		}
+		else
+		{
+			const auto& err{ outcome.GetError() };
+
+			const auto mesg{ err.GetMessage().c_str() };
+			const auto code{ err.GetResponseCode() };
+			const auto type{ err.GetErrorType() };
+			const auto name{ err.GetExceptionName().c_str() };
+			shouldRetry = err.ShouldRetry();
+
+			if (static_cast<int>(code) == 404)
+			{
+				traceA("fault: type=%d code=%d name=%s message=%s retry=%s", type, code, name, mesg, BOOL_CSTRA(shouldRetry));
+			}
+			else
+			{
+				errorA("fault: type=%d code=%d name=%s message=%s retry=%s", type, code, name, mesg, BOOL_CSTRA(shouldRetry));
+			}
+		}
+
+		if (!shouldRetry)
+		{
+			break;
+		}
+
+		traceW(L"retry: %d/%d", i + 1, argMaxRetryCount);
+		::Sleep(waitSec * 1000);
+
+		waitSec *= 2;
+		i++;
+	}
+	while (i < argMaxRetryCount);
+
+	return outcome;
+}
+
+// EOF

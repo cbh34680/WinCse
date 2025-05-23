@@ -1,8 +1,15 @@
 #include "CSDriver.hpp"
 
-using namespace CSELIB;
-using namespace CSEDRV;
+#define GET_MIME_TYPE (0)
 
+#if GET_MIME_TYPE
+#include <urlmon.h>
+#pragma comment(lib, "urlmon.lib")
+#endif
+
+using namespace CSELIB;
+
+namespace CSEDRV {
 
 NTSTATUS CSDriver::GetSecurityByName(const std::filesystem::path& argWinPath, PUINT32 pFileAttributes, PSECURITY_DESCRIPTOR argSecurityDescriptor, PSIZE_T argSecurityDescriptorSize)
 {
@@ -15,7 +22,7 @@ NTSTATUS CSDriver::GetSecurityByName(const std::filesystem::path& argWinPath, PU
     auto dirEntry{ mOpenDirEntry.get(argWinPath) };
     if (!dirEntry)
     {
-        if (mDevice->shouldIgnoreFileName(argWinPath))
+        if (mDevice->shouldIgnoreWinPath(argWinPath))
         {
             // "desktop.ini" などは無視させる
 
@@ -100,7 +107,7 @@ NTSTATUS CSDriver::Open(const std::filesystem::path& argWinPath, UINT32 argCreat
     }
     else
     {
-        if (mDevice->shouldIgnoreFileName(argWinPath))
+        if (mDevice->shouldIgnoreWinPath(argWinPath))
         {
             // "desktop.ini" などは無視させる
             // --> GetSecurityByName で拒否しているのでここは通過しないはず
@@ -238,7 +245,7 @@ NTSTATUS CSDriver::Create(const std::filesystem::path& argWinPath, UINT32 argCre
     traceW(L"argWinPath=%s argCreateOptions=%u argCreateOptions=%u argFileAttributes=%u argAllocationSize=%llu", argWinPath.c_str(), argCreateOptions, argCreateOptions, argFileAttributes, argAllocationSize);
     traceW(L"argFileAttributes=%s", FileAttributesToStringW(argFileAttributes).c_str());
 
-    if (mDevice->shouldIgnoreFileName(argWinPath))
+    if (mDevice->shouldIgnoreWinPath(argWinPath))
     {
         traceW(L"ignore argWinPath=%s", argWinPath.c_str());
         return FspNtStatusFromWin32(ERROR_FILE_NOT_FOUND);
@@ -681,6 +688,28 @@ NTSTATUS CSDriver::Read(FileContext* ctx, PVOID argBuffer, UINT64 argOffset, ULO
 
     traceW(L"success: ReadFile argBytesTransferred=%lu", *argBytesTransferred);
 
+#if GET_MIME_TYPE
+    if (argOffset == 0 && *argBytesTransferred)
+    {
+        // ファイルの先頭部分から Content-Type を算出してプロパティに設定
+
+        auto& props{ ctx->getDirEntry()->mUserProperties };
+
+        if (props.find(L"wincse-content-type") == props.cend())
+        {
+            LPWSTR mimeType = nullptr;
+
+            HRESULT hr = ::FindMimeFromData(nullptr, nullptr, argBuffer, *argBytesTransferred, nullptr, 0, &mimeType, 0);
+            if (SUCCEEDED(hr))
+            {
+                props.insert({ L"wincse-content-type", mimeType });
+
+                ::CoTaskMemFree(mimeType);
+            }
+        }
+    }
+#endif
+
     return STATUS_SUCCESS;
 }
 
@@ -825,7 +854,7 @@ NTSTATUS CSDriver::ReadDirectory(FileContext* ctx, PCWSTR argPattern, PWSTR argM
 
             const auto winPath{ refWinPath / fileNameBuf };
 
-            if (mDevice->shouldIgnoreFileName(winPath))
+            if (mDevice->shouldIgnoreWinPath(winPath))
             {
                 traceW(L"ignore winPath=%s", winPath.c_str());
                 continue;
@@ -929,7 +958,7 @@ NTSTATUS CSDriver::Rename(FileContext* ctx, const std::filesystem::path& argSrcW
 
     traceW(L"argSrcWinPath=%s argDstWinPath=%s argReplaceIfExists=%s ctx=%s", argSrcWinPath.c_str(), argDstWinPath.c_str(), BOOL_CSTRW(argReplaceIfExists), ctx->str().c_str());
 
-    if (mDevice->shouldIgnoreFileName(argDstWinPath))
+    if (mDevice->shouldIgnoreWinPath(argDstWinPath))
     {
         traceW(L"ignore argDstWinPath=%s", argDstWinPath.c_str());
         return STATUS_ACCESS_DENIED;
@@ -944,7 +973,11 @@ NTSTATUS CSDriver::Rename(FileContext* ctx, const std::filesystem::path& argSrcW
     auto ntstatus = this->canCreateObject(START_CALLER argDstWinPath, isDir, &optDstObjKey);
     if (!NT_SUCCESS(ntstatus))
     {
-        if (ntstatus != STATUS_OBJECT_NAME_COLLISION)
+        if (ntstatus == STATUS_OBJECT_NAME_COLLISION)
+        {
+            traceW(L"already exists: argDstWinPath=%s", argDstWinPath.c_str());
+        }
+        else
         {
             errorW(L"fault: canCreateObject argDstWinPath=%s", argDstWinPath.c_str());
         }
@@ -970,7 +1003,7 @@ NTSTATUS CSDriver::Rename(FileContext* ctx, const std::filesystem::path& argSrcW
 
         if (!dirEntryList.empty())
         {
-            traceW(L"not empty");
+            traceW(L"not empty srcObjKey=%s", srcObjKey.c_str());
             return STATUS_DIRECTORY_NOT_EMPTY;
         }
     }
@@ -998,7 +1031,7 @@ NTSTATUS CSDriver::Rename(FileContext* ctx, const std::filesystem::path& argSrcW
 
     const auto dstDirInfoPtr{ dstDirEntry->makeDirInfo() };
 
-    // オープン中の情報から削除
+    // リネーム元をオープン中の情報から削除
 
     const bool b = mOpenDirEntry.release(ctx->getWinPath());
     if (!b)
@@ -1007,6 +1040,7 @@ NTSTATUS CSDriver::Rename(FileContext* ctx, const std::filesystem::path& argSrcW
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
+#if 0
     if (isDir)
     {
         // リモートにディレクトリを作成
@@ -1061,6 +1095,55 @@ NTSTATUS CSDriver::Rename(FileContext* ctx, const std::filesystem::path& argSrcW
         }
     }
 
+    // ファイルの場合は Close で PutObject によりリモートに反映される
+
+#else
+    // リモートのオブジェクトをコピー
+
+    if (!mDevice->copyObject(START_CALLER srcObjKey, dstObjKey))
+    {
+        errorW(L"fault: copyObject copyObject=%s dstObjKey=%s", srcObjKey.c_str(), dstObjKey.c_str());
+        return FspNtStatusFromWin32(ERROR_IO_DEVICE);
+    }
+
+    if (!isDir)
+    {
+        // キャッシュ・ファイル名を変更
+
+        // リネーム元のキャッシュ・ファイル名を取得
+
+        std::filesystem::path orgCacheFilePath;
+
+        if (!GetFileNameFromHandle(ctx->getHandle(), &orgCacheFilePath))
+        {
+            errorW(L"fault: GetFileNameFromHandle ctx=%s", ctx->str().c_str());
+            return FspNtStatusFromWin32(::GetLastError());
+        }
+
+        // リネーム先のキャッシュ・ファイル名を作成
+
+        std::filesystem::path dstCacheFilePath;
+
+        if (!resolveCacheFilePath(mRuntimeEnv->CacheDataDir, argDstWinPath, &dstCacheFilePath))
+        {
+            errorW(L"fault: resolveCacheFilePath argDstWinPath=%s", argDstWinPath.c_str());
+            return FspNtStatusFromWin32(ERROR_WRITE_FAULT);
+        }
+
+        // キャッシュ・ファイルのリネーム
+
+        traceW(L"MoveFileExW orgCacheFilePath=%s, dstCacheFilePath=%s", orgCacheFilePath.c_str(), dstCacheFilePath.c_str());
+
+        if (!::MoveFileExW(orgCacheFilePath.c_str(), dstCacheFilePath.c_str(), MOVEFILE_REPLACE_EXISTING))
+        {
+            const auto lerr = ::GetLastError();
+            errorW(L"fault: MoveFileExW lerr=%lu orgCacheFilePath=%s, dstCacheFilePath=%s", lerr, orgCacheFilePath.c_str(), dstCacheFilePath.c_str());
+
+            return FspNtStatusFromWin32(lerr);
+        }
+    }
+
+#endif
     // リモートのリネーム元を削除
 
     traceW(L"deleteObject srcObjKey=%s", srcObjKey.c_str());
@@ -1082,8 +1165,6 @@ NTSTATUS CSDriver::Rename(FileContext* ctx, const std::filesystem::path& argSrcW
         errorW(L"fault: addAndAcquire argDstWinPath=%s", argDstWinPath.c_str());
         return STATUS_INSUFFICIENT_RESOURCES;
     }
-
-    // ファイルの場合は Close で PutObject によりリモートに反映される
 
 	return STATUS_SUCCESS;
 }
@@ -1445,5 +1526,7 @@ NTSTATUS CSDriver::SetDelete(FileContext* ctx, PCWSTR argFileName, BOOLEAN argDe
 
     return STATUS_SUCCESS;
 }
+
+}   // namespace CSEDRV
 
 // EOF

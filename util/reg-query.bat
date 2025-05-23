@@ -1,2 +1,5 @@
-reg query HKLM\Software\WinFsp\Services\WinCse.aws-s3.Y /s /reg:32
+call %~dp0setvars.bat
+
+reg query HKLM\Software\WinFsp\Services\%REGKEY% /s /reg:32
+
 pause

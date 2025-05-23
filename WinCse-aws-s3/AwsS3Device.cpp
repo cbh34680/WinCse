@@ -1,10 +1,7 @@
 #include "AwsS3Device.hpp"
-
-static bool decryptIfNecessaryW(const std::wstring& argSecretKey, std::wstring* pInOut);
+#include "aws_sdk_s3_client.h"
 
 using namespace CSELIB;
-using namespace CSEAS3;
-
 
 ICSDevice* NewCSDevice(PCWSTR argIniSection, NamedWorker argWorkers[])
 {
@@ -23,16 +20,10 @@ ICSDevice* NewCSDevice(PCWSTR argIniSection, NamedWorker argWorkers[])
         }
     }
 
-    return new AwsS3Device(argIniSection, workers);
+    return new CSEAS3::AwsS3Device{ argIniSection, workers };
 }
 
-AwsS3Device::AwsS3Device(const std::wstring& argIniSection, const std::map<std::wstring, CSELIB::IWorker*>& argWorkers)
-    :
-    CSDevice(argIniSection, argWorkers)
-{
-    mSdkOptions = std::make_unique<Aws::SDKOptions>();
-    Aws::InitAPI(*mSdkOptions);
-}
+namespace CSEAS3 {
 
 AwsS3Device::~AwsS3Device()
 {
@@ -56,22 +47,49 @@ NTSTATUS AwsS3Device::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
     APP_ASSERT(argWorkDir);
     //APP_ASSERT(FileSystem);
 
+    // AWS SDK の初期化
+
+    APP_ASSERT(!mSdkOptions);
+    mSdkOptions = std::make_unique<Aws::SDKOptions>();
+    Aws::InitAPI(*mSdkOptions);
+
     const auto confPath{ std::filesystem::path{ argWorkDir } / CONFIGFILE_FNAME };
 
     // ini ファイルから値を取得
 
-    // AWS 接続リージョン
+    // DLL 種類
+
+    std::wstring dllType;
+    GetIniStringW(confPath, mIniSection, L"type", &dllType);
+
+    if (dllType != L"aws-s3")
+    {
+        errorW(L"false: DLL type mismatch dllType=%s", dllType.c_str());
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    // 接続リージョン
 
     std::wstring regionW;
     GetIniStringW(confPath, mIniSection, L"region", &regionW);
 
-    // AWS 認証情報
+    if (regionW.empty())
+    {
+        errorW(L"fault: regionW empty");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    traceW(L"regionW=%s", regionW.c_str());
+
+    // 認証情報
 
     std::wstring accessKeyIdW;
     std::wstring secretAccessKeyW;
 
     GetIniStringW(confPath, mIniSection, L"aws_access_key_id",     &accessKeyIdW);
     GetIniStringW(confPath, mIniSection, L"aws_secret_access_key", &secretAccessKeyW);
+
+    traceW(L"accessKeyId=%s***, secretAccessKey=%s***", SafeSubStringW(accessKeyIdW, 0, 5).c_str(), SafeSubStringW(secretAccessKeyW, 0, 5).c_str());
 
     // レジストリ "HKLM:\SOFTWARE\Microsoft\Cryptography" から "MachineGuid" の値を取得
 
@@ -90,45 +108,43 @@ NTSTATUS AwsS3Device::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-#ifdef _DEBUG
-    traceW(L"accessKeyIdW=%s, secretAccessKeyW=%s", accessKeyIdW.c_str(), secretAccessKeyW.c_str());
-#endif
-
-    // MachineGuid の値をキーにして keyid&secret を復号化 (必要なら)
-
-    if (!decryptIfNecessaryW(regSecretKey, &accessKeyIdW))
+    if (SafeSubStringW(accessKeyIdW, 0, 8) == L"{aes256}")
     {
-        errorW(L"%s: keyid decrypt fault", accessKeyIdW.c_str());
-        return STATUS_ENCRYPTION_FAILED;
+        // MachineGuid の値をキーにして keyid&secret を復号化
+
+        auto strInOut{ SafeSubStringW(accessKeyIdW, 8) };
+
+        if (!DecryptCredentialStringW(regSecretKey, &strInOut))
+        {
+            errorW(L"%s: keyid decrypt fault", accessKeyIdW.c_str());
+            return STATUS_ENCRYPTION_FAILED;
+        }
+
+        accessKeyIdW = strInOut;
     }
 
-    if (!decryptIfNecessaryW(regSecretKey, &secretAccessKeyW))
+    if (SafeSubStringW(secretAccessKeyW, 0, 8) == L"{aes256}")
     {
-        errorW(L"%s: secret decrypt fault", secretAccessKeyW.c_str());
-        return STATUS_ENCRYPTION_FAILED;
+        // MachineGuid の値をキーにして keyid&secret を復号化
+
+        auto strInOut{ SafeSubStringW(secretAccessKeyW, 8) };
+
+        if (!DecryptCredentialStringW(regSecretKey, &strInOut))
+        {
+            errorW(L"%s: secret decrypt fault", secretAccessKeyW.c_str());
+            return STATUS_ENCRYPTION_FAILED;
+        }
+
+        secretAccessKeyW = strInOut;
     }
 
-    traceW(L"accessKeyId=%s***, secretAccessKey=%s***", accessKeyIdW.substr(0, 5).c_str(), secretAccessKeyW.substr(0, 5).c_str());
+    traceW(L"accessKeyId=%s***, secretAccessKey=%s***", SafeSubStringW(accessKeyIdW, 0, 5).c_str(), SafeSubStringW(secretAccessKeyW, 0, 5).c_str());
 
-    // S3 クライアントの生成
+    // クライアントの生成
 
     auto regionA{ WC2MB(regionW) };
 
     Aws::Client::ClientConfiguration config;
-    if (regionA.empty())
-    {
-        // とりあえずデフォルト・リージョンとして設定しておく
-
-        traceA("argRegion empty, set default");
-
-        regionA = AWS_DEFAULT_REGION;
-    }
-
-    traceA("regionA=%s", regionA.c_str());
-
-    // 東京) Aws::Region::AP_NORTHEAST_1;
-    // 大阪) Aws::Region::AP_NORTHEAST_3;
-
     config.region = regionA;
 
     Aws::S3::S3Client* s3Client = nullptr;
@@ -140,13 +156,13 @@ NTSTATUS AwsS3Device::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 
         const Aws::Auth::AWSCredentials credentials{ accessKeyIdA, secretAccessKeyA };
 
-        s3Client = new Aws::S3::S3Client(credentials, nullptr, config);
+        s3Client = new Aws::S3::S3Client{ credentials, nullptr, config };
 
         traceW(L"use credentials");
     }
     else
     {
-        s3Client = new Aws::S3::S3Client(config);
+        s3Client = new Aws::S3::S3Client{ config };
 
         traceW(L"no credentials");
     }
@@ -157,107 +173,14 @@ NTSTATUS AwsS3Device::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    mRegion = regionW;
-    mS3Client = std::unique_ptr<Aws::S3::S3Client>(s3Client);
-
+    mClientRegion = regionW;
+    mS3Client = std::unique_ptr<Aws::S3::S3Client>{ s3Client };
 
     // 最後に親クラスの OnSvcStart を呼び出す
 
-    return CSDevice::OnSvcStart(argWorkDir, FileSystem);
+    return SdkS3Device::OnSvcStart(argWorkDir, FileSystem);
 }
 
-static bool decryptIfNecessaryA(const std::string& argSecretKey, std::string* pInOut)
-{
-    APP_ASSERT(pInOut);
-
-    std::string str{ *pInOut };
-
-    if (!str.empty())
-    {
-        if (str.length() > 8)
-        {
-            if (str.substr(0, 8) == "{aes256}")
-            {
-                NEW_LOG_BLOCK();
-
-                // 先頭の "{aes256}" を除く
-
-                const auto concatB64Str{ str.substr(8) };
-
-                traceA("concatB64Str=%s", concatB64Str.c_str());
-
-                // MachineGuid の値を AES の key とし、iv には key[0..16] を設定する
-
-                // BASE64 文字列をデコード
-
-                std::string concatStr;
-                if (!Base64DecodeA(concatB64Str, &concatStr))
-                {
-                    errorW(L"fault: Base64DecodeA");
-                    return false;
-                }
-
-                const std::vector<BYTE> concatBytes{ concatStr.cbegin(), concatStr.cend() };
-
-                if (concatBytes.size() < 17)
-                {
-                    // IV + データなので最低でも 16 + 1 byte は必要
-
-                    errorW(L"fault: concatBytes.size() < 17");
-                    return false;
-                }
-
-                // 先頭の 16 byte が IV
-
-                const std::vector<BYTE> aesIV{ concatStr.cbegin(), concatStr.cbegin() + 16 };
-
-                // それ以降がデータ
-
-                const std::vector<BYTE> encrypted{ concatStr.cbegin() + 16, concatStr.cend() };
-
-                // 復号化
-
-                std::vector<BYTE> decrypted;
-
-                const std::vector<BYTE> aesKey{ argSecretKey.cbegin(), argSecretKey.cend() };
-
-                if (!DecryptAES(aesKey, aesIV, encrypted, &decrypted))
-                {
-                    errorW(L"fault: DecryptAES");
-                    return false;
-                }
-
-                // これだと strlen() のサイズと一致しなくなる
-                //str.assign(decrypted.begin(), decrypted.end());
-
-                // 入力が '\0' 終端であることを前提に char* から std::string を初期化する
-
-                //str = (char*)decrypted.data();
-                //*pInOut = std::move(str);
-
-                *pInOut = std::string((char*)decrypted.data());
-
-                traceW(L"success: DecryptAES");
-            }
-        }
-    }
-
-    return true;
-}
-
-static bool decryptIfNecessaryW(const std::wstring& argSecretKey, std::wstring* pInOut)
-{
-    const auto secretKey{ WC2MB(argSecretKey) };
-    auto data{ WC2MB(*pInOut) };
-
-    if (decryptIfNecessaryA(secretKey, &data))
-    {
-        *pInOut = MB2WC(data);
-
-        return true;
-    }
-
-    return false;
-}
+}   // namespace CSEAS3
 
 // EOF

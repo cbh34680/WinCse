@@ -113,13 +113,13 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)aws-sdk\dest\$(Configuration)\include;$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)WinCseLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)aws-sdk-cpp\dest\$(Configuration)\include;$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)WinCseLib;$(SolutionDir)WinCseDevice;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalLibraryDirectories>$(MSBuildProgramFiles32)\WinFsp\lib;$(SolutionDir)aws-sdk\dest\$(Configuration)\bin;$(OutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(MSBuildProgramFiles32)\WinFsp\lib;$(SolutionDir)aws-sdk-cpp\dest\$(Configuration)\bin;$(OutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -133,7 +133,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)aws-sdk\dest\$(Configuration)\include;$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)WinCseLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)aws-sdk-cpp\dest\$(Configuration)\include;$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)WinCseLib;$(SolutionDir)WinCseDevice;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -141,33 +141,21 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalLibraryDirectories>$(MSBuildProgramFiles32)\WinFsp\lib;$(SolutionDir)aws-sdk\dest\$(Configuration)\bin;$(OutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(MSBuildProgramFiles32)\WinFsp\lib;$(SolutionDir)aws-sdk-cpp\dest\$(Configuration)\bin;$(OutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="CacheListBuckets.cpp" />
-    <ClCompile Include="CacheObject.cpp" />
-    <ClCompile Include="CSDevice.cpp" />
-    <ClCompile Include="CSDeviceBase.cpp" />
     <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="ExecuteApi.cpp" />
-    <ClCompile Include="ExecuteUpload.cpp" />
-    <ClCompile Include="QueryBucket.cpp" />
-    <ClCompile Include="QueryObject.cpp" />
-    <ClCompile Include="RuntimeEnv.cpp" />
+    <ClCompile Include="SdkS3Client.cpp" />
+    <ClCompile Include="SdkS3ClientUpload.cpp" />
+    <ClCompile Include="SdkS3Device.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="aws_sdk_s3.h" />
     <ClInclude Include="aws_sdk_s3_client.h" />
-    <ClInclude Include="CacheListBuckets.hpp" />
-    <ClInclude Include="CacheObject.hpp" />
-    <ClInclude Include="CSDevice.hpp" />
-    <ClInclude Include="CSDeviceBase.hpp" />
-    <ClInclude Include="ExecuteApi.hpp" />
-    <ClInclude Include="QueryBucket.hpp" />
-    <ClInclude Include="QueryObject.hpp" />
-    <ClInclude Include="RuntimeEnv.hpp" />
+    <ClInclude Include="SdkS3Client.hpp" />
     <ClInclude Include="SdkS3Common.h" />
+    <ClInclude Include="SdkS3Device.hpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="cpp.hint" />

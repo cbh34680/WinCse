@@ -91,6 +91,8 @@ namespace CSELIB {
 //
 WINCSELIB_API std::wstring MB2WC(const std::string& str);
 WINCSELIB_API std::string WC2MB(const std::wstring& wstr);
+WINCSELIB_API std::wstring SafeSubStringW(const std::wstring& str, std::wstring::size_type pos, std::wstring::size_type len=std::wstring::npos);
+WINCSELIB_API std::string SafeSubStringA(const std::string& str, std::string::size_type pos, std::string::size_type len=std::string::npos);
 WINCSELIB_API std::wstring TrimW(const std::wstring& str);
 WINCSELIB_API std::vector<std::wstring> SplitString(const std::wstring& input, wchar_t sep, bool ignoreEmpty);
 WINCSELIB_API bool SplitObjectKey(const std::wstring& argKey, std::wstring* pParentDir /* nullable */, std::wstring* pFileName /* nullable */);
@@ -115,6 +117,7 @@ WINCSELIB_API UTC_MILLIS_T GetCurrentUtcMillis();
 WINCSELIB_API FILETIME_100NS_T GetCurrentWinFileTime100ns();
 WINCSELIB_API UTC_MILLIS_T TimePointToUtcMillis(const std::chrono::system_clock::time_point& tp);
 WINCSELIB_API std::wstring TimePointToLocalTimeStringW(const std::chrono::system_clock::time_point& tp);
+WINCSELIB_API FILETIME_100NS_T TimePointToWinFileTime100ns(const std::chrono::system_clock::time_point& tp);
 WINCSELIB_API std::wstring UtcMillisToLocalTimeStringW(UTC_MILLIS_T argUtcMillis);
 WINCSELIB_API std::wstring WinFileTime100nsToLocalTimeStringW(FILETIME_100NS_T ft100ns);
 WINCSELIB_API std::string WinFileTime100nsToLocalTimeStringA(FILETIME_100NS_T ft100ns);
@@ -137,6 +140,8 @@ WINCSELIB_API LSTATUS GetCryptKeyFromRegistryA(std::string* pOutput);
 WINCSELIB_API LSTATUS GetCryptKeyFromRegistryW(std::wstring* pOutput);
 WINCSELIB_API NTSTATUS ComputeSHA256A(const std::string& input, std::string* pOutput);
 WINCSELIB_API NTSTATUS ComputeSHA256W(const std::wstring& input, std::wstring* pOutput);
+WINCSELIB_API bool DecryptCredentialStringA(const std::string& argSecretKey, std::string* pInOut);
+WINCSELIB_API bool DecryptCredentialStringW(const std::wstring& argSecretKey, std::wstring* pInOut);
 
 WINCSELIB_API int NamedWorkersToMap(NamedWorker workers[], std::map<std::wstring, IWorker*>* pWorkerMap);
 
@@ -173,187 +178,6 @@ std::wstring JoinStrings(const ContainerT& tokens, SeparatorT sep, bool ignoreEm
 	return ss.str();
 }
 
-// HANDLE 用 RAII
-
-template<HANDLE InvalidHandleValue>
-class HandleRAII
-{
-protected:
-	HANDLE mHandle;
-
-public:
-	HandleRAII() : mHandle(InvalidHandleValue) { }
-
-	HandleRAII(HANDLE argHandle) : mHandle(argHandle) { }
-
-	HandleRAII(HandleRAII& other) = delete;
-
-	HandleRAII(HandleRAII&& other) noexcept : mHandle(other.mHandle)
-	{
-		other.mHandle = InvalidHandleValue;
-	}
-
-	HandleRAII& operator=(HandleRAII& other) = delete;
-
-	HandleRAII& operator=(HandleRAII&& other)
-	{
-		if (this != &other)
-		{
-			this->close();
-
-			mHandle = other.mHandle;
-			other.mHandle = InvalidHandleValue;
-		}
-
-		return *this;
-	}
-
-	HANDLE handle() const { return mHandle; }
-	bool invalid() const { return mHandle == InvalidHandleValue; }
-	bool valid() const { return !invalid(); }
-
-	HANDLE release()
-	{
-		const auto ret = mHandle;
-		mHandle = InvalidHandleValue;
-		return ret;
-	}
-
-	void close()
-	{
-		if (mHandle != InvalidHandleValue)
-		{
-			::CloseHandle(mHandle);
-			mHandle = InvalidHandleValue;
-		}
-	}
-
-	virtual ~HandleRAII()
-	{
-		this->close();
-	}
-};
-
-class FileHandle final : public HandleRAII<INVALID_HANDLE_VALUE>
-{
-public:
-	using HandleRAII::HandleRAII;
-
-	WINCSELIB_API std::wstring str() const;
-};
-
-class EventHandle final : public HandleRAII<(HANDLE)NULL>
-{
-public:
-	using HandleRAII<(HANDLE)NULL>::HandleRAII;
-};
-
-//
-// ログ・ブロックの情報
-//
-
-class LogBlock final
-{
-	PCWSTR mFile;
-	const int mLine;
-	PCWSTR mFunc;
-
-	static thread_local int mDepth;
-
-public:
-	WINCSELIB_API LogBlock(PCWSTR argFile, int argLine, PCWSTR argFunc);
-	WINCSELIB_API ~LogBlock();
-
-	WINCSELIB_API int depth() const;
-};
-
-//
-// GetLastError() 値の保存
-//
-class LastErrorBackup final
-{
-	const DWORD mLastError;
-
-public:
-	LastErrorBackup()
-		:
-		mLastError(::GetLastError())
-	{
-	}
-
-	~LastErrorBackup()
-	{
-		::SetLastError(mLastError);
-	}
-};
-
-template<typename ResultT>
-class FilePart
-{
-	EventHandle				mDone;
-	ResultT					mResult;
-
-public:
-	const int				mPartNumber;
-	const FILEIO_OFFSET_T	mOffset;
-	const FILEIO_LENGTH_T	mLength;
-	const ResultT			mDefaultResult;
-
-	std::atomic<bool>		mInterrupt = false;
-
-	FilePart(int argPartNumber, FILEIO_OFFSET_T argOffset, FILEIO_LENGTH_T argLength, ResultT argDefaultResult)
-		:
-		mPartNumber(argPartNumber),
-		mOffset(argOffset),
-		mLength(argLength),
-		mDefaultResult(argDefaultResult),
-		mResult(argDefaultResult)
-	{
-		mDone = ::CreateEventW(NULL,
-			TRUE,				// 手動リセットイベント
-			FALSE,				// 初期状態：非シグナル状態
-			NULL);
-
-		APP_ASSERT(mDone.valid());
-	}
-
-	void setResult(const ResultT& argResult)
-	{
-		mResult = argResult;
-		const auto b = ::SetEvent(mDone.handle());					// シグナル状態に設定
-		APP_ASSERT(b);
-	}
-
-	void setResult(ResultT&& argResult)
-	{
-		mResult = std::move(argResult);
-		const auto b = ::SetEvent(mDone.handle());					// シグナル状態に設定
-		APP_ASSERT(b);
-	}
-
-	ResultT getResult()
-	{
-		const auto reason = ::WaitForSingleObject(mDone.handle(), INFINITE);
-		if (reason != WAIT_OBJECT_0)
-		{
-			return mDefaultResult;
-		}
-
-		return mResult;
-	}
-
-	std::wstring str() const
-	{
-		std::wostringstream ss;
-
-		ss << L"mPartNumber=" << mPartNumber;
-		ss << L" mOffset=" << mOffset;
-		ss << L" mLength=" << mLength;
-
-		return ss.str();
-	}
-};
-
 template <typename BaseT>
 std::string getDerivedClassNamesA(BaseT* baseClass)
 {
@@ -378,6 +202,45 @@ std::list<typename MapType::mapped_type> mapValues(const MapType& container)
 
 	return values;
 }
+
+//
+// ログ・ブロックの情報
+//
+
+class LogBlock final
+{
+	PCWSTR mFile;
+	const int mLine;
+	PCWSTR mFunc;
+
+	static thread_local int mDepth;
+
+public:
+	WINCSELIB_API LogBlock(PCWSTR argFile, int argLine, PCWSTR argFunc);
+	WINCSELIB_API ~LogBlock();
+
+	WINCSELIB_API int depth() const;
+};
+
+//
+// GetLastError() 値の保存
+//
+class KeepLastError final
+{
+	const DWORD mLastError;
+
+public:
+	KeepLastError()
+		:
+		mLastError(::GetLastError())
+	{
+	}
+
+	~KeepLastError()
+	{
+		::SetLastError(mLastError);
+	}
+};
 
 // ファイルサイズ
 
@@ -443,6 +306,9 @@ constexpr const wchar_t* const CONFIGFILE_FNAME = L"WinCse.conf";
 
 } // namespace CSELIB
 
+#include "Handle.hpp"
+#include "FilePart.hpp"
+
 // -----------------------------
 //
 // マクロ定義
@@ -453,11 +319,21 @@ constexpr const wchar_t* const CONFIGFILE_FNAME = L"WinCse.conf";
 #define NEW_LOG_BLOCK()				CSELIB::LogBlock LOG_BLOCK()(__FILEW__, __LINE__, __FUNCTIONW__)
 #define LOG_DEPTH()					LOG_BLOCK().depth()
 
+#ifdef _DEBUG
 #define traceW(format, ...)			do { auto* logger_ = CSELIB::GetLogger(); const auto text_ = logger_->makeTextW(LOG_DEPTH(), __FILEW__, __LINE__, __FUNCTIONW__, ::GetLastError(), format, __VA_ARGS__); logger_->writeToTraceLog(text_); } while (false)
 #define traceA(format, ...)			do { auto* logger_ = CSELIB::GetLogger(); const auto text_ = logger_->makeTextA(LOG_DEPTH(), __FILE__,  __LINE__, __FUNCTION__,  ::GetLastError(), format, __VA_ARGS__); logger_->writeToTraceLog(text_); } while (false)
-
 #define errorW(format, ...)			do { auto* logger_ = CSELIB::GetLogger(); const auto text_ = logger_->makeTextW(LOG_DEPTH(), __FILEW__, __LINE__, __FUNCTIONW__, ::GetLastError(), format, __VA_ARGS__); logger_->writeToTraceLog(text_); logger_->writeToErrorLog(text_); } while (false)
 #define errorA(format, ...)			do { auto* logger_ = CSELIB::GetLogger(); const auto text_ = logger_->makeTextA(LOG_DEPTH(), __FILE__,  __LINE__, __FUNCTION__,  ::GetLastError(), format, __VA_ARGS__); logger_->writeToTraceLog(text_); logger_->writeToErrorLog(text_); } while (false)
+
+#else
+// リリース時はエラーログのみ
+
+#define traceW(format, ...)
+#define traceA(format, ...)
+#define errorW(format, ...)			do { auto* logger_ = CSELIB::GetLogger(); const auto text_ = logger_->makeTextW(LOG_DEPTH(), __FILEW__, __LINE__, __FUNCTIONW__, ::GetLastError(), format, __VA_ARGS__); logger_->writeToErrorLog(text_); } while (false)
+#define errorA(format, ...)			do { auto* logger_ = CSELIB::GetLogger(); const auto text_ = logger_->makeTextA(LOG_DEPTH(), __FILE__,  __LINE__, __FUNCTION__,  ::GetLastError(), format, __VA_ARGS__); logger_->writeToErrorLog(text_); } while (false)
+
+#endif
 
 //#define FA_MEANS_TEMPORARY(fa)		((fa) & FILE_ATTRIBUTE_HIDDEN || (fa) & FILE_ATTRIBUTE_TEMPORARY || (fa) & FILE_ATTRIBUTE_NOT_CONTENT_INDEXED)
 

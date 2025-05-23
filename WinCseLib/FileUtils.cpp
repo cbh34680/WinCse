@@ -2,7 +2,6 @@
 #include <fstream>
 #include <sddl.h>
 
-
 namespace CSELIB {
 
 FILESIZE_T GetFileSize(const std::filesystem::path& argPath)

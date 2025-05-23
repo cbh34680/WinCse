@@ -1,4 +1,5 @@
 
-WinFsp		LICENSE-GPLv3.txt
-aws-sdk-s3	LICENSE-APACHE-2.0.txt
+WinFsp				LICENSE-GPLv3.txt			https://github.com/winfsp/winfsp/blob/master/License.txt
+aws-sdk-cpp			LICENSE-APACHE-2.0.txt		https://github.com/aws/aws-sdk-cpp/blob/main/LICENSE
+google-cloud-cpp	LICENSE-APACHE-2.0.txt		https://github.com/googleapis/google-cloud-cpp/blob/main/LICENSE
 

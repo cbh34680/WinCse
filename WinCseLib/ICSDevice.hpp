@@ -6,7 +6,7 @@ namespace CSELIB {
 
 struct ICSDevice : public ICSService
 {
-	virtual bool shouldIgnoreFileName(const std::filesystem::path& argWinPath) = 0;
+	virtual bool shouldIgnoreWinPath(const std::filesystem::path& argWinPath) = 0;
 	virtual void printReport(FILE* fp) = 0;
 
 	virtual bool headBucket(CALLER_ARG const std::wstring& argBucket, DirEntryType* pDirEntry) = 0;
@@ -28,7 +28,8 @@ struct ICSDevice : public ICSService
 	}
 
 	virtual FILEIO_LENGTH_T getObjectAndWriteFile(CALLER_ARG const ObjectKey& argObjKey, const std::filesystem::path& argOutputPath, FILEIO_OFFSET_T argOffset, FILEIO_LENGTH_T argLength) = 0;
-	virtual bool putObject(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argSourcePath) = 0;
+	virtual bool putObject(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSCTL_FILE_INFO& argFileInfo, PCWSTR argInputPath) = 0;
+	virtual bool copyObject(CALLER_ARG const ObjectKey& argSrcObjKey, const ObjectKey& argDstObjKey) = 0;
 	virtual bool deleteObject(CALLER_ARG const ObjectKey& argObjKey) = 0;
 	virtual bool deleteObjects(CALLER_ARG const std::wstring& argBucket, const std::list<std::wstring>& argKeys) = 0;
 };

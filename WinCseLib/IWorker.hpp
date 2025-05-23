@@ -30,7 +30,7 @@ struct IScheduledTask : public ITask
 template<typename T>
 struct ITaskTypedWorker : public IWorker
 {
-	virtual bool addTask(ITask* argTask) override
+	bool addTask(ITask* argTask) override
 	{
 		T* task = dynamic_cast<T*>(argTask);
 		APP_ASSERT(task);

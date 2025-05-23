@@ -110,20 +110,20 @@ struct FatalError : public std::exception
 	const std::string	mWhat;
 	const NTSTATUS		mNtstatus;
 
-	FatalError(const std::string& argWhat, DWORD argLastError)
+	explicit FatalError(const std::string& argWhat, DWORD argLastError)
 		:
 		mWhat(argWhat), mNtstatus(FspNtStatusFromWin32(argLastError))
 	{
 	}
 
-	FatalError(const std::string& argWhat, NTSTATUS argNtstatus)
+	explicit FatalError(const std::string& argWhat, NTSTATUS argNtstatus)
 		:
 		mWhat(argWhat),
 		mNtstatus(argNtstatus)
 	{
 	}
 
-	FatalError(const std::string& argWhat)
+	explicit FatalError(const std::string& argWhat)
 		: mWhat(argWhat), mNtstatus(STATUS_UNSUCCESSFUL)
 	{
 	}
@@ -132,6 +132,8 @@ struct FatalError : public std::exception
 	{
 		return mWhat.c_str();
 	}
+
+	WINCSELIB_API std::wstring whatW() const;
 };
 
 }

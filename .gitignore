@@ -369,6 +369,7 @@ FodyWeavers.xsd
 /misc/
 /work/
 /release/
+/vcpkg/
 
 *.lnk
 

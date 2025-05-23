@@ -67,10 +67,6 @@ static const FSP_FILE_SYSTEM_INTERFACE* getPtfsInterface();
 {
     StatsIncr(GetFileInfoInternal);
 
-#if !WINFSP_PASSTHROUGH
-    _ASSERT(pFileInfo);
-#endif
-
     BY_HANDLE_FILE_INFORMATION ByHandleFileInfo = { 0 };
 
     if (!GetFileInformationByHandle(Handle, &ByHandleFileInfo))
@@ -123,7 +119,6 @@ static NTSTATUS SetVolumeLabel_(FSP_FILE_SYSTEM* FileSystem, PWSTR VolumeLabel,
 }
 
 #if !WINFSP_PASSTHROUGH
-
 NTSTATUS (CSELIB::ICSDriver::*RelayPreCreateFilesystem)(FSP_SERVICE* Service, PCWSTR argWorkDir, FSP_FSCTL_VOLUME_PARAMS* argVolumeParams);
 NTSTATUS (CSELIB::ICSDriver::*RelayOnSvcStart)(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem);
 VOID     (CSELIB::ICSDriver::*RelayOnSvcStop)();
@@ -186,13 +181,15 @@ NTSTATUS relayReturnable(const MethodT method, Args... args)
     }
     catch (const CSELIB::FatalError& e)
     {
-        std::cerr << e.what() << std::endl;
+        fail(e.whatW().c_str());
+        std::wcerr << e.whatW() << std::endl;
+
         return e.mNtstatus;
     }
 #ifdef _RELEASE
     catch (...)
     {
-        std::cerr << "unknown error" << std::endl;
+        std::wcerr << L"unknown error" << std::endl;
         return STATUS_UNSUCCESSFUL;
     }
 #endif
@@ -207,12 +204,13 @@ VOID relayNonReturnable(const MethodT method, Args... args)
     }
     catch (const CSELIB::FatalError& e)
     {
-        std::cerr << e.what() << std::endl;
+        fail(e.whatW().c_str());
+        std::wcerr << e.whatW() << std::endl;
     }
 #ifdef _RELEASE
     catch (...)
     {
-        std::cerr << "unknown error" << std::endl;
+        std::wcerr << L"unknown error" << std::endl;
     }
 #endif
 }
@@ -1081,6 +1079,8 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
     WCHAR PassThroughBuf[MAX_PATH] = { 0 };
     PTFS *Ptfs = 0;
     NTSTATUS Result = STATUS_UNSUCCESSFUL;
+
+    ULONG CheckAndExit = 0;
 #if !WINFSP_PASSTHROUGH
     FSP_FSCTL_VOLUME_PARAMS VolumeParams = { 0 };
 
@@ -1096,8 +1096,8 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
     VolumeParams.PassQueryDirectoryPattern = 1;
     VolumeParams.FlushAndPurgeOnCleanup = 1;
     VolumeParams.UmFileContextIsUserContext2 = 1;
-#endif
 
+#endif
     for (argp = argv + 1, arge = argv + argc; arge > argp; argp++)
     {
         if (L'-' != argp[0][0])
@@ -1122,6 +1122,11 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
             argtos(VolumePrefix);
             break;
 //#if !WINFSP_PASSTHROUGH
+        case L'C':
+        {
+            argtol(CheckAndExit);
+            break;
+        }
         case L'S':
         case L'T':
         {
@@ -1136,7 +1141,9 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
     }
 
     if (arge > argp)
+    {
         goto usage;
+    }
 
     if (0 == PassThrough && 0 != VolumePrefix)
     {
@@ -1160,7 +1167,9 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
     }
 
     if (0 == PassThrough || 0 == MountPoint)
+    {
         goto usage;
+    }
 
     EnableBackupRestorePrivileges();
 
@@ -1211,6 +1220,14 @@ static NTSTATUS SvcStart(FSP_SERVICE *Service, ULONG argc, PWSTR *argv)
     if (!NT_SUCCESS(Result))
     {
         fail(L"fault: OnSvcStart");
+        goto exit;
+    }
+
+    if (CheckAndExit)
+    {
+        info(L"Check configuration and exit");
+
+        Result = STATUS_UNSUCCESSFUL;
         goto exit;
     }
 

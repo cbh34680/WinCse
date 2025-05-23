@@ -1,0 +1,275 @@
+#
+# vcpkg を取得して vcpkg.exe を生成
+#
+	C:\WORK\dev\vc\WinCse>chcp 65001
+	Active code page: 65001
+
+	C:\WORK\dev\vc\WinCse>cd
+	C:\WORK\dev\vc\WinCse
+
+	C:\WORK\dev\vc\WinCse>mkdir vcpkg
+
+	C:\WORK\dev\vc\WinCse>pushd vcpkg
+
+	C:\WORK\dev\vc\WinCse\vcpkg>cd
+	C:\WORK\dev\vc\WinCse\vcpkg
+
+	C:\WORK\dev\vc\WinCse\vcpkg>set VCPKG_ROOT=C:\WORK\dev\vc\WinCse\vcpkg
+
+	C:\WORK\dev\vc\WinCse\vcpkg>echo %VCPKG_ROOT%
+	C:\WORK\dev\vc\WinCse\vcpkg
+
+	C:\WORK\dev\vc\WinCse\vcpkg>set VCPKG_BINARY_SOURCES=clear
+
+	C:\WORK\dev\vc\WinCse\vcpkg>git clone https://github.com/microsoft/vcpkg.git .
+	Cloning into '.'...
+	remote: Enumerating objects: 274455, done.
+	remote: Counting objects: 100% (472/472), done.
+	remote: Compressing objects: 100% (260/260), done.
+	remote: Total 274455 (delta 378), reused 212 (delta 212), pack-reused 273983 (from 5)
+	Receiving objects: 100% (274455/274455), 85.48 MiB | 9.16 MiB/s, done.
+	Resolving deltas: 100% (182507/182507), done.
+	Updating files: 100% (12415/12415), done.
+
+	C:\WORK\dev\vc\WinCse\vcpkg>.\bootstrap-vcpkg.bat
+	Downloading https://github.com/microsoft/vcpkg-tool/releases/download/2025-04-16/vcpkg.exe -> C:\WORK\dev\vc\WinCse\vcpkg\vcpkg.exe... done.
+	Validating signature... done.
+
+	vcpkg package management program version 2025-04-16-f9b6c6917b23c1ccf16c1a9f015ebabf8f615045
+
+	See LICENSE.txt for license information.
+	Telemetry
+	---------
+	vcpkg collects usage data in order to help us improve your experience.
+	The data collected by Microsoft is anonymous.
+	You can opt-out of telemetry by re-running the bootstrap-vcpkg script with -disableMetrics,
+	passing --disable-metrics to vcpkg on the command line,
+	or by setting the VCPKG_DISABLE_METRICS environment variable.
+
+	Read more about vcpkg telemetry at docs/about/privacy.md
+
+	C:\WORK\dev\vc\WinCse\vcpkg>popd
+
+
+
+#
+# c++17 用の triplet を triplets ディレクトリにコピー
+#
+	C:\WORK\dev\vc\WinCse>copy doc\vcpkg\triplets\x64-windows-cxx17.cmake vcpkg\triplets\
+	        1 file(s) copied.
+
+	C:\WORK\dev\vc\WinCse>type vcpkg\triplets\x64-windows-cxx17.cmake
+	set(VCPKG_TARGET_ARCHITECTURE x64)
+	set(VCPKG_CRT_LINKAGE dynamic)
+	set(VCPKG_LIBRARY_LINKAGE dynamic)
+
+	set(VCPKG_C_LANGUAGE_STANDARD 17)
+	set(VCPKG_CXX_LANGUAGE_STANDARD 17)
+
+
+
+#
+# google-cloud-cpp のビルド
+#
+	C:\WORK\dev\vc\WinCse>.\vcpkg\vcpkg.exe install google-cloud-cpp[core,storage] --triplet x64-windows-cxx17
+	Computing installation plan...
+	The following packages will be built and installed:
+	  * abseil:x64-windows-cxx17@20250127.1
+	  * crc32c:x64-windows-cxx17@1.1.2#2
+	  * curl[core,non-http,schannel,ssl,sspi]:x64-windows-cxx17@8.13.0#1
+	    google-cloud-cpp[core,rest-common,storage]:x64-windows-cxx17@2.36.0
+	  * nlohmann-json:x64-windows-cxx17@3.12.0
+	  * zlib:x64-windows-cxx17@1.3.1
+	Additional packages (*) will be modified to complete this operation.
+	Detecting compiler hash for triplet x64-windows-cxx17...
+	Compiler found: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.43.34808/bin/Hostx64/x64/cl.exe
+	Installing 1/6 abseil:x64-windows-cxx17@20250127.1...
+	Building abseil:x64-windows-cxx17@20250127.1...
+	-- Using cached abseil-abseil-cpp-20250127.1.tar.gz
+	-- Cleaning sources at C:/WORK/dev/vc/WinCse/vcpkg/buildtrees/abseil/src/20250127.1-a0a219bf72.clean. Use --editable to skip cleaning for the packages you specify.
+	-- Extracting source C:/WORK/dev/vc/WinCse/vcpkg/downloads/abseil-abseil-cpp-20250127.1.tar.gz
+	-- Using source at C:/WORK/dev/vc/WinCse/vcpkg/buildtrees/abseil/src/20250127.1-a0a219bf72.clean
+	-- Found external ninja('1.12.1').
+	-- Configuring x64-windows-cxx17-dbg
+	-- Configuring x64-windows-cxx17-rel
+	-- Building x64-windows-cxx17-dbg
+	-- Building x64-windows-cxx17-rel
+	-- Fixing pkgconfig file: C:/WORK/dev/vc/WinCse/vcpkg/packages/abseil_x64-windows-cxx17/lib/pkgconfig/abseil_dll.pc
+	-- Fixing pkgconfig file: C:/WORK/dev/vc/WinCse/vcpkg/packages/abseil_x64-windows-cxx17/lib/pkgconfig/absl_absl_check.pc
+
+	...
+
+	Downloading https://github.com/googleapis/googleapis/archive/b151ec2ae29c2c955c56784c0ce388b2d8c4a84c.tar.gz -> googleapis-googleapis-b151ec2ae29c2c955c56784c0ce388b2d8c4a84c.tar.gz
+	Successfully downloaded googleapis-googleapis-b151ec2ae29c2c955c56784c0ce388b2d8c4a84c.tar.gz
+	-- Extracting source C:/WORK/dev/vc/WinCse/vcpkg/downloads/googleapis-googleapis-b151ec2ae29c2c955c56784c0ce388b2d8c4a84c.tar.gz
+	-- Using source at C:/WORK/dev/vc/WinCse/vcpkg/buildtrees/google-cloud-cpp/src/b2d8c4a84c-8a0bbb3539.clean
+	-- Found external ninja('1.12.1').
+	-- Configuring x64-windows-cxx17-dbg
+	-- Configuring x64-windows-cxx17-rel
+	-- Building x64-windows-cxx17-dbg
+	-- Building x64-windows-cxx17-rel
+	-- Installing: C:/WORK/dev/vc/WinCse/vcpkg/packages/google-cloud-cpp_x64-windows-cxx17/share/google-cloud-cpp/copyright
+	-- Performing post-build validation
+	Elapsed time to handle google-cloud-cpp:x64-windows-cxx17: 4.6 min
+	google-cloud-cpp:x64-windows-cxx17 package ABI: 3aaa4c61a474e6279a704501b7aafb2038f4e2f2740764291d83a0135438f509
+	Total install time: 7.7 min
+	google-cloud-cpp provides CMake targets:
+
+	  # this is heuristically generated, and may not be correct
+	  find_package(google_cloud_cpp_common CONFIG REQUIRED)
+	  target_link_libraries(main PRIVATE google-cloud-cpp::common)
+
+	  find_package(google_cloud_cpp_rest_internal CONFIG REQUIRED)
+	  target_link_libraries(main PRIVATE google-cloud-cpp::rest_internal)
+
+	  find_package(google_cloud_cpp_storage CONFIG REQUIRED)
+	  target_link_libraries(main PRIVATE CURL::libcurl google-cloud-cpp::storage)
+
+	google-cloud-cpp provides pkg-config modules:
+
+	  # Common Components used by the Google Cloud C++ Client Libraries.
+	  google_cloud_cpp_common
+
+	  # Provides REST Transport for the Google Cloud C++ Client Library.
+	  google_cloud_cpp_rest_internal
+
+	  # Provides C++ APIs to access Google Cloud Storage.
+	  google_cloud_cpp_storage
+
+
+
+#
+# vcpkg に認識されていることを確認
+#
+	C:\WORK\dev\vc\WinCse>vcpkg
+	'vcpkg' is not recognized as an internal or external command,
+	operable program or batch file.
+
+	C:\WORK\dev\vc\WinCse>set PATH=%VCPKG_ROOT%;%PATH%
+
+	C:\WORK\dev\vc\WinCse>vcpkg --version
+	vcpkg package management program version 2025-04-16-f9b6c6917b23c1ccf16c1a9f015ebabf8f615045
+
+	See LICENSE.txt for license information.
+
+	C:\WORK\dev\vc\WinCse>vcpkg list
+	abseil:x64-windows-cxx17                          20250127.1          Abseil is an open-source collection of C++ libra...
+	crc32c:x64-windows-cxx17                          1.1.2#2             CRC32C implementation with support for CPU-speci...
+	curl:x64-windows-cxx17                            8.13.0#1            A library for transferring data with URLs
+	curl[non-http]:x64-windows-cxx17                                      Enables protocols beyond HTTP/HTTPS/HTTP2
+	curl[schannel]:x64-windows-cxx17                                      SSL support (Secure Channel)
+	curl[ssl]:x64-windows-cxx17                                           Default SSL backend
+	curl[sspi]:x64-windows-cxx17                                          SSPI support
+	google-cloud-cpp:x64-windows-cxx17                2.36.0              C++ Client Libraries for Google Cloud Platform A...
+	google-cloud-cpp[rest-common]:x64-windows-cxx17                       Dependencies used by all REST-based libraries
+	google-cloud-cpp[storage]:x64-windows-cxx17                           The Google Cloud Storage C++ client library
+	nlohmann-json:x64-windows-cxx17                   3.12.0              JSON for Modern C++
+	vcpkg-cmake-config:x64-windows                    2024-05-23
+	vcpkg-cmake:x64-windows                           2024-04-23
+	zlib:x64-windows-cxx17                            1.3.1               A compression library
+
+
+
+#
+# google-cloud-cpp のサンプル(storage/quickstart) を取得してビルド
+#
+	C:\WORK\dev\vc\WinCse>pushd doc
+
+	C:\WORK\dev\vc\WinCse\doc>curl -s -SLO https://github.com/googleapis/google-cloud-cpp/archive/refs/heads/main.zip
+
+	C:\WORK\dev\vc\WinCse\doc>unzip -q main.zip
+
+	C:\WORK\dev\vc\WinCse\doc>xcopy google-cloud-cpp-main\google\cloud\storage\quickstart quickstart /I
+	google-cloud-cpp-main\google\cloud\storage\quickstart\.bazelrc
+	google-cloud-cpp-main\google\cloud\storage\quickstart\.bazelversion
+	google-cloud-cpp-main\google\cloud\storage\quickstart\BUILD.bazel
+	google-cloud-cpp-main\google\cloud\storage\quickstart\CMakeLists.txt
+	google-cloud-cpp-main\google\cloud\storage\quickstart\Makefile
+	google-cloud-cpp-main\google\cloud\storage\quickstart\quickstart.cc
+	google-cloud-cpp-main\google\cloud\storage\quickstart\quickstart_async.cc
+	google-cloud-cpp-main\google\cloud\storage\quickstart\quickstart_grpc.cc
+	google-cloud-cpp-main\google\cloud\storage\quickstart\README.md
+	google-cloud-cpp-main\google\cloud\storage\quickstart\WORKSPACE.bazel
+	10 File(s) copied
+
+	C:\WORK\dev\vc\WinCse\doc>pushd quickstart
+
+	C:\WORK\dev\vc\WinCse\doc\quickstart>cmake -S . -B build1 -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-cxx17
+	-- Selecting Windows SDK version 10.0.22621.0 to target Windows 10.0.26100.
+	-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+	-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed
+	-- Looking for pthread_create in pthreads
+	-- Looking for pthread_create in pthreads - not found
+	-- Looking for pthread_create in pthread
+	-- Looking for pthread_create in pthread - not found
+	-- Found Threads: TRUE
+	-- Found ZLIB: optimized;C:/WORK/dev/vc/WinCse/vcpkg/installed/x64-windows-cxx17/lib/zlib.lib;debug;C:/WORK/dev/vc/WinCse/vcpkg/installed/x64-windows-cxx17/debug/lib/zlibd.lib (found suitable version "1.3.1", minimum required is "1")
+	-- Found nlohmann_json: C:/WORK/dev/vc/WinCse/vcpkg/installed/x64-windows-cxx17/share/nlohmann_json/nlohmann_jsonConfig.cmake (found version "3.12.0")
+	-- Found ZLIB: optimized;C:/WORK/dev/vc/WinCse/vcpkg/installed/x64-windows-cxx17/lib/zlib.lib;debug;C:/WORK/dev/vc/WinCse/vcpkg/installed/x64-windows-cxx17/debug/lib/zlibd.lib (found version "1.3.1")
+	-- Could NOT find google_cloud_cpp_storage_grpc (missing: google_cloud_cpp_storage_grpc_DIR)
+	GCS+gRPC plugin is disabled, skipping its quickstarts
+	-- Configuring done (3.8s)
+	-- Generating done (0.1s)
+	CMake Warning:
+	  Manually-specified variables were not used by the project:
+
+	    CMAKE_TOOLCHAIN_FILE
+
+
+	-- Build files have been written to: C:/WORK/dev/vc/WinCse/doc/quickstart/build1
+
+	C:\WORK\dev\vc\WinCse\doc\quickstart>cmake --build build1
+	MSBuild のバージョン 17.13.26+f3741e9cf (.NET Framework)
+
+	  1>Checking Build System
+	  Building Custom Rule C:/WORK/dev/vc/WinCse/doc/quickstart/CMakeLists.txt
+	  quickstart.cc
+	  quickstart.vcxproj -> C:\WORK\dev\vc\WinCse\doc\quickstart\build1\Debug\quickstart.exe
+	  Building Custom Rule C:/WORK/dev/vc/WinCse/doc/quickstart/CMakeLists.txt
+
+
+
+#
+# Visual Studio のプロジェクトを生成してビルド
+#
+	C:\WORK\dev\vc\WinCse\doc\quickstart>cmake -G "Visual Studio 17 2022" -A x64 -S . -B build2 -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-cxx17
+	-- Selecting Windows SDK version 10.0.22621.0 to target Windows 10.0.26100.
+	-- The CXX compiler identification is MSVC 19.43.34810.0
+	-- Detecting CXX compiler ABI info
+	-- Detecting CXX compiler ABI info - done
+	-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.43.34808/bin/Hostx64/x64/cl.exe - skipped
+	-- Detecting CXX compile features
+	-- Detecting CXX compile features - done
+	-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+	-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed
+	-- Looking for pthread_create in pthreads
+	-- Looking for pthread_create in pthreads - not found
+	-- Looking for pthread_create in pthread
+	-- Looking for pthread_create in pthread - not found
+	-- Found Threads: TRUE
+	-- Found ZLIB: optimized;C:/WORK/dev/vc/WinCse/vcpkg/installed/x64-windows-cxx17/lib/zlib.lib;debug;C:/WORK/dev/vc/WinCse/vcpkg/installed/x64-windows-cxx17/debug/lib/zlibd.lib (found suitable version "1.3.1", minimum required is "1")
+	-- Found nlohmann_json: C:/WORK/dev/vc/WinCse/vcpkg/installed/x64-windows-cxx17/share/nlohmann_json/nlohmann_jsonConfig.cmake (found version "3.12.0")
+	-- Found ZLIB: optimized;C:/WORK/dev/vc/WinCse/vcpkg/installed/x64-windows-cxx17/lib/zlib.lib;debug;C:/WORK/dev/vc/WinCse/vcpkg/installed/x64-windows-cxx17/debug/lib/zlibd.lib (found version "1.3.1")
+	-- Could NOT find google_cloud_cpp_storage_grpc (missing: google_cloud_cpp_storage_grpc_DIR)
+	GCS+gRPC plugin is disabled, skipping its quickstarts
+	-- Configuring done (7.7s)
+	-- Generating done (0.1s)
+	-- Build files have been written to: C:/WORK/dev/vc/WinCse/doc/quickstart/build2
+
+	C:\WORK\dev\vc\WinCse\doc\quickstart>cmake --build build2
+	MSBuild のバージョン 17.13.26+f3741e9cf (.NET Framework)
+
+	  1>Checking Build System
+	  Building Custom Rule C:/WORK/dev/vc/WinCse/doc/quickstart/CMakeLists.txt
+	  quickstart.cc
+	  quickstart.vcxproj -> C:\WORK\dev\vc\WinCse\doc\quickstart\build2\Debug\quickstart.exe
+	  Building Custom Rule C:/WORK/dev/vc/WinCse/doc/quickstart/CMakeLists.txt
+
+	C:\WORK\dev\vc\WinCse\doc\quickstart>popd
+
+	C:\WORK\dev\vc\WinCse\doc>popd
+
+	C:\WORK\dev\vc\WinCse>
+
+
+

@@ -1,8 +1,6 @@
 #include "RuntimeEnv.hpp"
 
 using namespace CSELIB;
-using namespace CSEDRV;
-
 
 #define TO_LITERAL(name)        L#name
 
@@ -10,9 +8,11 @@ using namespace CSEDRV;
 #define KV_BOOL(name)           std::wstring(TO_LITERAL(name)) + L'=' + BOOL_CSTRW(name)
 #define KV_TO_WSTR(name)        std::wstring(TO_LITERAL(name)) + L'=' + std::to_wstring(name)
 
+namespace CSEDRV {
+
 std::wstring RuntimeEnv::str() const
 {
-    LastErrorBackup _backup;
+    KeepLastError _keep;
 
     return JoinStrings(std::initializer_list{
         KV_FSSTR(CacheDataDir),
@@ -26,5 +26,7 @@ std::wstring RuntimeEnv::str() const
         KV_TO_WSTR(TransferReadSizeMib)
         }, L", ", true);
 }
+
+}   // namespace CSEDRV
 
 // EOF

@@ -4,13 +4,15 @@
 //
 #include "aws_sdk_s3_client.h"
 
+#ifdef USE_IMPORT_EXPORT
+#error "USE_IMPORT_EXPORT already defined"
+#endif
+
 #include "internal_undef_alloc.h"
 
-#ifndef USE_IMPORT_EXPORT
 // https://github.com/aws/aws-sdk-cpp/issues/3209
 #define USE_IMPORT_EXPORT
 //#define USE_WINDOWS_DLL_SEMANTICS
-#endif
 
 #pragma warning(push, 0)
 #include <aws/s3/model/GetBucketLocationRequest.h>
@@ -19,6 +21,7 @@
 #include <aws/s3/model/ListObjectsV2Request.h>
 #include <aws/s3/model/GetObjectRequest.h>
 #include <aws/s3/model/PutObjectRequest.h>
+#include <aws/s3/model/CopyObjectRequest.h>
 #include <aws/s3/model/DeleteObjectRequest.h>
 #include <aws/s3/model/DeleteObjectsRequest.h>
 

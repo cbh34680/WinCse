@@ -13,6 +13,9 @@ static void setup_stdout();
 void t_CPP_File();
 void t_CPP_File_Win32();
 
+// [CPP/CPP-Misc.cpp]
+void t_CPP_Misc();
+
 // [WinCseLib/CSELIB-System.cpp]
 void t_WinCseLib_System_AbnormalEnd();
 
@@ -58,6 +61,11 @@ int wmain(int, wchar_t**)
     t_CPP_File_Win32();
 #endif
 
+#if 1
+    /* [CPP/CPP-Misc.cpp] */
+    t_CPP_Misc();
+#endif
+
 #if 0
 	/* [WinCseLib/CSELIB-System.cpp] */
     t_WinCseLib_System_AbnormalEnd();
@@ -68,7 +76,7 @@ int wmain(int, wchar_t**)
     t_WinCseLib_Crypt();
 #endif
 
-#if 1
+#if 0
     /* [WinCseLib/CSELIB-File.cpp] */
     t_WinCseLib_File();
 #endif

@@ -1,8 +1,6 @@
 #include "FileContext.hpp"
 
 using namespace CSELIB;
-using namespace CSEDRV;
-
 
 #define TO_LITERAL(name)                L#name
 #define ADD_LIST(flags, slist, name)    if ((flags) & (FCTX_FLAGS_ ## name)) slist.push_back(TO_LITERAL(name))
@@ -21,20 +19,24 @@ static std::wstring flagsToStringW(DWORD argFlags)
     ADD_LIST(argFlags, strs, SET_DELETE);
     ADD_LIST(argFlags, strs, CLOSE);
 
+    ADD_LIST(argFlags, strs, RENAME);
+
     ADD_LIST(argFlags, strs, M_CREATE);
     ADD_LIST(argFlags, strs, M_WRITE);
     ADD_LIST(argFlags, strs, M_OVERWRITE);
-    ADD_LIST(argFlags, strs, M_RENAME);
+    //ADD_LIST(argFlags, strs, M_RENAME);
     ADD_LIST(argFlags, strs, M_SET_BASIC_INFO);
     ADD_LIST(argFlags, strs, M_SET_FILE_SIZE);
     ADD_LIST(argFlags, strs, M_SET_SECURITY);
 
-    return JoinStrings(strs, L", ", true);
+    return JoinStrings(strs, L',', true);
 }
+
+namespace CSEDRV {
 
 std::wstring FileContext::str() const
 {
-    LastErrorBackup _backup;
+    KeepLastError _keep;
 
     std::wostringstream ss;
 
@@ -74,7 +76,7 @@ ObjectKey FileContext::getObjectKey() const
 
 std::wstring OpenFileContext::str() const
 {
-    LastErrorBackup _backup;
+    KeepLastError _keep;
 
     std::wostringstream ss;
 
@@ -83,5 +85,7 @@ std::wstring OpenFileContext::str() const
 
     return ss.str();
 }
+
+}   // namespace CSEDRV
 
 // EOF

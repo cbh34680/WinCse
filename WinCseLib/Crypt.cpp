@@ -3,7 +3,7 @@
 #include <iomanip>
 
 //
-// 主に ChatGPT により生成
+// 難しいコードは主に ChatGPT/Copilot に作ってもらった
 //
 
 namespace CSELIB {
@@ -277,6 +277,98 @@ exit:
 
     return ntstatus;
 }
+
+bool DecryptCredentialStringA(const std::string& argSecretKey, std::string* pInOut)
+{
+    NEW_LOG_BLOCK();
+    APP_ASSERT(pInOut);
+
+    const auto concatB64Str{ *pInOut };
+
+    traceA("concatB64Str=%s***", SafeSubStringA(concatB64Str, 0, 5).c_str());
+
+    // MachineGuid の値を AES の key とし、iv には key[0..16] を設定する
+
+    // BASE64 文字列をデコード
+
+    std::string concatStr;
+    if (!Base64DecodeA(concatB64Str, &concatStr))
+    {
+        errorW(L"fault: Base64DecodeA");
+        return false;
+    }
+
+    const std::vector<BYTE> concatBytes{ concatStr.cbegin(), concatStr.cend() };
+
+    if (concatBytes.size() < 17)
+    {
+        // IV + データなので最低でも 16 + 1 byte は必要
+
+        errorW(L"fault: concatBytes.size() < 17");
+        return false;
+    }
+
+    // 先頭の 16 byte が IV
+
+    const std::vector<BYTE> aesIV{ concatStr.cbegin(), concatStr.cbegin() + 16 };
+
+    // それ以降がデータ
+
+    const std::vector<BYTE> encrypted{ concatStr.cbegin() + 16, concatStr.cend() };
+
+    // 復号化
+
+    std::vector<BYTE> decrypted;
+
+    const std::vector<BYTE> aesKey{ argSecretKey.cbegin(), argSecretKey.cend() };
+
+    if (!DecryptAES(aesKey, aesIV, encrypted, &decrypted))
+    {
+        errorW(L"fault: DecryptAES");
+        return false;
+    }
+
+    // これだと strlen() のサイズと一致しなくなる
+    //str.assign(decrypted.begin(), decrypted.end());
+
+    // 入力が '\0' 終端であることを前提に char* から std::string を初期化する
+
+    //str = (char*)decrypted.data();
+    //*pInOut = std::move(str);
+
+    const auto it = std::find_if(decrypted.cbegin(), decrypted.cend(), [](const auto ch)
+    {
+        return ch == '\0';
+    });
+
+    if (it == decrypted.cend())
+    {
+        errorW(L"fault: Not String size=%zu", decrypted.size());
+        return false;
+    }
+
+    *pInOut = std::string{ (char*)decrypted.data() };
+
+    traceA("success: DecryptAES result=%s***", SafeSubStringA(*pInOut, 0, 5).c_str());
+
+    return true;
+}
+
+bool DecryptCredentialStringW(const std::wstring& argSecretKey, std::wstring* pInOut)
+{
+    const auto secretKey{ WC2MB(argSecretKey) };
+    auto data{ WC2MB(*pInOut) };
+
+    if (DecryptCredentialStringA(secretKey, &data))
+    {
+        *pInOut = MB2WC(data);
+
+        return true;
+    }
+
+    return false;
+}
+
 
 } // namespace CSELIB
 

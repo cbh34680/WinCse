@@ -1,11 +1,10 @@
 #include "WinCseLib.h"
 
-using namespace CSELIB;
-
+namespace CSELIB {
 
 std::atomic<int> DirectoryEntry::mLastInstanceId = 0;
 
-DirectoryEntry::DirectoryEntry(FileTypeEnum argFileType, const std::wstring& argName, UINT64 argFileSize, UINT64 argCreationTime, UINT64 argLastAccessTime, UINT64 argLastWriteTime, UINT64 argChangeTime)
+DirectoryEntry::DirectoryEntry(FileTypeEnum argFileType, const std::wstring& argName, UINT64 argFileSize, FILETIME_100NS_T argCreationTime, FILETIME_100NS_T argLastAccessTime, FILETIME_100NS_T argLastWriteTime, FILETIME_100NS_T argChangeTime)
 	:
 	mInstanceId(++mLastInstanceId),
 	mFileType(argFileType),
@@ -75,7 +74,7 @@ DirectoryEntry::DirectoryEntry(FileTypeEnum argFileType, const std::wstring& arg
 
 const std::wstring DirectoryEntry::str() const
 {
-	LastErrorBackup _backup;
+	KeepLastError _keep;
 
 	std::wstringstream ss;
 
@@ -174,14 +173,14 @@ DirInfoType DirectoryEntry::makeDirInfo() const
 	return DirInfoType{ dirInfoRaw, free };
 }
 
-DirEntryType DirectoryEntry::makeRootEntry(UINT64 argFileTime)
+DirEntryType DirectoryEntry::makeRootEntry(FILETIME_100NS_T argFileTime)
 {
 	APP_ASSERT(argFileTime);
 
 	return std::make_shared<DirectoryEntry>(FileTypeEnum::Root, L"/", 0, argFileTime);
 }
 
-DirEntryType DirectoryEntry::makeBucketEntry(const std::wstring& argName, UINT64 argFileTime)
+DirEntryType DirectoryEntry::makeBucketEntry(const std::wstring& argName, FILETIME_100NS_T argFileTime)
 {
 	APP_ASSERT(argFileTime);
 	APP_ASSERT(!argName.empty());
@@ -190,7 +189,7 @@ DirEntryType DirectoryEntry::makeBucketEntry(const std::wstring& argName, UINT64
 	return std::make_shared<DirectoryEntry>(FileTypeEnum::Bucket, argName, 0, argFileTime);
 }
 
-DirEntryType DirectoryEntry::makeDotEntry(const std::wstring& argName, UINT64 argFileTime)
+DirEntryType DirectoryEntry::makeDotEntry(const std::wstring& argName, FILETIME_100NS_T argFileTime)
 {
 	APP_ASSERT(argFileTime);
 	APP_ASSERT(argName == L"." || argName == L"..");
@@ -198,7 +197,7 @@ DirEntryType DirectoryEntry::makeDotEntry(const std::wstring& argName, UINT64 ar
 	return std::make_shared<DirectoryEntry>(FileTypeEnum::Directory, argName, 0, argFileTime);
 }
 
-DirEntryType DirectoryEntry::makeDirectoryEntry(const std::wstring& argName, UINT64 argCreationTime, UINT64 argLastAccessTime, UINT64 argLastWriteTime, UINT64 argChangeTime)
+DirEntryType DirectoryEntry::makeDirectoryEntry(const std::wstring& argName, FILETIME_100NS_T argCreationTime, FILETIME_100NS_T argLastAccessTime, FILETIME_100NS_T argLastWriteTime, FILETIME_100NS_T argChangeTime)
 {
 	APP_ASSERT(argCreationTime);
 	APP_ASSERT(argLastAccessTime);
@@ -211,7 +210,7 @@ DirEntryType DirectoryEntry::makeDirectoryEntry(const std::wstring& argName, UIN
 	return std::make_shared<DirectoryEntry>(FileTypeEnum::Directory, argName, 0, argCreationTime, argLastAccessTime, argLastWriteTime, argChangeTime);
 }
 
-DirEntryType DirectoryEntry::makeDirectoryEntry(const std::wstring& argName, UINT64 argFileTime)
+DirEntryType DirectoryEntry::makeDirectoryEntry(const std::wstring& argName, FILETIME_100NS_T argFileTime)
 {
 	APP_ASSERT(argFileTime);
 	APP_ASSERT(!argName.empty());
@@ -221,7 +220,7 @@ DirEntryType DirectoryEntry::makeDirectoryEntry(const std::wstring& argName, UIN
 	return std::make_shared<DirectoryEntry>(FileTypeEnum::Directory, argName, 0, argFileTime);
 }
 
-DirEntryType DirectoryEntry::makeFileEntry(const std::wstring& argName, UINT64 argFileSize, UINT64 argCreationTime, UINT64 argLastAccessTime, UINT64 argLastWriteTime, UINT64 argChangeTime)
+DirEntryType DirectoryEntry::makeFileEntry(const std::wstring& argName, UINT64 argFileSize, FILETIME_100NS_T argCreationTime, FILETIME_100NS_T argLastAccessTime, FILETIME_100NS_T argLastWriteTime, FILETIME_100NS_T argChangeTime)
 {
 	APP_ASSERT(argCreationTime);
 	APP_ASSERT(argLastAccessTime);
@@ -233,7 +232,7 @@ DirEntryType DirectoryEntry::makeFileEntry(const std::wstring& argName, UINT64 a
 	return std::make_shared<DirectoryEntry>(FileTypeEnum::File, argName, argFileSize, argCreationTime, argLastAccessTime, argLastWriteTime, argChangeTime);
 }
 
-DirEntryType DirectoryEntry::makeFileEntry(const std::wstring& argName, UINT64 argFileSize, UINT64 argFileTime)
+DirEntryType DirectoryEntry::makeFileEntry(const std::wstring& argName, UINT64 argFileSize, FILETIME_100NS_T argFileTime)
 {
 	APP_ASSERT(argFileTime);
 	APP_ASSERT(!argName.empty());
@@ -241,5 +240,7 @@ DirEntryType DirectoryEntry::makeFileEntry(const std::wstring& argName, UINT64 a
 
 	return std::make_shared<DirectoryEntry>(FileTypeEnum::File, argName, argFileSize, argFileTime);
 }
+
+}	// namespace CSELIB
 
 // EOF

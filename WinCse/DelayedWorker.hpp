@@ -19,7 +19,7 @@ private:
 	mutable std::mutex									mGuard;
 
 protected:
-	void listen(int argThreadIndex);
+	void listen(int argThreadIndex, HANDLE argStarted);
 	std::unique_ptr<CSELIB::IOnDemandTask> dequeueTask();
 
 public:

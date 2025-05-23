@@ -1,8 +1,32 @@
 #include "CSDriverBase.hpp"
 
 using namespace CSELIB;
-using namespace CSEDRV;
 
+#define RETURN_IF_READONLY()		        if (mRuntimeEnv->ReadOnly) return STATUS_ACCESS_DENIED
+
+#define FLAG_NAME(name)                     FCTX_FLAGS_ ## name
+
+#define SET_FLAG(ctx, name)                 (ctx)->mFlags |= FLAG_NAME(name)
+#define SET_FLAG_IF_SUCCESS(s, ctx, name)   if (NT_SUCCESS((s))) SET_FLAG(ctx, name)
+
+#define APP_DEFAULT_FA(p)                   this->applyDefaultFileAttributes(p)
+#define APP_DEFAULT_FA_IF_SUCCESS(s, p)     if (NT_SUCCESS((s))) APP_DEFAULT_FA(p)
+
+#define RETURN_IF_NOT_ALLOWED_VOID(ctx, ...) \
+do { \
+    const FileTypeEnum arr[] = { __VA_ARGS__ }; \
+    if (std::find(std::begin(arr), std::end(arr), (ctx)->getDirEntry()->mFileType) == std::end(arr)) \
+        return; \
+} while (0)
+
+#define RETURN_IF_NOT_ALLOWED(ctx, ...) \
+do { \
+    const FileTypeEnum arr[] = { __VA_ARGS__ }; \
+    if (std::find(std::begin(arr), std::end(arr), (ctx)->getDirEntry()->mFileType) == std::end(arr)) \
+        return STATUS_ACCESS_DENIED; \
+} while (0)
+
+namespace CSEDRV {
 
 NTSTATUS CSDriverBase::RelayGetSecurityByName(PCWSTR argFileName, PUINT32 argFileAttributes, PSECURITY_DESCRIPTOR argSecurityDescriptor, PSIZE_T argSecurityDescriptorSize)
 {
@@ -20,30 +44,6 @@ NTSTATUS CSDriverBase::RelayGetSecurityByName(PCWSTR argFileName, PUINT32 argFil
     return ntstatus;
 }
 
-#define RETURN_IF_READONLY()		if (mRuntimeEnv->ReadOnly) return STATUS_ACCESS_DENIED
-
-#define FLAG_NAME(name)             FCTX_FLAGS_ ## name
-
-#define SET_FLAG(ctx, name)         (ctx)->mFlags |= FLAG_NAME(name)
-#define SET_FLAG_IF(s, ctx, name)   if (NT_SUCCESS((s))) SET_FLAG(ctx, name)
-
-#define APP_DEFAULT_FA_IF(s, p)     if (NT_SUCCESS((s))) this->applyDefaultFileAttributes(p)
-
-#define RETURN_IF_NOT_ALLOWED_VOID(ctx, ...) \
-do { \
-    const FileTypeEnum arr[] = { __VA_ARGS__ }; \
-    if (std::find(std::begin(arr), std::end(arr), (ctx)->getDirEntry()->mFileType) == std::end(arr)) \
-        return; \
-} while (0)
-
-#define RETURN_IF_NOT_ALLOWED(ctx, ...) \
-do { \
-    const FileTypeEnum arr[] = { __VA_ARGS__ }; \
-    if (std::find(std::begin(arr), std::end(arr), (ctx)->getDirEntry()->mFileType) == std::end(arr)) \
-        return STATUS_ACCESS_DENIED; \
-} while (0)
-
-
 NTSTATUS CSDriverBase::RelayOpen(PCWSTR argWinPath, UINT32 argCreateOptions, UINT32 argGrantedAccess, IFileContext** argFileContext, FSP_FSCTL_FILE_INFO* argFileInfo)
 {
     StatsIncr(RelayOpen);
@@ -57,8 +57,6 @@ NTSTATUS CSDriverBase::RelayOpen(PCWSTR argWinPath, UINT32 argCreateOptions, UIN
         ntstatus = this->Open(argWinPath, argCreateOptions, argGrantedAccess, (FileContext**)argFileContext, argFileInfo);
     }
 
-    APP_DEFAULT_FA_IF(ntstatus, argFileInfo);
-
     if (NT_SUCCESS(ntstatus))
     {
         FileContext* ctx = dynamic_cast<FileContext*>(*argFileContext);
@@ -66,7 +64,8 @@ NTSTATUS CSDriverBase::RelayOpen(PCWSTR argWinPath, UINT32 argCreateOptions, UIN
 
         mFileContextSweeper.add(ctx);
 
-        SET_FLAG_IF(ntstatus, ctx, OPEN);
+        APP_DEFAULT_FA(argFileInfo);
+        SET_FLAG(ctx, OPEN);
     }
 
     return ntstatus;
@@ -86,8 +85,6 @@ NTSTATUS CSDriverBase::RelayCreate(PCWSTR argFileName, UINT32 argCreateOptions, 
         ntstatus = this->Create(argFileName, argCreateOptions, argGrantedAccess, argFileAttributes, argSecurityDescriptor, argAllocationSize, (FileContext**)argFileContext, argFileInfo);
     }
 
-    APP_DEFAULT_FA_IF(ntstatus, argFileInfo);
-
     if (NT_SUCCESS(ntstatus))
     {
         FileContext* ctx = dynamic_cast<FileContext*>(*argFileContext);
@@ -95,7 +92,8 @@ NTSTATUS CSDriverBase::RelayCreate(PCWSTR argFileName, UINT32 argCreateOptions, 
 
         mFileContextSweeper.add(ctx);
 
-        SET_FLAG_IF(ntstatus, ctx, CREATE);
+        APP_DEFAULT_FA(argFileInfo);
+        SET_FLAG(ctx, CREATE);
     }
 
     return ntstatus;
@@ -159,8 +157,8 @@ NTSTATUS CSDriverBase::RelayFlush(IFileContext* argFileContext, FSP_FSCTL_FILE_I
         ntstatus = this->Flush(ctx, argFileInfo);
     }
 
-    APP_DEFAULT_FA_IF(ntstatus, argFileInfo);
-    SET_FLAG_IF(ntstatus, ctx, FLUSH);
+    APP_DEFAULT_FA_IF_SUCCESS(ntstatus, argFileInfo);
+    SET_FLAG_IF_SUCCESS(ntstatus, ctx, FLUSH);
 
     return ntstatus;
 }
@@ -181,8 +179,8 @@ NTSTATUS CSDriverBase::RelayGetFileInfo(IFileContext* argFileContext, FSP_FSCTL_
         ntstatus = this->GetFileInfo(ctx, argFileInfo);
     }
 
-    APP_DEFAULT_FA_IF(ntstatus, argFileInfo);
-    SET_FLAG_IF(ntstatus, ctx, GET_FILE_INFO);
+    APP_DEFAULT_FA_IF_SUCCESS(ntstatus, argFileInfo);
+    SET_FLAG_IF_SUCCESS(ntstatus, ctx, GET_FILE_INFO);
 
     return ntstatus;
 }
@@ -203,7 +201,7 @@ NTSTATUS CSDriverBase::RelayGetSecurity(IFileContext* argFileContext, PSECURITY_
         ntstatus = this->GetSecurity(ctx, argSecurityDescriptor, argSecurityDescriptorSize);
     }
 
-    SET_FLAG_IF(ntstatus, ctx, GET_SECURITY);
+    SET_FLAG_IF_SUCCESS(ntstatus, ctx, GET_SECURITY);
 
     return ntstatus;
 }
@@ -227,8 +225,8 @@ NTSTATUS CSDriverBase::RelayOverwrite(IFileContext* argFileContext, UINT32 argFi
         ntstatus = this->Overwrite(ctx, argFileAttributes, argReplaceFileAttributes, argAllocationSize, argFileInfo);
     }
 
-    APP_DEFAULT_FA_IF(ntstatus, argFileInfo);
-    SET_FLAG_IF(ntstatus, ctx, OVERWRITE);
+    APP_DEFAULT_FA_IF_SUCCESS(ntstatus, argFileInfo);
+    SET_FLAG_IF_SUCCESS(ntstatus, ctx, OVERWRITE);
 
     return ntstatus;
 }
@@ -251,7 +249,7 @@ NTSTATUS CSDriverBase::RelayRead(IFileContext* argFileContext, PVOID argBuffer, 
         ntstatus = this->Read(ctx, argBuffer, argOffset, argLength, argBytesTransferred);
     }
 
-    SET_FLAG_IF(ntstatus, ctx, READ);
+    SET_FLAG_IF_SUCCESS(ntstatus, ctx, READ);
 
     return ntstatus;
 }
@@ -270,7 +268,7 @@ NTSTATUS CSDriverBase::RelayReadDirectory(IFileContext* argFileContext, PWSTR ar
 
     NTSTATUS ntstatus = this->ReadDirectory(ctx, argPattern, argMarker, argBuffer, argBufferLength, argBytesTransferred);
 
-    SET_FLAG_IF(ntstatus, ctx, READ_DIRECTORY);
+    SET_FLAG_IF_SUCCESS(ntstatus, ctx, READ_DIRECTORY);
 
     return ntstatus;
 }
@@ -299,7 +297,7 @@ NTSTATUS CSDriverBase::RelayRename(IFileContext* argFileContext, PWSTR argFileNa
         }
     }
 
-    SET_FLAG_IF(ntstatus, ctx, RENAME);
+    SET_FLAG_IF_SUCCESS(ntstatus, ctx, RENAME);
 
     return ntstatus;
 }
@@ -323,8 +321,8 @@ NTSTATUS CSDriverBase::RelaySetBasicInfo(IFileContext* argFileContext, UINT32 ar
         ntstatus = this->SetBasicInfo(ctx, argFileAttributes, argCreationTime, argLastAccessTime, argLastWriteTime, argChangeTime, argFileInfo);
     }
 
-    APP_DEFAULT_FA_IF(ntstatus, argFileInfo);
-    SET_FLAG_IF(ntstatus, ctx, SET_BASIC_INFO);
+    APP_DEFAULT_FA_IF_SUCCESS(ntstatus, argFileInfo);
+    SET_FLAG_IF_SUCCESS(ntstatus, ctx, SET_BASIC_INFO);
 
     return ntstatus;
 }
@@ -348,8 +346,8 @@ NTSTATUS CSDriverBase::RelaySetFileSize(IFileContext* argFileContext, UINT64 arg
         ntstatus = this->SetFileSize(ctx, argNewSize, argSetAllocationSize, argFileInfo);
     }
 
-    APP_DEFAULT_FA_IF(ntstatus, argFileInfo);
-    SET_FLAG_IF(ntstatus, ctx, SET_FILE_SIZE);
+    APP_DEFAULT_FA_IF_SUCCESS(ntstatus, argFileInfo);
+    SET_FLAG_IF_SUCCESS(ntstatus, ctx, SET_FILE_SIZE);
 
     return ntstatus;
 }
@@ -373,7 +371,7 @@ NTSTATUS CSDriverBase::RelaySetSecurity(IFileContext* argFileContext, SECURITY_I
         ntstatus = this->SetSecurity(ctx, argSecurityInformation, argModificationDescriptor);
     }
 
-    SET_FLAG_IF(ntstatus, ctx, SET_SECURITY);
+    SET_FLAG_IF_SUCCESS(ntstatus, ctx, SET_SECURITY);
 
     return ntstatus;
 }
@@ -397,8 +395,8 @@ NTSTATUS CSDriverBase::RelayWrite(IFileContext* argFileContext, PVOID argBuffer,
         ntstatus = this->Write(ctx, argBuffer, argOffset, argLength, argWriteToEndOfFile, argConstrainedIo, argBytesTransferred, argFileInfo);
     }
 
-    APP_DEFAULT_FA_IF(ntstatus, argFileInfo);
-    SET_FLAG_IF(ntstatus, ctx, WRITE);
+    APP_DEFAULT_FA_IF_SUCCESS(ntstatus, argFileInfo);
+    SET_FLAG_IF_SUCCESS(ntstatus, ctx, WRITE);
 
     return ntstatus;
 }
@@ -422,7 +420,7 @@ NTSTATUS CSDriverBase::RelaySetDelete(IFileContext* argFileContext, PWSTR argFil
         ntstatus = this->SetDelete(ctx, argFileName, argDeleteFile);
     }
 
-    SET_FLAG_IF(ntstatus, ctx, SET_DELETE);
+    SET_FLAG_IF_SUCCESS(ntstatus, ctx, SET_DELETE);
 
     return ntstatus;
 }
@@ -472,6 +470,8 @@ NTSTATUS CSDriverBase::RelayOnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileS
         }
     }
 
+    GetLogger()->printAlsoOnScreen(false);
+
     return STATUS_SUCCESS;
 }
 
@@ -492,5 +492,7 @@ VOID CSDriverBase::RelayOnSvcStop()
         service->OnSvcStop();
     }
 }
+
+}   // namespace CSEDRV
 
 // EOF

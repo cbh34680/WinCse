@@ -120,21 +120,23 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)aws-sdk\dest\$(Configuration)\include;$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)WinCseLib;$(SolutionDir)WinCse-sdk-s3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)aws-sdk-cpp\dest\$(Configuration)\include;$(SolutionDir)WinCseLib;$(SolutionDir)WinCseDevice;$(SolutionDir)WinCse-sdk-s3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalLibraryDirectories>$(MSBuildProgramFiles32)\WinFsp\lib;$(SolutionDir)aws-sdk\dest\$(Configuration)\bin;$(OutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(MSBuildProgramFiles32)\WinFsp\lib;$(SolutionDir)aws-sdk-cpp\dest\$(Configuration)\bin;$(OutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <DelayLoadDLLs>
       </DelayLoadDLLs>
     </Link>
     <PostBuildEvent>
-      <Command>$(SolutionDir)\util\build-after.bat $(Configuration)</Command>
+      <Command>
+      </Command>
     </PostBuildEvent>
     <PreBuildEvent>
-      <Command>$(SolutionDir)util\build-before.bat</Command>
+      <Command>
+      </Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -148,7 +150,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)aws-sdk\dest\$(Configuration)\include;$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)WinCseLib;$(SolutionDir)WinCse-sdk-s3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)aws-sdk-cpp\dest\$(Configuration)\include;$(SolutionDir)WinCseLib;$(SolutionDir)WinCseDevice;$(SolutionDir)WinCse-sdk-s3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -156,15 +158,17 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalLibraryDirectories>$(MSBuildProgramFiles32)\WinFsp\lib;$(SolutionDir)aws-sdk\dest\$(Configuration)\bin;$(OutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(MSBuildProgramFiles32)\WinFsp\lib;$(SolutionDir)aws-sdk-cpp\dest\$(Configuration)\bin;$(OutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <DelayLoadDLLs>
       </DelayLoadDLLs>
     </Link>
     <PostBuildEvent>
-      <Command>$(SolutionDir)\util\build-after.bat $(Configuration)</Command>
+      <Command>
+      </Command>
     </PostBuildEvent>
     <PreBuildEvent>
-      <Command>$(SolutionDir)util\build-before.bat</Command>
+      <Command>
+      </Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

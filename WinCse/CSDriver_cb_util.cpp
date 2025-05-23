@@ -2,7 +2,6 @@
 
 using namespace CSELIB;
 
-
 static bool syncFileTimes(const FSP_FSCTL_FILE_INFO& fileInfo, HANDLE hFile)
 {
     FILETIME ftCreation;
@@ -16,7 +15,7 @@ static bool syncFileTimes(const FSP_FSCTL_FILE_INFO& fileInfo, HANDLE hFile)
     return ::SetFileTime(hFile, &ftCreation, &ftLastAccess, &ftLastWrite);
 }
 
-using ReadFilePartType = FilePart<FILEIO_LENGTH_T>;
+using ReadFilePartType = CSELIB::FilePart<FILEIO_LENGTH_T>;
 
 struct ReadFilePartTask : public IOnDemandTask
 {
@@ -73,8 +72,7 @@ struct ReadFilePartTask : public IOnDemandTask
     }
 };
 
-namespace CSEDRV
-{
+namespace CSEDRV {
 
 bool resolveCacheFilePath(const std::filesystem::path& argDir, const std::wstring& argWinPath, std::filesystem::path* pPath)
 {
@@ -97,7 +95,7 @@ bool resolveCacheFilePath(const std::filesystem::path& argDir, const std::wstrin
 
     // 先頭の 2Byte はディレクトリ名
 
-    auto filePath{ argDir / nameSha256.substr(0, 2) };
+    auto filePath{ argDir / SafeSubStringW(nameSha256, 0, 2) };
 
     std::error_code ec;
     std::filesystem::create_directory(filePath, ec);
@@ -108,7 +106,7 @@ bool resolveCacheFilePath(const std::filesystem::path& argDir, const std::wstrin
         return false;
     }
 
-    filePath.append(nameSha256.substr(2));
+    filePath.append(SafeSubStringW(nameSha256, 2));
 
     *pPath = std::move(filePath);
 
@@ -193,12 +191,6 @@ NTSTATUS syncAttributes(const DirEntryType& remoteDirEntry, const std::filesyste
     return STATUS_SUCCESS;
 
 }   // syncAttributes
-
-}   // namespace CSEDRV
-
-
-using namespace CSEDRV;
-
 
 NTSTATUS CSDriver::updateFileInfo(FileContext* ctx, FSP_FSCTL_FILE_INFO* pFileInfo, bool argRemoteSizeAware)
 {
@@ -494,5 +486,7 @@ NTSTATUS CSDriver::syncContent(FileContext* ctx, FILEIO_OFFSET_T argReadOffset, 
     return STATUS_SUCCESS;
 
 }   // syncContent
+
+}   // namespace CSEDRV
 
 // EOF

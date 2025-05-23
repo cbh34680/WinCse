@@ -57,5 +57,8 @@
     <ClCompile Include="CSELIB-File.cpp">
       <Filter>ソース ファイル\WinCseLib</Filter>
     </ClCompile>
+    <ClCompile Include="CPP-Misc.cpp">
+      <Filter>ソース ファイル\CPP</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

@@ -10,13 +10,13 @@ if %errorlevel% neq 0 (
   exit
 )
 
-setlocal
-set drive=%~d0%
-set drive=%drive:~0,1%
-
+set DRIVELETTER=%~d0%
+set DRIVELETTER=%DRIVELETTER:~0,1%
 
 @echo on
 if exist Y:\ net use Y: /delete
-net use Y: "\\WinCse.aws-s3.Y\%drive%$%~p0..\..\MOUNT"
 
-endlocal
+call %~dp0setvars.bat
+
+net use Y: "\\%REGKEY%\%DRIVELETTER%$%~p0..\..\MOUNT"
+

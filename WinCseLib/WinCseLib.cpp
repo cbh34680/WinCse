@@ -3,8 +3,12 @@
 #include <fstream>
 #include <dbghelp.h>
 
-
 namespace CSELIB {
+
+std::wstring FatalError::whatW() const
+{
+	return MB2WC(mWhat);
+}
 
 void AbnormalEnd(PCWSTR file, int line, PCWSTR func, int signum)
 {
@@ -169,7 +173,7 @@ int NamedWorkersToMap(NamedWorker workers[], std::map<std::wstring, IWorker*>* p
 
 int GetIniIntW(const std::filesystem::path& confPath, const std::wstring& argSection, PCWSTR keyName, int defaultValue, int minValue, int maxValue)
 {
-	LastErrorBackup _backup;
+	KeepLastError _keep;
 
 	const auto section = argSection.c_str();
 
@@ -191,7 +195,7 @@ int GetIniIntW(const std::filesystem::path& confPath, const std::wstring& argSec
 
 bool GetIniBoolW(const std::filesystem::path& confPath, const std::wstring& argSection, PCWSTR keyName, bool defaultValue)
 {
-	LastErrorBackup _backup;
+	KeepLastError _keep;
 
 	const auto section = argSection.c_str();
 
@@ -211,7 +215,7 @@ bool GetIniBoolW(const std::filesystem::path& confPath, const std::wstring& argS
 
 bool GetIniStringW(const std::filesystem::path& confPath, const std::wstring& argSection, PCWSTR keyName, std::wstring* pValue)
 {
-	LastErrorBackup _backup;
+	KeepLastError _keep;
 
 	const auto section = argSection.c_str();
 
@@ -238,7 +242,7 @@ bool GetIniStringW(const std::filesystem::path& confPath, const std::wstring& ar
 
 std::wstring FileHandle::str() const
 {
-	LastErrorBackup _backup;
+	KeepLastError _keep;
 
 	if (this->invalid())
 	{
@@ -263,7 +267,13 @@ LogBlock::LogBlock(PCWSTR argFile, int argLine, PCWSTR argFunc)
 	:
 	mFile(argFile), mLine(argLine), mFunc(argFunc)
 {
-	GetLogger()->writeToTraceLog(GetLogger()->makeTextW(mDepth, mFile, mLine, mFunc, ::GetLastError(), L"{enter}"));
+#ifdef _DEBUG
+	auto* logger = GetLogger();
+	if (logger)
+	{
+		logger->writeToTraceLog(logger->makeTextW(mDepth, mFile, mLine, mFunc, ::GetLastError(), L"{enter}"));
+	}
+#endif
 
 	mDepth++;
 }
@@ -272,7 +282,13 @@ LogBlock::~LogBlock()
 {
 	mDepth--;
 
-	GetLogger()->writeToTraceLog(GetLogger()->makeTextW(mDepth, mFile, -1, mFunc, ::GetLastError(), L"{leave}"));
+#ifdef _DEBUG
+	auto* logger = GetLogger();
+	if (logger)
+	{
+		logger->writeToTraceLog(logger->makeTextW(mDepth, mFile, -1, mFunc, ::GetLastError(), L"{leave}"));
+	}
+#endif
 }
 
 int LogBlock::depth() const

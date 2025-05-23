@@ -1,8 +1,6 @@
 #include "CSDriver.hpp"
 
 using namespace CSELIB;
-using namespace CSEDRV;
-
 
 ICSDriver* NewCSDriver(PCWSTR argCSDeviceType, PCWSTR argIniSection, NamedWorker argWorkers[], ICSDevice* argCSDevice, WINCSE_DRIVER_STATS* argStats)
 {
@@ -21,8 +19,10 @@ ICSDriver* NewCSDriver(PCWSTR argCSDeviceType, PCWSTR argIniSection, NamedWorker
         }
     }
 
-	return new CSDriver{ argCSDeviceType, argIniSection, workers, argCSDevice, argStats };
+	return new CSEDRV::CSDriver{ argCSDeviceType, argIniSection, workers, argCSDevice, argStats };
 }
+
+namespace CSEDRV {
 
 DirEntryType CSDriver::getDirEntryByWinPath(CALLER_ARG const std::filesystem::path& argWinPath) const
 {
@@ -185,5 +185,7 @@ NTSTATUS CSDriver::canCreateObject(CALLER_ARG const std::filesystem::path& argWi
 
 	return STATUS_SUCCESS;
 }
+
+}	// namespace CSEDRV
 
 // EOF

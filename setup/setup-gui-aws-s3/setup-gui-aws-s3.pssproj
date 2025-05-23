@@ -8,6 +8,7 @@
     <AssemblyName>MyApplication</AssemblyName>
     <Name>setup-gui-aws-s3</Name>
     <PostBuildScript>copy gui-aws-s3.ps1 ..</PostBuildScript>
+    <StartupFile>gui-aws-s3.ps1</StartupFile>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>

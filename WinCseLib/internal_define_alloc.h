@@ -2,9 +2,11 @@
 
 #ifdef _DEBUG
 
-#ifndef _CRTDBG_MAP_ALLOC
-#define _CRTDBG_MAP_ALLOC
+#ifdef _CRTDBG_MAP_ALLOC
+#error "_CRTDBG_MAP_ALLOC already defined"
 #endif
+
+#define _CRTDBG_MAP_ALLOC
 
 #include <cstdlib>
 #include <crtdbg.h>

@@ -104,7 +104,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)aws-sdk\dest\$(Configuration)\include;$(SolutionDir)WinCseLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)aws-sdk-cpp\dest\$(Configuration)\include;$(SolutionDir)WinCseLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -115,7 +115,7 @@
       <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>$(SolutionDir)\util\build-after.bat $(Configuration)</Command>
+      <Command>$(SolutionDir)util\build-after-$(Configuration).bat</Command>
     </PostBuildEvent>
     <PreBuildEvent>
       <Command>$(SolutionDir)util\build-before.bat</Command>
@@ -129,7 +129,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)aws-sdk\dest\$(Configuration)\include;$(SolutionDir)WinCseLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)aws-sdk-cpp\dest\$(Configuration)\include;$(SolutionDir)WinCseLib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -142,7 +142,7 @@
       <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>$(SolutionDir)\util\build-after.bat $(Configuration)</Command>
+      <Command>$(SolutionDir)util\build-after-$(Configuration).bat</Command>
     </PostBuildEvent>
     <PreBuildEvent>
       <Command>$(SolutionDir)util\build-before.bat</Command>
@@ -152,7 +152,6 @@
     <ClCompile Include="CSDriver.cpp" />
     <ClCompile Include="CSDriverBase_cb.cpp" />
     <ClCompile Include="CSDriverBase.cpp" />
-    <ClCompile Include="CSDriverCommon.cpp" />
     <ClCompile Include="CSDriver_cb_util.cpp" />
     <ClCompile Include="CSDriverBase_event.cpp" />
     <ClCompile Include="FileContext.cpp" />

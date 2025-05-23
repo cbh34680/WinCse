@@ -2,9 +2,11 @@
 
 #ifdef _DEBUG
 
-#ifdef _CRTDBG_MAP_ALLOC
-#undef _CRTDBG_MAP_ALLOC
+#ifndef _CRTDBG_MAP_ALLOC
+#error "_CRTDBG_MAP_ALLOC not defined"
 #endif
+
+#undef _CRTDBG_MAP_ALLOC
 
 #undef new
 #undef malloc

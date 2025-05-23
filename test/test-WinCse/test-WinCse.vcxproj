@@ -111,7 +111,7 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)aws-sdk\dest\$(Configuration)\include;$(SolutionDir)WinCseLib;$(SolutionDir)WinCse-sdk-s3;$(SolutionDir)WinCse-aws-s3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)aws-sdk-cpp\dest\$(Configuration)\include;$(SolutionDir)WinCseLib;$(SolutionDir)WinCseDevice;$(SolutionDir)WinCse-sdk-s3;$(SolutionDir)WinCse-aws-s3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -132,7 +132,7 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)aws-sdk\dest\$(Configuration)\include;$(SolutionDir)WinCseLib;$(SolutionDir)WinCse-sdk-s3;$(SolutionDir)WinCse-aws-s3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MSBuildProgramFiles32)\WinFsp\inc;$(SolutionDir)aws-sdk-cpp\dest\$(Configuration)\include;$(SolutionDir)WinCseLib;$(SolutionDir)WinCseDevice;$(SolutionDir)WinCse-sdk-s3;$(SolutionDir)WinCse-aws-s3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -147,6 +147,7 @@
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="CPP-Misc.cpp" />
     <ClCompile Include="CSELIB-Crypt.cpp" />
     <ClCompile Include="CSEAS3-FEP.cpp" />
     <ClCompile Include="CPP-File.cpp" />

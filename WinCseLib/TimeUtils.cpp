@@ -1,7 +1,6 @@
 #include "WinCseLib.h"
 #include <iomanip>
 
-
 namespace CSELIB {
 
 // UTC ƒ~ƒŠ•b‚ğ YYYY-MM-DD HH:MI:SS.NNN •¶š—ñ‚É•ÏŠ·
@@ -60,6 +59,11 @@ UTC_MILLIS_T TimePointToUtcMillis(const std::chrono::system_clock::time_point& t
 std::wstring TimePointToLocalTimeStringW(const std::chrono::system_clock::time_point& tp)
 {
 	return UtcMillisToLocalTimeStringW(TimePointToUtcMillis(tp));
+}
+
+FILETIME_100NS_T TimePointToWinFileTime100ns(const std::chrono::system_clock::time_point& tp)
+{
+	return UtcMillisToWinFileTime100ns(TimePointToUtcMillis(tp));
 }
 
 // Œ»İ‚Ì‚ğ UTC ‚Ìƒ~ƒŠ•b‚Åæ“¾

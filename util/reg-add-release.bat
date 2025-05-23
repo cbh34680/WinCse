@@ -8,5 +8,9 @@ if %errorlevel% neq 0 (
 
 @echo on
 echo RUN-COMMAND: %~f0
-call "%ProgramFiles(x86)%\WinFsp\bin"\fsreg.bat WinCse.aws-s3.Y %~dp0..\x64\Release\WinCse.exe "-u %%%%1 -m %%%%2 -d -1 -D %~dp0..\trace\winfsp.log -T %~dp0..\trace" "D:P(A;;RPWPLC;;;WD)"
+
+call %~dp0setvars.bat
+
+call "%ProgramFiles(x86)%\WinFsp\bin"\fsreg.bat %REGKEY% %~dp0..\x64\Release\WinCse.exe "-u %%%%1 -m %%%%2 -d -1 -D %~dp0..\trace\winfsp.log -T %~dp0..\trace" "D:P(A;;RPWPLC;;;WD)"
+
 pause
