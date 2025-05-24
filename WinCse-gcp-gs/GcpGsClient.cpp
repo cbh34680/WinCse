@@ -2,6 +2,7 @@
 
 using namespace CSELIB;
 using namespace CSEDVC;
+namespace gcs = google::cloud::storage;
 
 bool IsSuccess(const google::cloud::Status& status)
 {
@@ -166,9 +167,8 @@ bool GcpGsClient::HeadObject(CALLER_ARG const ObjectKey& argObjKey, DirEntryType
 
 	// メタ・データを FILETIME に反映
 
-	const auto& metadata = result.metadata();
-
-	setFileInfoFromMetadata(metadata, timeCreated, result.etag(), dirEntry);
+	const auto& metadata{ result.metadata() };
+	setFileInfoFromMetadata(metadata, timeCreated, result.etag(), &dirEntry);
 
 	traceW(L"dirEntry=%s", dirEntry->str().c_str());
 
@@ -188,8 +188,8 @@ bool GcpGsClient::ListObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryLis
 	const auto argKeyLen = argObjKey.key().length();
 
 	auto items = argObjKey.isObject()
-		? mGsClient->ListObjectsAndPrefixes(argObjKey.bucketA(), google::cloud::storage::Delimiter("/"), google::cloud::storage::Prefix(argObjKey.keyA()))
-		: mGsClient->ListObjectsAndPrefixes(argObjKey.bucketA(), google::cloud::storage::Delimiter("/"));
+		? mGsClient->ListObjectsAndPrefixes(argObjKey.bucketA(), gcs::Delimiter("/"), gcs::Prefix(argObjKey.keyA()))
+		: mGsClient->ListObjectsAndPrefixes(argObjKey.bucketA(), gcs::Delimiter("/"));
 
 	// 取得したリストの要素からプレフィックスのリストと、オブジェクトのリストを生成する
 	// このときプレフィックス用のタイムスタンプも採取する
@@ -197,7 +197,7 @@ bool GcpGsClient::ListObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryLis
 	FILETIME_100NS_T commonPrefixTime = UINT64_MAX;
 
 	std::set<std::wstring> prefixes;
-	std::list<google::cloud::storage::ObjectMetadata> objects;
+	std::list<gcs::ObjectMetadata> objects;
 
 	for (auto&& item: items)
 	{
@@ -248,11 +248,11 @@ bool GcpGsClient::ListObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryLis
 
 			prefixes.insert(SafeSubStringW(key, 0, key.length() - 1));
 		}
-		else if (absl::holds_alternative<google::cloud::storage::ObjectMetadata>(result))
+		else if (absl::holds_alternative<gcs::ObjectMetadata>(result))
 		{
 			// ファイル名の収集 ("dir/" のような空オブジェクトも含む)
 
-			auto&& object = absl::get<google::cloud::storage::ObjectMetadata>(result);
+			auto&& object = absl::get<gcs::ObjectMetadata>(result);
 
 			// ディレクトリ・エントリのため最初に一番古いタイムスタンプを収集
 			// * CommonPrefix にはタイムスタンプがないため
@@ -353,7 +353,12 @@ bool GcpGsClient::ListObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryLis
 		auto dirEntry = DirectoryEntry::makeFileEntry(key, object.size(), timeCreated);
 		APP_ASSERT(dirEntry);
 
-		dirEntryList.emplace_back(std::move(dirEntry));
+		const auto& metadata{ object.metadata() };
+		setFileInfoFromMetadata(metadata, timeCreated, object.etag(), &dirEntry);
+
+		traceW(L"dirEntry=%s", dirEntry->str().c_str());
+
+		dirEntryList.push_back(std::move(dirEntry));
 
 		if (mRuntimeEnv->MaxDisplayObjects > 0)
 		{
@@ -402,7 +407,7 @@ bool GcpGsClient::PutObject(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSC
 
 	// メタデータを設定
 
-	google::cloud::storage::ObjectMetadata inMetadata;
+	gcs::ObjectMetadata inMetadata;
 	auto& mutable_metadata = inMetadata.mutable_metadata();
 	setMetadataFromFileInfo(CONT_CALLER argFileInfo, &mutable_metadata);
 
@@ -413,7 +418,7 @@ bool GcpGsClient::PutObject(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSC
 	// ストリームを生成
 
 	auto stream = mGsClient->WriteObject(argObjKey.bucketA(), argObjKey.keyA(),
-		google::cloud::storage::WithObjectMetadata(inMetadata), google::cloud::storage::ContentType(WC2MB(contentType)));
+		gcs::WithObjectMetadata(inMetadata), gcs::ContentType(WC2MB(contentType)));
 
 	if (FA_IS_DIR(argFileInfo.FileAttributes))
 	{
@@ -480,7 +485,7 @@ FILEIO_LENGTH_T GcpGsClient::GetObjectAndWriteFile(CALLER_ARG const ObjectKey& a
 	APP_ASSERT(argOffset >= 0LL);
 	APP_ASSERT(argLength > 0);
 
-	auto stream = mGsClient->ReadObject(argObjKey.bucketA(), argObjKey.keyA(), google::cloud::storage::ReadRange(argOffset, argOffset + argLength));
+	auto stream = mGsClient->ReadObject(argObjKey.bucketA(), argObjKey.keyA(), gcs::ReadRange(argOffset, argOffset + argLength));
 	if (!stream)
 	{
 		errorW(L"fault: ReadObject argObjKey=%s argOffset=%lld argLength=%lld", argObjKey.c_str(), argOffset, argLength);

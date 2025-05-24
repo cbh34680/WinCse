@@ -35,7 +35,7 @@ bool CacheListBuckets::clbEmpty(CALLER_ARG0) const
     return listIsEmpty;
 }
 
-void CacheListBuckets::clbSet(CALLER_ARG const DirEntryListType& argDirEntryList)
+void CacheListBuckets::clbSet(CALLER_ARG const CSELIB::DirEntryListType& argDirEntryList)
 {
     THREAD_SAFE();
     NEW_LOG_BLOCK();
@@ -49,7 +49,7 @@ void CacheListBuckets::clbSet(CALLER_ARG const DirEntryListType& argDirEntryList
     mList = argDirEntryList;
 }
 
-void CacheListBuckets::clbGet(CALLER_ARG DirEntryListType* pDirEntryList) const
+void CacheListBuckets::clbGet(CALLER_ARG CSELIB::DirEntryListType* pDirEntryList) const
 {
     THREAD_SAFE();
     APP_ASSERT(pDirEntryList);

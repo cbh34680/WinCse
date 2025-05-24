@@ -70,7 +70,7 @@ void FEP(const std::function<void(Aws::S3::S3Client*, const char*)>& callback)
     free(bucket);
 }
 
-void test_listBuckets(Aws::S3::S3Client* client, const char* envBucket)
+void test_listBuckets(Aws::S3::S3Client* client, const char*)
 {
     auto outcome = client->ListBuckets();
     if (!outcome.IsSuccess())
@@ -153,13 +153,14 @@ static void test_getObject(Aws::S3::S3Client* client, const char* envBucket)
     const auto pbuf = result.GetBody().rdbuf();
     const auto contentSize = result.GetContentLength();  // ファイルサイズ
 
+    std::cout << contentSize << std::endl;
+
     const auto rn = pbuf->sgetn(buf, sizeof(buf));
 
-
-    std::cout << buf << std::endl;
+    std::cout << rn << " " << buf << std::endl;
 }
 
-static void test_putObject(int argc, char** argv)
+static void test_putObject(int, char** argv)
 {
     char ns[] = "@";
     char *region;
@@ -191,9 +192,9 @@ static void test_putObject(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
-    //FEP(test_listBuckets);
-    //FEP(test_listObjects);
-    //FEP(test_getObject);
+    FEP(test_listBuckets);
+    FEP(test_listObjects);
+    FEP(test_getObject);
 
     test_putObject(argc, argv);
 

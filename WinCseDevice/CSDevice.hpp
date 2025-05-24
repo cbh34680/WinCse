@@ -40,30 +40,30 @@ public:
 }	// namespace CSEDVC
 
 template <typename MetaT>
-void setFileInfoFromMetadata(const MetaT& metadata, CSELIB::FILETIME_100NS_T lastModified, const std::string& etag, CSELIB::DirEntryType dirEntry)
+void setFileInfoFromMetadata(const MetaT& metadata, CSELIB::FILETIME_100NS_T lastModified, const std::string& etag, CSELIB::DirEntryType* pDirEntry)
 {
     if (metadata.find("wincse-creation-time") != metadata.cend())
     {
-        dirEntry->mFileInfo.CreationTime = std::stoull(metadata.at("wincse-creation-time"));
+        (*pDirEntry)->mFileInfo.CreationTime = std::stoull(metadata.at("wincse-creation-time"));
     }
 
     if (metadata.find("wincse-last-access-time") != metadata.cend())
     {
-        dirEntry->mFileInfo.LastAccessTime = std::stoull(metadata.at("wincse-last-access-time"));
+        (*pDirEntry)->mFileInfo.LastAccessTime = std::stoull(metadata.at("wincse-last-access-time"));
     }
 
     if (metadata.find("wincse-last-write-time") != metadata.cend())
     {
-        dirEntry->mFileInfo.LastWriteTime = std::stoull(metadata.at("wincse-last-write-time"));
+        (*pDirEntry)->mFileInfo.LastWriteTime = std::stoull(metadata.at("wincse-last-write-time"));
     }
 
     if (metadata.find("wincse-change-time") != metadata.cend())
     {
-        dirEntry->mFileInfo.ChangeTime = std::stoull(metadata.at("wincse-change-time"));
+        (*pDirEntry)->mFileInfo.ChangeTime = std::stoull(metadata.at("wincse-change-time"));
     }
 
-    dirEntry->mUserProperties.insert({ L"wincse-last-modified", std::to_wstring(lastModified) });
-    dirEntry->mUserProperties.insert({ L"wincse-etag", CSELIB::MB2WC(etag) });
+    (*pDirEntry)->mUserProperties.insert({ L"wincse-last-modified", std::to_wstring(lastModified) });
+    (*pDirEntry)->mUserProperties.insert({ L"wincse-etag", CSELIB::MB2WC(etag) });
 }
 
 template <typename MapT>

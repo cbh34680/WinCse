@@ -44,7 +44,7 @@ bool QueryBucket::qbGetBucketRegion(CALLER_ARG const std::wstring& argBucketName
     return true;
 }
 
-bool QueryBucket::qbHeadBucket(CALLER_ARG const std::wstring& argBucketName, DirEntryType* pDirEntry)
+bool QueryBucket::qbHeadBucket(CALLER_ARG const std::wstring& argBucketName, CSELIB::DirEntryType* pDirEntry)
 {
     NEW_LOG_BLOCK();
     APP_ASSERT(!argBucketName.empty());
@@ -76,7 +76,7 @@ bool QueryBucket::qbHeadBucket(CALLER_ARG const std::wstring& argBucketName, Dir
     return mCacheListBuckets.clbFind(CONT_CALLER argBucketName, pDirEntry);
 }
 
-bool QueryBucket::qbListBuckets(CALLER_ARG DirEntryListType* pDirEntryList)
+bool QueryBucket::qbListBuckets(CALLER_ARG CSELIB::DirEntryListType* pDirEntryList)
 {
     NEW_LOG_BLOCK();
 

@@ -158,9 +158,8 @@ bool SdkS3Client::HeadObject(CALLER_ARG const ObjectKey& argObjKey, DirEntryType
 
     // メタ・データを FILETIME に反映
 
-    const auto& metadata = result.GetMetadata();
-
-    setFileInfoFromMetadata(metadata, lastModified, result.GetETag(), dirEntry);
+    const auto& metadata{ result.GetMetadata() };
+    setFileInfoFromMetadata(metadata, lastModified, result.GetETag(), &dirEntry);
 
     traceW(L"dirEntry=%s", dirEntry->str().c_str());
 

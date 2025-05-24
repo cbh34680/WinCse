@@ -215,7 +215,7 @@ $lbl_ns = New-Object System.Windows.Forms.Label -Property @{
     Location = "50,115"
     Size = "130,24"
     BorderStyle = "Fixed3D"
-    Text = "Namespace"
+    #Text = "Namespace"
     Font = $FontM
     TextAlign = $LblTextAlign
 }
@@ -229,6 +229,7 @@ $tbx_ns = New-Object System.Windows.Forms.TextBox -Property @{
 }
 
 if ($DllType -eq "oci-os") {
+    $lbl_ns.Text = "Namespace"
     $tbx_ns.Enabled = $true
 }
 
@@ -270,7 +271,7 @@ $cbx_drive = New-Object System.Windows.Forms.ComboBox -Property @{
     DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 }
 
-# HKLM:.../WinFsp/Services/* --> regDrives
+# HKLM:***/WinFsp/Services/* --> regDrives
 $regServices = Get-ChildItem -Path "${RegWinFspPath}\Services" | Select-Object -ExpandProperty Name
 $regDrives = @()
 
