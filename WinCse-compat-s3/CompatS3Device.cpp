@@ -162,6 +162,8 @@ NTSTATUS CompatS3Device::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSyst
 
     Aws::Client::ClientConfiguration config;
 
+    // リクエスト CheckSum
+
     std::wstring requestChecksumCalculation;
 
     if (GetIniStringW(confPath, mIniSection, L"s3.request_checksum_calculation", &requestChecksumCalculation))
@@ -177,6 +179,26 @@ NTSTATUS CompatS3Device::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSyst
         else
         {
             errorW(L"invalid: s3.request_checksum_calculation=%s (ignore)", requestChecksumCalculation.c_str());
+        }
+    }
+
+    // レスポンス CheckSum
+
+    std::wstring responseChecksumValidation;
+
+    if (GetIniStringW(confPath, mIniSection, L"s3.response_checksum_validation", &responseChecksumValidation))
+    {
+        if (responseChecksumValidation == L"WHEN_SUPPORTED")
+        {
+            config.checksumConfig.responseChecksumValidation = Aws::Client::ResponseChecksumValidation::WHEN_SUPPORTED;
+        }
+        else if (responseChecksumValidation == L"WHEN_REQUIRED")
+        {
+            config.checksumConfig.responseChecksumValidation = Aws::Client::ResponseChecksumValidation::WHEN_REQUIRED;
+        }
+        else
+        {
+            errorW(L"invalid: s3.response_checksum_validation=%s (ignore)", responseChecksumValidation.c_str());
         }
     }
 

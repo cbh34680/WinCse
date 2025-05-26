@@ -37,8 +37,8 @@ int main(int, char **argv)
     std::cout << bucket << std::endl;
     std::cout << prefix << std::endl;
 
-    //listBuckets_main(endpoint, region, key_id, secret);
-    //listObjects_main(endpoint, region, key_id, secret, bucket, prefix);
+    listBuckets_main(endpoint, region, key_id, secret);
+    listObjects_main(endpoint, region, key_id, secret, bucket, prefix);
     putObject_main(endpoint, region, key_id, secret, bucket, prefix, __FILE__);
     putObject_main(endpoint, region, key_id, secret, bucket, prefix, "C:\\WORK\\0byte.txt");
 

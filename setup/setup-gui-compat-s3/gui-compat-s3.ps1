@@ -754,6 +754,7 @@ s3.ignore_bucket_region=${ignore_bucket_region}
 ; valid values: WHEN_SUPPORTED, WHEN_REQUIRED
 ; default: Empty (SDK default)
 s3.request_checksum_calculation=WHEN_REQUIRED
+s3.response_checksum_validation=WHEN_REQUIRED
 
 ; ----------
 ; INFO
