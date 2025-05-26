@@ -502,6 +502,11 @@ $btn_reg.Add_Click({
 
         $ignore_bucket_region = 1
     }
+    elseif ($endpoint -match "storjshare.io") {
+        # Storj はバケットのリージョンが global
+
+        $ignore_bucket_region = 1
+    }
 
     $info_log_dir = "# log:          [${logdir}]"
 
