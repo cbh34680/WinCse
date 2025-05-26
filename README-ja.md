@@ -50,7 +50,7 @@ WinCse は、オブジェクトストレージを Windows Explorer に統合し�
 ## 注意事項
 - Windows 11 でのみ動作確認済み、他のバージョンでの互換性は保証できません  
 - OCI Object Storage の認証情報については [OCI_AWS_CPP_SDK_S3_Examples](https://github.com/tonymarkel/OCI_AWS_CPP_SDK_S3_Examples) を参照  
-- S3 互換ストレージは [OCI Object Storage](./doc/example-oci.png), [Wasabi Hot Cloud Storage](./doc/example-wasabi.png), [Cloudflare R2](./doc/example-cloudflare.png), [IDrive e2](./doc/example-idrive.png) で動作確認済み  
+- S3 互換ストレージは [OCI Object Storage](./doc/example-oci.png), [Wasabi Hot Cloud Storage](./doc/example-wasabi.png), [Cloudflare R2](./doc/example-cloudflare.png), [Backblaze B2](./doc/example-backblaze.png), [IDrive e2](./doc/example-idrive.png) で動作確認済み  
 
 ## ライセンス
 本プロジェクトは [GPLv3](https://www.gnu.org/licenses/gpl-3.0.html) および [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0) の下で提供されています。
