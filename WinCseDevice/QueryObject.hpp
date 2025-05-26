@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CSDeviceCommon.h"
+#include "CSDeviceInternal.h"
 #include "RuntimeEnv.hpp"
 #include "CacheObject.hpp"
 #include "IApiClient.hpp"

@@ -3,7 +3,6 @@
 #include "google/cloud/internal/getenv.h"
 
 using namespace CSELIB;
-using namespace CSEDVC;
 
 ICSDevice* NewCSDevice(PCWSTR argIniSection, NamedWorker argWorkers[])
 {
@@ -26,6 +25,11 @@ ICSDevice* NewCSDevice(PCWSTR argIniSection, NamedWorker argWorkers[])
 }
 
 namespace CSEGGS {
+
+CSEDVC::IApiClient* GcpGsDevice::newApiClient(CSEDVC::RuntimeEnv* argRuntimeEnv, IWorker* argDelayedWorker)
+{
+    return new GcpGsClient{ argRuntimeEnv, argDelayedWorker, mProjectId };
+}
 
 NTSTATUS GcpGsDevice::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 {
@@ -69,6 +73,8 @@ NTSTATUS GcpGsDevice::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
             return STATUS_OBJECT_NAME_NOT_FOUND;
         }
 
+        // JSON ファイル・パスを環境変数に登録
+
         _wputenv_s(L"GOOGLE_APPLICATION_CREDENTIALS", credentialsW.c_str());
         traceW(L"set GOOGLE_APPLICATION_CREDENTIALS=%s", credentialsW.c_str());
     }
@@ -79,6 +85,8 @@ NTSTATUS GcpGsDevice::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
     }
     else
     {
+        // プロジェクトID を環境変数に登録
+
         _wputenv_s(L"GOOGLE_CLOUD_PROJECT", projectIdW.c_str());
         traceW(L"set GOOGLE_CLOUD_PROJECT=%s", projectIdW.c_str());
     }
@@ -88,11 +96,6 @@ NTSTATUS GcpGsDevice::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
     // 最後に親クラスの OnSvcStart を呼び出す
 
     return CSDevice::OnSvcStart(argWorkDir, FileSystem);
-}
-
-IApiClient* GcpGsDevice::newApiClient(RuntimeEnv* argRuntimeEnv, IWorker* argDelayedWorker)
-{
-    return new GcpGsClient{ argRuntimeEnv, argDelayedWorker, mProjectId };
 }
 
 }   // namespace CSEOOS

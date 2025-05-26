@@ -43,6 +43,10 @@ NTSTATUS DelayedWorker::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
 	traceW(L"confPath=%s", confPath.c_str());
 
 	int core_count = std::thread::hardware_concurrency();
+	if (core_count > 8)
+	{
+		core_count = 8;
+	}
 
 	const auto numThreads = GetIniIntW(confPath, mIniSection, L"file_io_threads", core_count, 1, 32);
 

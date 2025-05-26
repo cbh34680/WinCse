@@ -80,7 +80,7 @@
     <ClInclude Include="FileContextSweeper.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="CSDriverCommon.h">
+    <ClInclude Include="CSDriverInternal.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="RuntimeEnv.hpp">

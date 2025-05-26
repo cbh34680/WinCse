@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CSDeviceCommon.h"
+#include "CSDeviceInternal.h"
 
 // HeadObject, ListObjectsV2 から取得したデータをキャッシュする
 // どちらも型が異なるだけ (DirEntryType, DirEntryListType) なのでテンプレートにして

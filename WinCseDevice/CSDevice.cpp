@@ -190,53 +190,67 @@ CSELIB::FILEIO_LENGTH_T writeFileFromStream(CALLER_ARG
     return argInputLength;
 }
 
-std::wstring getContentType(CALLER_ARG PCWSTR argInputPath, const std::wstring& argKey)
+std::wstring getContentType(CALLER_ARG UINT64 argFileSize, PCWSTR argInputPath, const std::wstring& argKey)
 {
     NEW_LOG_BLOCK();
 
-    FileHandle file = ::CreateFileW(
-        argInputPath,
-        GENERIC_READ,
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-        NULL,
-        OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL,
-        NULL);
-
-    if (file.valid())
+    if (argFileSize == 0)
     {
-        BYTE bytes[256];
-        DWORD bytesRead;
+        // ファイルが空の時は拡張子で判定する
+    }
+    else
+    {
+        FileHandle file = ::CreateFileW(
+            argInputPath,
+            GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            NULL,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            NULL);
 
-        if (::ReadFile(file.handle(), bytes, sizeof(bytes), &bytesRead, NULL))
+        if (file.valid())
         {
-            LPWSTR mimeType = nullptr;
+            BYTE bytes[256];
+            DWORD bytesRead;
 
-            HRESULT hr = ::FindMimeFromData(nullptr, nullptr, bytes, bytesRead, nullptr, 0, &mimeType, 0);
-            if (SUCCEEDED(hr))
+            if (::ReadFile(file.handle(), bytes, sizeof(bytes), &bytesRead, NULL))
             {
-                std::wstring ret{ mimeType };
-                ::CoTaskMemFree(mimeType);
+                LPWSTR mimeType = nullptr;
 
-                return ret;
+                HRESULT hr = ::FindMimeFromData(nullptr, nullptr, bytes, bytesRead, nullptr, 0, &mimeType, 0);
+                if (SUCCEEDED(hr))
+                {
+                    std::wstring ret{ mimeType };
+                    ::CoTaskMemFree(mimeType);
+
+                    if (ret == L"application/octet-stream")
+                    {
+                        // 内容から判定できないときは拡張子で判定する
+                    }
+                    else
+                    {
+                        return ret;
+                    }
+                }
+                else
+                {
+                    traceW(L"fault: FindMimeFromData");
+                }
             }
             else
             {
-                traceW(L"fault: FindMimeFromData");
+                const auto lerr = ::GetLastError();
+                traceW(L"fault: ReadFile lerr=%lu", lerr);
             }
+
+            file.close();
         }
         else
         {
             const auto lerr = ::GetLastError();
-            traceW(L"fault: ReadFile lerr=%lu", lerr);
+            traceW(L"fault: CreateFileW lerr=%lu", lerr);
         }
-
-        file.close();
-    }
-    else
-    {
-        const auto lerr = ::GetLastError();
-        traceW(L"fault: CreateFileW lerr=%lu", lerr);
     }
 
     return GetMimeTypeFromFileName(argKey);

@@ -10,7 +10,7 @@ $Error.Clear();
 #
 $CurrentDir      = Get-Location
 $AppName         = "WinCse"
-$DllType         = "gcp-gs"
+$DllType         = "compat-s3"
 $ExeFileName     = "${AppName}.exe"
 $ConfFileName    = "${AppName}.conf"
 $LogDirName      = "log"
@@ -51,6 +51,25 @@ $FontM            = New-Object System.Drawing.Font("Segoe UI", 10)
 $FontL            = New-Object System.Drawing.Font("Segoe UI", 11)
 $LblTextAlign     = [System.Drawing.ContentAlignment]::MiddleLeft
 
+#
+# AES 暗号化オブジェクトの作成
+#   Key:    レジストリの MachineGuid
+#   IV:     Key[0..15]
+#
+$MachineGuid      = Get-ItemPropertyValue -Path "HKLM:\SOFTWARE\Microsoft\Cryptography" -Name "MachineGuid"
+$SecureKeyStr     = $MachineGuid -replace '-',''
+$SecureKeyBytes   = [System.Text.Encoding]::UTF8.GetBytes($SecureKeyStr)
+
+$AesKeyId         = [System.Security.Cryptography.AesManaged]::new()
+$AesKeyId.Key     = $SecureKeyBytes[0..31]
+$AesKeyId.GenerateIV()
+$EncryptorKeyId   = $AesKeyId.CreateEncryptor()
+
+$AesSecret        = [System.Security.Cryptography.AesManaged]::new()
+$AesSecret.Key    = $SecureKeyBytes[0..31]
+$AesSecret.GenerateIV()
+$EncryptorSecret  = $AesSecret.CreateEncryptor()
+
 # -----------------
 # Function
 #
@@ -87,6 +106,32 @@ function Msg-OK {
     )
 }
 
+function KeyId-EncryptString {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Text
+    )
+
+    $PlainTextBytes = [System.Text.Encoding]::UTF8.GetBytes("${Text}`0")
+    $EncryptedBytes = $EncryptorKeyId.TransformFinalBlock($PlainTextBytes, 0, $PlainTextBytes.Length)
+    $EncryptedB64Str = [Convert]::ToBase64String($AesKeyId.IV + $EncryptedBytes)
+
+    return $EncryptedB64Str
+}
+
+function Secret-EncryptString {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Text
+    )
+
+    $PlainTextBytes = [System.Text.Encoding]::UTF8.GetBytes("${Text}`0")
+    $EncryptedBytes = $EncryptorSecret.TransformFinalBlock($PlainTextBytes, 0, $PlainTextBytes.Length)
+    $EncryptedB64Str = [Convert]::ToBase64String($AesSecret.IV + $EncryptedBytes)
+
+    return $EncryptedB64Str
+}
+
 # -----------------
 # Check
 #
@@ -108,136 +153,93 @@ if (-not (Test-Path -Path "${RegWinFspPath}\Services")) {
 }
 
 # -----------------
-# Credentials
+# Access Key Id
 #
-$lbl_cred = New-Object System.Windows.Forms.Label -Property @{
+$lbl_keyid = New-Object System.Windows.Forms.Label -Property @{
     Location = "50,35"
     Size = "130,24"
     BorderStyle = "Fixed3D"
-    Text = "Credentials (json)"
+    Text = "Access Key Id"
     Font = $FontM
     TextAlign = $LblTextAlign
 }
 
-$txt_cred = New-Object System.Windows.Forms.Label -Property @{
+$tbx_keyid = New-Object System.Windows.Forms.TextBox -Property @{
     Location = "200,35"
-    Size = "330,24"
-    BorderStyle = "Fixed3D"
-    #Text = $CredPath
-    Font = $FontM
-}
-
-if (-not [string]::IsNullOrEmpty($Env:GOOGLE_APPLICATION_CREDENTIALS)) {
-
-    # 環境変数があれば、初期値として設定
-    $txt_cred.Text = $Env:GOOGLE_APPLICATION_CREDENTIALS
-}
-
-$btn_cred = New-Object System.Windows.Forms.Button -Property @{
-    Location = "535,34"
-    Size = "32,24"
-    Text = "..."
-    Font = $FontS
-}
-
-$btn_cred.Add_Click({
-    $creddir = ""
-
-    if (-not [string]::IsNullOrEmpty($txt_cred.Text.Trim())) {
-        if (Test-Path -Path $txt_cred.Text) {
-            $creddir = Split-Path $txt_cred.Text -Parent
-        }
-    }
-
-    if ([string]::IsNullOrEmpty($creddir)) {
-        $creddir = $CurrentDir
-    }
-
-    $dlg = New-Object System.Windows.Forms.OpenFileDialog
-    $dlg.Filter = "Executable Files (*.json)|*.json|All Files (*.*)|*.*"
-
-    $dlg.InitialDirectory = $creddir
-
-    $result = $dlg.ShowDialog()
-    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-        $txt_cred.Text = $dlg.FileName
-
-        if ([string]::IsNullOrEmpty($tbx_projid.Text)) {
-
-            # credentials.json から "project_id" を取得
-            $cred_json = Get-Content -Path $txt_cred.Text -Raw | ConvertFrom-Json
-
-            if (-not [string]::IsNullOrEmpty($cred_json.project_id)) {
-                $tbx_projid.Text = $cred_json.project_id
-            }
-        }
-    }
-})
-
-# -----------------
-# Project Id
-#
-$lbl_projid = New-Object System.Windows.Forms.Label -Property @{
-    Location = "50,75"
-    Size = "130,24"
-    BorderStyle = "Fixed3D"
-    Text = "Project ID"
-    Font = $FontM
-    TextAlign = $LblTextAlign
-}
-
-$tbx_projid = New-Object System.Windows.Forms.TextBox -Property @{
-    Location = "200,75"
-    Size = "170,24"
+    Size = "370,24"
     BorderStyle = "Fixed3D"
     Font = $FontL
 }
 
-if (-not [string]::IsNullOrEmpty($Env:GOOGLE_CLOUD_PROJECT)) {
-
-    # 環境変数があれば、初期値として設定
-    $tbx_projid.Text = $Env:GOOGLE_CLOUD_PROJECT
-}
-
-
 # -----------------
-# NONE1
+# Secret Access Key
 #
-$lbl_none1 = New-Object System.Windows.Forms.Label -Property @{
-    Location = "50,115"
+$lbl_secret = New-Object System.Windows.Forms.Label -Property @{
+    Location = "50,75"
     Size = "130,24"
     BorderStyle = "Fixed3D"
-    #Text = ""
+    Text = "Secret Access Key"
     Font = $FontM
     TextAlign = $LblTextAlign
 }
 
-$tbx_none1 = New-Object System.Windows.Forms.Label -Property @{
+$tbx_secret = New-Object System.Windows.Forms.MaskedTextBox -Property @{
+    Location = "200,75"
+    Size = "370,24"
+    BorderStyle = "Fixed3D"
+    Font = $FontL
+    PasswordChar = "*"
+}
+
+# -----------------
+# Encrypt
+#
+$chk_encrypt = New-Object System.Windows.Forms.CheckBox -Property @{
+    Location = "495,105"
+    Size = "100,24"
+    Text = "Encrypt"
+    Font = $FontM
+    TextAlign = $LblTextAlign
+    Checked = $true
+    Enabled = $true
+}
+
+# -----------------
+# Region
+#
+$lbl_region = New-Object System.Windows.Forms.Label -Property @{
+    Location = "50,115"
+    Size = "130,24"
+    BorderStyle = "Fixed3D"
+    Text = "Region"
+    Font = $FontM
+    TextAlign = $LblTextAlign
+}
+
+$tbx_region = New-Object System.Windows.Forms.TextBox -Property @{
     Location = "200,115"
     Size = "170,24"
     BorderStyle = "Fixed3D"
     Font = $FontL
-    Enabled = $false
 }
 
 # -----------------
-# NONE2
+# EndPoint
 #
-$lbl_none2 = New-Object System.Windows.Forms.Label -Property @{
+$lbl_endpoint = New-Object System.Windows.Forms.Label -Property @{
     Location = "50,155"
     Size = "130,24"
     BorderStyle = "Fixed3D"
-    #Text = ""
+    Text = "Endpoint"
     Font = $FontM
     TextAlign = $LblTextAlign
 }
 
-$tbx_none2 = New-Object System.Windows.Forms.Label -Property @{
+$tbx_endpoint = New-Object System.Windows.Forms.TextBox -Property @{
     Location = "200,155"
-    Size = "170,24"
+    Size = "370,24"
     BorderStyle = "Fixed3D"
     Font = $FontL
-    Enabled = $false
 }
 
 # -----------------
@@ -259,7 +261,7 @@ $cbx_drive = New-Object System.Windows.Forms.ComboBox -Property @{
     DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 }
 
-# HKLM:.../WinFsp/Services/* --> regDrives
+# HKLM:***/WinFsp/Services/* --> regDrives
 $regServices = Get-ChildItem -Path "${RegWinFspPath}\Services" | Select-Object -ExpandProperty Name
 $regDrives = @()
 
@@ -267,7 +269,7 @@ foreach ($regService in $regServices) {
     $lastPart = $regService -split '\\' | Select-Object -Last 1
     $regDrive = $lastPart -split '\.'
     if ($regDrive.Length -eq 3) {
-        if ($regDrive[0] -eq $AppName) {
+        if ($regDrive[0] -eq ${AppName}) {
             $regDrives += $regDrive[2]
         }
     }
@@ -429,23 +431,53 @@ $btn_reg.Add_Click({
         return
     }
 
+    # リージョン、エンドポイント、Key&Secret
+
+    if ([string]::IsNullOrEmpty($tbx_keyid.Text.Trim())) {
+        Msg-Warn -Text "The Access Key value cannot be left empty."
+        $tbx_keyid.Focus()
+        return
+    }
+
+    if ([string]::IsNullOrEmpty($tbx_secret.Text.Trim())) {
+        Msg-Warn -Text "The Secret Key value cannot be left empty."
+        $tbx_secret.Focus()
+        return
+    }
+
+    if ([string]::IsNullOrEmpty($tbx_region.Text.Trim())) {
+
+        Msg-Warn -Text "The Region value cannot be left empty."
+        $tbx_region.Focus()
+        return
+    }
+
+    if ([string]::IsNullOrEmpty($tbx_endpoint.Text.Trim())) {
+        Msg-Warn -Text "The Endpoint value cannot be left empty."
+        $tbx_endpoint.Focus()
+        return
+    }
+
     # Values
     $cguid = [guid]::NewGuid().ToString()
-    $cred = $txt_cred.Text.Trim()
-    $projid = $tbx_projid.Text.Trim()
+    $keyid = $tbx_keyid.Text.Trim()
+    $secret = $tbx_secret.Text.Trim()
+    $region = $tbx_region.Text.Trim()
+    $endpoint = $tbx_endpoint.Text.Trim()
     $drive = $cbx_drive.SelectedItem
     $workdir_drive = $workdir.Substring(0, 1)
     $workdir_dir = $workdir.Substring(3)
+    $ignore_bucket_region = 0
     $info_log_dir = ";"
 
-    $cred_text = "";
-    if (-not [string]::IsNullOrEmpty($cred)) {
-        $cred_text = "credentials=${cred}"
-    }
+    if ($chk_encrypt.Checked) {
+        if (-not [string]::IsNullOrEmpty($keyid)) {
+            $keyid = "{aes256}" + (KeyId-EncryptString -Text $keyid)
+        }
 
-    $projid_text = "";
-    if (-not [string]::IsNullOrEmpty($projid)) {
-        $projid_text = "project_id=${projid}"
+        if (-not [string]::IsNullOrEmpty($secret)) {
+            $secret = "{aes256}" + (Secret-EncryptString -Text $secret)
+        }
     }
 
     $logdir = "${workdir}\${DllType}\${LogDirName}"
@@ -458,6 +490,17 @@ $btn_reg.Add_Click({
     if (-not (Test-Path -Path $logdir)) {
         Msg-Warn -Text "${logdir}: The directory does not exist."
         return
+    }
+
+    if ($endpoint -match "cloudflarestorage.com") {
+        # Cloudflare R2 では異なるバケットのリージョンも扱える
+
+        $ignore_bucket_region = 1
+    }
+    elseif ($endpoint -match "idrivee2") {
+        # IDrive e2 はバケットのリージョンが取得できない
+
+        $ignore_bucket_region = 1
     }
 
     $info_log_dir = "# log:          [${logdir}]"
@@ -608,13 +651,12 @@ Description of the files in this directory
 [default]
 type=${DllType}
 
-; Service Account Key - Credentials
-; Note: Equivalent to GOOGLE_APPLICATION_CREDENTIALS
-${cred_text}
-
-; Project ID
-; Note: Equivalent to GOOGLE_CLOUD_PROJECT
-${projid_text}
+; client credentials
+; Note: Only valid on the computer it was created on.
+aws_access_key_id=${keyid}
+aws_secret_access_key=${secret}
+endpoint=${endpoint}
+region=${region}
 
 ; Client Identifier
 ; default: Not set (Generated at runtime)
@@ -703,6 +745,16 @@ ${projid_text}
 ; default: Empty (Don't ignore)
 re_ignore_patterns=\\(desktop\.ini|autorun\.inf|(eh)?thumbs\.db|AlbumArtSmall\.jpg|folder\.(ico|jpg|gif))$
 
+; Ignore the bucket's region
+; valid values: 0 or 1
+; default: 0 (Do not ignore)
+s3.ignore_bucket_region=${ignore_bucket_region}
+
+; Controls whether the SDK automatically includes a checksum in the request when supported by the service.
+; valid values: WHEN_SUPPORTED, WHEN_REQUIRED
+; default: Empty (SDK default)
+s3.request_checksum_calculation=WHEN_REQUIRED
+
 ; ----------
 ; INFO
 ;
@@ -766,14 +818,15 @@ $form = New-Object System.Windows.Forms.Form -Property @{
     AcceptButton = $btn_exit
 }
 
-$ctrls = $lbl_cred,   $txt_cred,   $btn_cred,
-         $lbl_projid, $tbx_projid,
-         $lbl_none1,  $tbx_none1,
-         $lbl_none2,  $tbx_none2,
-         $lbl_drive,  $cbx_drive,
-         $lbl_wkdir,  $txt_wkdir,  $btn_wkdir,
-         $lbl_exe,    $txt_exe,    $btn_exe,
-         $btn_reg,    $btn_exit
+$ctrls = $lbl_keyid,    $tbx_keyid, 
+         $lbl_secret,   $tbx_secret,
+         $lbl_region,   $tbx_region,
+         $lbl_endpoint, $tbx_endpoint,
+         $chk_encrypt,
+         $lbl_drive,    $cbx_drive,
+         $lbl_wkdir,    $txt_wkdir,  $btn_wkdir,                             `
+         $lbl_exe,      $txt_exe,    $btn_exe,                                 `
+         $btn_reg,      $btn_exit
 
 for ($i = 0; $i -lt $ctrls.Length; $i++) {
     $form.Controls.Add($ctrls[$i])

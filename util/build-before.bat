@@ -9,7 +9,7 @@ if %errorlevel% neq 0 (
 )
 
 echo on
-pushd %~dp0..
+cd %~dp0
 
 if exist Y:\ net use Y: /delete
 
@@ -22,4 +22,6 @@ if not defined pid (
 )
 
 call taskkill /IM WinCse.exe /F
+
+call del-trace.bat
 

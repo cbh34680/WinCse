@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CSDeviceCommon.h"
+#include "CSDeviceInternal.h"
 
 namespace CSEDVC
 {

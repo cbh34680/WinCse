@@ -9,9 +9,4 @@
 #define WINCSEGCPGS_API __declspec(dllimport)
 #endif
 
-namespace CSEGGS
-{
-
-}	// namespace CSEGGS
-
-	// EOF
+// EOF

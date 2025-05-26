@@ -1,6 +1,6 @@
 #pragma once
 
-#include "GcpGsCommon.h"
+#include "GcpGsInternal.h"
 
 namespace CSEGGS
 {
@@ -14,7 +14,7 @@ protected:
 	WINCSEGCPGS_API CSEDVC::IApiClient* newApiClient(CSEDVC::RuntimeEnv* argRuntimeEnv, CSELIB::IWorker* argDelayedWorker) override;
 
 public:
-	using CSEDVC::CSDevice::CSDevice;
+	using CSDevice::CSDevice;
 
 	NTSTATUS OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem) override;
 };

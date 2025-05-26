@@ -11,5 +11,5 @@ if %errorlevel% neq 0 (
 )
 
 cd "%~dp0"
-powershell.exe -ExecutionPolicy Bypass -Command ".\gui-aws-s3.ps1" "oci-os"
+powershell.exe -ExecutionPolicy Bypass -Command ".\gui-compat-s3.ps1"
 

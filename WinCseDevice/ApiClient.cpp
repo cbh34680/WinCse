@@ -1,4 +1,4 @@
-#include "CSDeviceCommon.h"
+#include "CSDeviceInternal.h"
 #include "IApiClient.hpp"
 
 using namespace CSELIB;

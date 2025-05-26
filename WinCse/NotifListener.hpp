@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CSDriverCommon.h"
+#include "CSDriverInternal.h"
 
 namespace CSEDRV
 {

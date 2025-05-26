@@ -1,5 +1,4 @@
-#include "OciOsDevice.hpp"
-#include "aws_sdk_s3_client.h"
+#include "CompatS3Device.hpp"
 
 using namespace CSELIB;
 
@@ -20,12 +19,12 @@ ICSDevice* NewCSDevice(PCWSTR argIniSection, NamedWorker argWorkers[])
         }
     }
 
-    return new CSEOOS::OciOsDevice{ argIniSection, workers };
+    return new CSECS3::CompatS3Device{ argIniSection, workers };
 }
 
-namespace CSEOOS {
+namespace CSECS3 {
 
-OciOsDevice::~OciOsDevice()
+CompatS3Device::~CompatS3Device()
 {
     NEW_LOG_BLOCK();
 
@@ -40,18 +39,12 @@ OciOsDevice::~OciOsDevice()
     }
 }
 
-NTSTATUS OciOsDevice::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
+NTSTATUS CompatS3Device::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 {
     NEW_LOG_BLOCK();
 
     APP_ASSERT(argWorkDir);
     //APP_ASSERT(FileSystem);
-
-    // AWS SDK の初期化
-
-    APP_ASSERT(!mSdkOptions);
-    mSdkOptions = std::make_unique<Aws::SDKOptions>();
-    Aws::InitAPI(*mSdkOptions);
 
     const auto confPath{ std::filesystem::path{ argWorkDir } / CONFIGFILE_FNAME };
 
@@ -62,7 +55,7 @@ NTSTATUS OciOsDevice::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
     std::wstring dllType;
     GetIniStringW(confPath, mIniSection, L"type", &dllType);
 
-    if (dllType != L"oci-os")
+    if (dllType != L"compat-s3")
     {
         errorW(L"false: DLL type mismatch dllType=%s", dllType.c_str());
         return STATUS_INVALID_PARAMETER;
@@ -71,10 +64,10 @@ NTSTATUS OciOsDevice::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
     // 接続リージョンとネームスペース
 
     std::wstring regionW;
-    std::wstring namespaceW;
+    std::wstring endpointW;
 
-    GetIniStringW(confPath, mIniSection, L"region",    &regionW);
-    GetIniStringW(confPath, mIniSection, L"namespace", &namespaceW);
+    GetIniStringW(confPath, mIniSection, L"region",   &regionW);
+    GetIniStringW(confPath, mIniSection, L"endpoint", &endpointW);
 
     if (regionW.empty())
     {
@@ -82,13 +75,13 @@ NTSTATUS OciOsDevice::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
         return STATUS_INVALID_PARAMETER;
     }
 
-    if (namespaceW.empty())
+    if (endpointW.empty())
     {
-        errorW(L"fault: namespaceW empty");
+        errorW(L"fault: endpointW empty");
         return STATUS_INVALID_PARAMETER;
     }
 
-    traceW(L"regionW=%s namespaceW=%s", regionW.c_str(), namespaceW.c_str());
+    traceW(L"regionW=%s endpointW=%s", regionW.c_str(), endpointW.c_str());
 
     // 認証情報
 
@@ -97,6 +90,18 @@ NTSTATUS OciOsDevice::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 
     GetIniStringW(confPath, mIniSection, L"aws_access_key_id",     &accessKeyIdW);
     GetIniStringW(confPath, mIniSection, L"aws_secret_access_key", &secretAccessKeyW);
+
+    if (accessKeyIdW.empty())
+    {
+        errorW(L"fault: accessKeyIdW empty");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if (secretAccessKeyW.empty())
+    {
+        errorW(L"fault: secretAccessKeyW empty");
+        return STATUS_INVALID_PARAMETER;
+    }
 
     traceW(L"accessKeyId=%s***, secretAccessKey=%s***", SafeSubStringW(accessKeyIdW, 0, 5).c_str(), SafeSubStringW(secretAccessKeyW, 0, 5).c_str());
 
@@ -149,46 +154,52 @@ NTSTATUS OciOsDevice::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 
     traceW(L"accessKeyId=%s***, secretAccessKey=%s***", SafeSubStringW(accessKeyIdW, 0, 5).c_str(), SafeSubStringW(secretAccessKeyW, 0, 5).c_str());
 
-    // クライアントの生成
+    // AWS SDK の初期化
 
-    auto regionA{ WC2MB(regionW) };
-    auto namespaceA{ WC2MB(namespaceW) };
+    APP_ASSERT(!mSdkOptions);
+    mSdkOptions = std::make_unique<Aws::SDKOptions>();
+    Aws::InitAPI(*mSdkOptions);
 
     Aws::Client::ClientConfiguration config;
 
-    // first param is namespace, 2nd param is region 
-    // S3 compatible URL is https://NAMESPACE.compat.objectstorage.REGION.oraclecloud.com/ 
+    std::wstring requestChecksumCalculation;
 
-    config.endpointOverride = std::string("https://") + namespaceA + ".compat.objectstorage." + regionA + ".oraclecloud.com/";
+    if (GetIniStringW(confPath, mIniSection, L"s3.request_checksum_calculation", &requestChecksumCalculation))
+    {
+        if (requestChecksumCalculation == L"WHEN_SUPPORTED")
+        {
+            config.checksumConfig.requestChecksumCalculation = Aws::Client::RequestChecksumCalculation::WHEN_SUPPORTED;
+        }
+        else if (requestChecksumCalculation == L"WHEN_REQUIRED")
+        {
+            config.checksumConfig.requestChecksumCalculation = Aws::Client::RequestChecksumCalculation::WHEN_REQUIRED;
+        }
+        else
+        {
+            errorW(L"invalid: s3.request_checksum_calculation=%s (ignore)", requestChecksumCalculation.c_str());
+        }
+    }
+
+    // クライアントの生成
+
+    auto regionA{ WC2MB(regionW) };
+    auto endpointA{ WC2MB(endpointW) };
+
+    config.endpointOverride = endpointA;
     traceA("config.endpointOverride=%s", config.endpointOverride.c_str());
 
     config.scheme = Aws::Http::Scheme::HTTP;
     config.verifySSL = true;
     config.region = regionA;
 
-    // https://github.com/aws/aws-sdk-cpp/issues/3411#issuecomment-2891706597
-    // https://github.com/aws/aws-sdk-cpp/issues/3253#issue-2791519562
-    config.checksumConfig.requestChecksumCalculation = Aws::Client::RequestChecksumCalculation::WHEN_REQUIRED;
+    const auto accessKeyIdA{ WC2MB(accessKeyIdW) };
+    const auto secretAccessKeyA{ WC2MB(secretAccessKeyW) };
 
-    Aws::S3::S3Client* s3Client = nullptr;
+    const Aws::Auth::AWSCredentials credentials{ accessKeyIdA, secretAccessKeyA };
 
-    if (!accessKeyIdW.empty() && !secretAccessKeyW.empty())
-    {
-        const auto accessKeyIdA{ WC2MB(accessKeyIdW) };
-        const auto secretAccessKeyA{ WC2MB(secretAccessKeyW) };
+    Aws::S3::S3Client* s3Client = new Aws::S3::S3Client{ credentials, config, Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never, false };
 
-        const Aws::Auth::AWSCredentials credentials{ accessKeyIdA, secretAccessKeyA };
-
-        s3Client = new Aws::S3::S3Client{ credentials, config, Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never, false };
-
-        traceW(L"use credentials");
-    }
-    else
-    {
-        s3Client = new Aws::S3::S3Client{ config, Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never, false };
-
-        traceW(L"no credentials");
-    }
+    traceW(L"use credentials");
 
     if (!s3Client)
     {
@@ -201,7 +212,7 @@ NTSTATUS OciOsDevice::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 
     // 最後に親クラスの OnSvcStart を呼び出す
 
-    return SdkS3Device::OnSvcStart(argWorkDir, FileSystem);
+    return CSDevice::OnSvcStart(argWorkDir, FileSystem);
 }
 
 }   // namespace CSEOOS

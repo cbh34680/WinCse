@@ -28,7 +28,7 @@ int listBuckets_main(int argc, char **argv) {
     Aws::S3::S3Client m_client(Aws::Auth::AWSCredentials(argv[3], argv[4]), cfg,
           Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never, false);
     int result = 0;
-    Aws::Client::ClientConfiguration clientConfig;
+
     auto outcome = m_client.ListBuckets();
     if (!outcome.IsSuccess()) {
         std::cerr << "Failed with error: " << outcome.GetError() << std::endl;

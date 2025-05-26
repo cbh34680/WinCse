@@ -1,6 +1,13 @@
 #pragma once
 
-#include "SdkS3Common.h"
+#include "CSDevice.hpp"
+#include "aws_sdk_s3_client.h"
+
+#ifdef WINCSESDKS3_EXPORTS
+#define WINCSESDKS3_API __declspec(dllexport)
+#else
+#define WINCSESDKS3_API __declspec(dllimport)
+#endif
 
 namespace CSESS3
 {
@@ -30,18 +37,30 @@ protected:
 public:
 	SdkS3Client(const CSEDVC::RuntimeEnv* argRuntimeEnv, CSELIB::IWorker* argDelayedWorker, const std::wstring& argClientRegion, Aws::S3::S3Client* argS3Client)
 		:
-		mDelayedWorker(argDelayedWorker),
 		mRuntimeEnv(argRuntimeEnv),
+		mDelayedWorker(argDelayedWorker),
 		mClientRegion(argClientRegion),
 		mS3Client(argS3Client)
 	{
 	}
 
-	bool canAccessRegion(CALLER_ARG const std::wstring& argRegion) override
+	bool canAccessRegion(CALLER_ARG const std::wstring& argBucketRegion) override
 	{
+		NEW_LOG_BLOCK();
+
+		if (mRuntimeEnv->IgnoreBucketRegion)
+		{
+			traceW(L"ignore bucket region");
+			return true;
+		}
+
 		// クライアントのリージョンと一致したときはアクセス可能なリージョンと判断
 
-		return argRegion == mClientRegion;
+		const auto ret = argBucketRegion == mClientRegion;
+
+		traceW(L"argBucketRegion=%s mClientRegion=%s ret=%s", argBucketRegion.c_str(), mClientRegion.c_str(), BOOL_CSTRW(ret));
+
+		return ret;
 	}
 
 	WINCSESDKS3_API std::optional<Aws::String> uploadPart(CALLER_ARG const CSELIB::ObjectKey& argObjKey,
@@ -79,13 +98,18 @@ bool IsSuccess(const T& outcome)
 		const auto type{ err.GetErrorType() };
 		const auto name{ err.GetExceptionName().c_str() };
 
-		if (static_cast<int>(code) == 404)
+		switch (static_cast<int>(code))
 		{
-			traceA("warn: type=%d, code=%d, name=%s, message=%s", type, code, name, mesg);
-		}
-		else
-		{
-			errorA("error: type=%d, code=%d, name=%s, message=%s", type, code, name, mesg);
+			case 404:
+			{
+				traceA("warn: type=%d, code=%d, name=%s, message=%s", type, code, name, mesg);
+				break;
+			}
+			default:
+			{
+				errorA("error: type=%d, code=%d, name=%s, message=%s", type, code, name, mesg);
+				break;
+			}
 		}
 	}
 
@@ -125,13 +149,18 @@ ReturnT executeWithRetry(
 			const auto name{ err.GetExceptionName().c_str() };
 			shouldRetry = err.ShouldRetry();
 
-			if (static_cast<int>(code) == 404)
+			switch (static_cast<int>(code))
 			{
-				traceA("fault: type=%d code=%d name=%s message=%s retry=%s", type, code, name, mesg, BOOL_CSTRA(shouldRetry));
-			}
-			else
-			{
-				errorA("fault: type=%d code=%d name=%s message=%s retry=%s", type, code, name, mesg, BOOL_CSTRA(shouldRetry));
+				case 404:
+				{
+					traceA("fault: type=%d code=%d name=%s message=%s retry=%s", type, code, name, mesg, BOOL_CSTRA(shouldRetry));
+					break;
+				}
+				default:
+				{
+					errorA("fault: type=%d code=%d name=%s message=%s retry=%s", type, code, name, mesg, BOOL_CSTRA(shouldRetry));
+					break;
+				}
 			}
 		}
 

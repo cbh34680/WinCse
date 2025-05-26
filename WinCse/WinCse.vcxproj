@@ -166,7 +166,7 @@
   <ItemGroup>
     <ClInclude Include="CSDriverBase.hpp" />
     <ClInclude Include="OpenDirEntry.hpp" />
-    <ClInclude Include="CSDriverCommon.h" />
+    <ClInclude Include="CSDriverInternal.h" />
     <ClInclude Include="FileContext.hpp" />
     <ClInclude Include="FileContextSweeper.hpp" />
     <ClInclude Include="NotifListener.hpp" />

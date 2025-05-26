@@ -1,74 +1,56 @@
 # WinCse &middot; Windows Cloud Storage Explorer
 
-WinCse は、オブジェクト・ストレージを Windows Explorer に統合するアプリケーションで、バケットをローカルのファイルシステムのように扱うことができます。  
+WinCse は、オブジェクトストレージを Windows Explorer に統合し、ローカルファイルシステムのようにバケットを管理できるアプリケーションです。
 
 ## 主な機能
-- Windows ファイル共有のような感覚でオブジェクト・ストレージのファイルを操作できます。
-- マウント時に表示する バケットの名前や数を調整可能です。
-- 読み取り専用モードでマウントすることができます。
-- AWS S3, Google Cloud Storage, OCI Object Storage で動作します。
+- Windows のファイル共有のようにオブジェクトストレージのファイルを操作可能  
+- バケットの表示名や数を調整可能  
+- 読み取り専用のマウントに対応  
+- AWS S3, Google Cloud Storage, に対応  
+- S3 互換のオブジェクトストレージに対応  
 
 ## システム要件
-- Windows 11 以降を推奨
-- [WinFsp](http://www.secfs.net/winfsp/)
-- [AWS SDK for C++](https://github.com/aws/aws-sdk-cpp)
-- [Google Cloud Platform C++ Client Libraries](https://github.com/googleapis/google-cloud-cpp)
+- Windows 11 以上を推奨  
+- [WinFsp](http://www.secfs.net/winfsp/)  
+- 必要な SDK:  
+  - [AWS SDK for C++](https://github.com/aws/aws-sdk-cpp)  
+  - [Google Cloud Platform C++ Client Libraries](https://github.com/googleapis/google-cloud-cpp)  
 
 ## インストール手順
-1. [WinFsp](https://winfsp.dev/rel/) をインストールする。
-2. [リリースページ](https://github.com/cbh34680/WinCse/releases) から WinCse (必要な DLL は内包しています) をダウンロードする。
-
-# WinCse ・ Windows Cloud Storage Explorer
-
-WinCse は、オブジェクト・ストレージを Windows Explorer に統合し、ローカルのファイルシステムのように扱えるアプリケーションです。
-
-## 主な機能
-- Windows ファイル共有のような感覚で操作可能
-- 表示するバケットの名前や数を調整可能
-- 読み取り専用モード対応
-- **AWS S3 / Google Cloud Storage / OCI Object Storage に対応**
-
-## システム要件
-- Windows 11 以降推奨
-- [WinFsp](http://www.secfs.net/winfsp/)
-- 必要な SDK
-  - [AWS SDK for C++](https://github.com/aws/aws-sdk-cpp)
-  - [Google Cloud Platform C++ Client Libraries](https://github.com/googleapis/google-cloud-cpp)
-
-## インストール手順
-1. [WinFsp](https://winfsp.dev/rel/) をインストール
-2. [リリースページ](https://github.com/cbh34680/WinCse/releases) から WinCse をダウンロード
+1. [WinFsp](https://winfsp.dev/rel/) をインストール  
+2. [リリースページ](https://github.com/cbh34680/WinCse/releases) から WinCse をダウンロード  
 
 ## 使用方法
-1. ストレージ種別に応じて、以下のスクリプトを **管理者権限で実行**：
-   - **AWS S3** &rarr; `setup/install-aws-s3.bat`
-   - **GCP GS** &rarr; `setup/install-gcp-gs.bat`
-   - **OCI OS** &rarr; `setup/install-oci-os.bat`
-2. フォーム画面が表示されたら、認証情報を入力し **作成** ボタンを押す。
-3. Explorer のディレクトリから `mount.bat` を実行し、ストレージをマウント。
-4. Windows Explorer でバケットのファイルにアクセス可能になる。
-5. `un-mount.bat` を実行すると、マウントしたドライブを解除できる。
+1. ストレージの種類に応じたスクリプトを**管理者権限で**実行:  
+   - AWS S3 &rarr; `setup/install-aws-s3.bat`  
+   - Google Cloud Storage &rarr; `setup/install-gcp-gs.bat`  
+   - S3 互換オブジェクトストレージ &rarr; `setup/install-compat-s3.bat`  
+2. フォーム画面が表示されたら、認証情報を入力して **Create** をクリック  
+3. 表示された Explorer ディレクトリで `mount.bat` を実行してストレージをマウント  
+4. Windows Explorer からバケットファイルにアクセス  
+5. `un-mount.bat` を実行してドライブをアンマウント  
 
-## アンインストール方法
-1. マウントしたドライブをアンマウントする。
-2. `reg-del.bat` を管理者権限で実行し、WinFsp に登録されたレジストリ情報を削除する。
-3. `*.bat` ファイルがあるディレクトリを削除する。
-4. 必要がなければ、[WinFsp](https://winfsp.dev/rel/) をアンインストールする。
+## アンインストール手順
+1. `un-mount.bat` を実行してドライブをアンマウント  
+2. `reg-del.bat` を管理者権限で実行  
+3. `*.bat` ファイルを含むディレクトリを削除  
+4. 不要なら **WinFsp** をアンインストール  
 
-## アップデート方法
-1. マウントしたドライブをアンマウントする。
-2. [リリースページ](https://github.com/cbh34680/WinCse/releases) から取得した zip ファイルを展開する。
-3. zip ファイルに含まれている setup, x64 のディレクトリをインストール先のディレクトリに上書きする。
+## 更新手順
+1. ドライブをアンマウント  
+2. [リリースページ](https://github.com/cbh34680/WinCse/releases) から ZIP ファイルをダウンロード・展開  
+3. インストールディレクトリ内の `setup` と `x64` を上書き  
 
 ## 制限事項
-- いくつかの制約については [設定ファイル](./doc/conf-example.txt) を変更することで緩和可能です。
-- バケットの作成・削除は利用できません。
-- 不具合の検出を容易にするため `abort()` を使用しており、強制終了する可能性があります。
-- その他の制限事項については [制限事項](./doc/limitations-ja.md) を参照してください。
+- いくつかの制約は [WinCse.conf](./doc/conf-example.txt) の値を変更することで緩和できます  
+- バケットの作成・削除には対応していません  
+- `abort()` をエラー検出に使用しており、強制終了の可能性あり  
+- 詳しくは [制限事項](./doc/limitations-ja.md) を参照  
 
 ## 注意事項
-- 本ソフトウェアは Windows 11 のみで動作確認されています。他のバージョンとの互換性は保証されていません。
-- OCI Object Storage への接続は [OCI_AWS_CPP_SDK_S3_Examples](https://github.com/tonymarkel/OCI_AWS_CPP_SDK_S3_Examples) を参考にしています。
+- Windows 11 でのみ動作確認済み、他のバージョンでの互換性は保証できません  
+- OCI Object Storage の認証情報については [OCI_AWS_CPP_SDK_S3_Examples](https://github.com/tonymarkel/OCI_AWS_CPP_SDK_S3_Examples) を参照  
+- S3 互換ストレージは [OCI Object Storage](./doc/example-oci.png), [Wasabi Hot Cloud Storage](./doc/example-wasabi.png), [Cloudflare R2](./doc/example-cloudflare.png), [IDrive e2](./doc/example-idrive.png) で動作確認済み  
 
 ## ライセンス
-本プロジェクトは [GPLv3](https://www.gnu.org/licenses/gpl-3.0.html) および [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0) のもとでライセンスされています。
+本プロジェクトは [GPLv3](https://www.gnu.org/licenses/gpl-3.0.html) および [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0) の下で提供されています。

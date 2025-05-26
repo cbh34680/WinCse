@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CSDeviceCommon.h"
+#include "CSDeviceInternal.h"
 
 namespace CSEDVC
 {
@@ -12,6 +12,7 @@ struct RuntimeEnv final
 		const std::list<std::wregex>&		argBucketFilters,
 		const std::wstring&					argClientGuid,
 		CSELIB::FILETIME_100NS_T			argDefaultCommonPrefixTime,
+		bool								argIgnoreBucketRegion,
 		const std::optional<std::wregex>&	argIgnoreFileNamePatterns,
 		int									argMaxApiRetryCount,
 		int									argMaxDisplayBuckets,
@@ -24,6 +25,7 @@ struct RuntimeEnv final
 		BucketCacheExpiryMin				(argBucketCacheExpiryMin),
 		BucketFilters						(argBucketFilters),
 		ClientGuid							(argClientGuid),
+		IgnoreBucketRegion					(argIgnoreBucketRegion),
 		DefaultCommonPrefixTime				(argDefaultCommonPrefixTime),
 		IgnoreFileNamePatterns				(argIgnoreFileNamePatterns),
 		MaxApiRetryCount					(argMaxApiRetryCount),
@@ -40,6 +42,7 @@ struct RuntimeEnv final
 	const std::list<std::wregex>			BucketFilters;
 	const std::wstring						ClientGuid;
 	const CSELIB::FILETIME_100NS_T			DefaultCommonPrefixTime;
+	const bool								IgnoreBucketRegion;
 	const std::optional<std::wregex>		IgnoreFileNamePatterns;
 	const int								MaxApiRetryCount;
 	const int								MaxDisplayBuckets;

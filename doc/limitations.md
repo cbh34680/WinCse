@@ -32,7 +32,7 @@ This document explains the current limitations.
 ## General Operation
 - **Use of `abort()`**  
   If an unexpected error occurs, the application may automatically terminate and unmount the drive.  
-  During this process, a stack trace is recorded at `%windir%\WinCse\` for debugging purposes.
+  During this process, a stack trace is recorded at `%windir%\Temp\WinCse\` for debugging purposes.
 
 - **S3 usage costs**  
   The application executes API calls and stores files in S3 storage.  

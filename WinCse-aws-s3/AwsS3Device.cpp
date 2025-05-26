@@ -1,5 +1,4 @@
 #include "AwsS3Device.hpp"
-#include "aws_sdk_s3_client.h"
 
 using namespace CSELIB;
 
@@ -46,12 +45,6 @@ NTSTATUS AwsS3Device::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 
     APP_ASSERT(argWorkDir);
     //APP_ASSERT(FileSystem);
-
-    // AWS SDK の初期化
-
-    APP_ASSERT(!mSdkOptions);
-    mSdkOptions = std::make_unique<Aws::SDKOptions>();
-    Aws::InitAPI(*mSdkOptions);
 
     const auto confPath{ std::filesystem::path{ argWorkDir } / CONFIGFILE_FNAME };
 
@@ -140,12 +133,18 @@ NTSTATUS AwsS3Device::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 
     traceW(L"accessKeyId=%s***, secretAccessKey=%s***", SafeSubStringW(accessKeyIdW, 0, 5).c_str(), SafeSubStringW(secretAccessKeyW, 0, 5).c_str());
 
-    // クライアントの生成
+    // AWS SDK の初期化
 
-    auto regionA{ WC2MB(regionW) };
+    APP_ASSERT(!mSdkOptions);
+    mSdkOptions = std::make_unique<Aws::SDKOptions>();
+    Aws::InitAPI(*mSdkOptions);
 
     Aws::Client::ClientConfiguration config;
+
+    auto regionA{ WC2MB(regionW) };
     config.region = regionA;
+
+    // クライアントの生成
 
     Aws::S3::S3Client* s3Client = nullptr;
 
@@ -178,7 +177,7 @@ NTSTATUS AwsS3Device::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem)
 
     // 最後に親クラスの OnSvcStart を呼び出す
 
-    return SdkS3Device::OnSvcStart(argWorkDir, FileSystem);
+    return CSDevice::OnSvcStart(argWorkDir, FileSystem);
 }
 
 }   // namespace CSEAS3

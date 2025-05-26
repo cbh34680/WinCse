@@ -167,6 +167,7 @@ NTSTATUS CSDeviceBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM*)
         bucketFilters,
         clientGuid,
         STCTimeToWinFileTime100nsW(argWorkDir),
+        GetIniBoolW(confPath,   mIniSection,    L"s3.ignore_bucket_region",     false),
         ignoreFileNamePatterns,
         GetIniIntW(confPath,    mIniSection,    L"max_api_retry_count",              3,     0,           5),
         GetIniIntW(confPath,    mIniSection,    L"max_display_buckets",              8,     0, INT_MAX - 1),

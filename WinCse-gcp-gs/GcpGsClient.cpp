@@ -1,10 +1,10 @@
 #include "GcpGsClient.hpp"
 
 using namespace CSELIB;
-using namespace CSEDVC;
+
 namespace gcs = google::cloud::storage;
 
-bool IsSuccess(const google::cloud::Status& status)
+static bool IsSuccess(const google::cloud::Status& status)
 {
 	NEW_LOG_BLOCK();
 
@@ -55,6 +55,22 @@ bool IsSuccess(const google::cloud::Status& status)
 	}
 
 	return ok;
+}
+
+template <typename T>
+static bool IsSuccess(const T& result)
+{
+	NEW_LOG_BLOCK();
+
+	const bool isSuccess = result.ok();
+	traceA("isSuccess=%s name=%s", BOOL_CSTRA(isSuccess), typeid(result).name());
+
+	if (!isSuccess)
+	{
+		IsSuccess(result.status());
+	}
+
+	return isSuccess;
 }
 
 namespace CSEGGS {
@@ -413,26 +429,30 @@ bool GcpGsClient::PutObject(CALLER_ARG const ObjectKey& argObjKey, const FSP_FSC
 
 	// Content-Type を取得
 
-	const auto contentType{ getContentType(CONT_CALLER argInputPath, argObjKey.key()) };
-
 	// ストリームを生成
 
-	auto stream = mGsClient->WriteObject(argObjKey.bucketA(), argObjKey.keyA(),
-		gcs::WithObjectMetadata(inMetadata), gcs::ContentType(WC2MB(contentType)));
+	gcs::ObjectWriteStream stream;
 
 	if (FA_IS_DIR(argFileInfo.FileAttributes))
 	{
 		// ディレクトリの場合は空のコンテンツ
 
 		APP_ASSERT(!argInputPath);
+
+		stream = mGsClient->WriteObject(argObjKey.bucketA(), argObjKey.keyA(), gcs::WithObjectMetadata(inMetadata));
 	}
 	else
 	{
 		APP_ASSERT(argInputPath);
 
+		const auto contentType{ CSEDVC::getContentType(CONT_CALLER argFileInfo.FileSize, argInputPath, argObjKey.key()) };
+
+		stream = mGsClient->WriteObject(argObjKey.bucketA(), argObjKey.keyA(),
+			gcs::WithObjectMetadata(inMetadata), gcs::ContentType(WC2MB(contentType)));
+
 		// ストリームに出力
 
-		const auto nWrite = writeStreamFromFile(CONT_CALLER &stream, argInputPath, 0, argFileInfo.FileSize);
+		const auto nWrite = CSEDVC::writeStreamFromFile(CONT_CALLER &stream, argInputPath, 0, argFileInfo.FileSize);
 
 		if (nWrite != static_cast<FILEIO_LENGTH_T>(argFileInfo.FileSize))
 		{
@@ -494,7 +514,7 @@ FILEIO_LENGTH_T GcpGsClient::GetObjectAndWriteFile(CALLER_ARG const ObjectKey& a
 
 	// stream の内容をファイルに出力する
 
-	return writeFileFromStream(CONT_CALLER argOutputPath, argOffset, &stream, argLength);
+	return CSEDVC::writeFileFromStream(CONT_CALLER argOutputPath, argOffset, &stream, argLength);
 }
 
 }	// namespace CSEGGS

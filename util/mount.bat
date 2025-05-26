@@ -18,5 +18,5 @@ if exist Y:\ net use Y: /delete
 
 call %~dp0setvars.bat
 
-net use Y: "\\%REGKEY%\%DRIVELETTER%$%~p0..\..\MOUNT"
+net use Y: "\\%REGKEY%\%DRIVELETTER%$%~p0..\..\MOUNT" /PERSISTENT:NO
 

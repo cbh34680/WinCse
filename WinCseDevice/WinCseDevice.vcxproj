@@ -121,6 +121,10 @@
       <EnableUAC>false</EnableUAC>
       <AdditionalLibraryDirectories>$(MSBuildProgramFiles32)\WinFsp\lib;$(OutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
+    <PreBuildEvent>
+      <Command>
+      </Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -143,6 +147,10 @@
       <EnableUAC>false</EnableUAC>
       <AdditionalLibraryDirectories>$(MSBuildProgramFiles32)\WinFsp\lib;$(OutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
+    <PreBuildEvent>
+      <Command>
+      </Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ApiClient.cpp" />
@@ -160,7 +168,7 @@
     <ClInclude Include="CacheObject.hpp" />
     <ClInclude Include="CSDevice.hpp" />
     <ClInclude Include="CSDeviceBase.hpp" />
-    <ClInclude Include="CSDeviceCommon.h" />
+    <ClInclude Include="CSDeviceInternal.h" />
     <ClInclude Include="IApiClient.hpp" />
     <ClInclude Include="QueryBucket.hpp" />
     <ClInclude Include="QueryObject.hpp" />

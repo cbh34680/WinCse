@@ -28,7 +28,7 @@ static WCHAR PROGNAME[] = L"WinCse";
 static void app_terminate();
 static void app_sighandler(int signum);
 
-static WCHAR WINCSE_BUILD_TIME[] = L"Build: 2025-05-24 01:25 JST";
+static WCHAR WINCSE_BUILD_TIME[] = L"Build: 2025-05-26 10:30 JST";
 static WCHAR AWS_SDK_CPP_VERSION[] = L"aws-sdk-cpp: 1.11.571";
 static WCHAR GOOGLE_CLOUD_CPP_COMMIT[] = L"google-cloud-cpp: 67bbff63cb7";
 

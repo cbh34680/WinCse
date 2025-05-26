@@ -33,7 +33,7 @@ int listObjects_main(int argc, char **argv) {
     int result = 0;
     {
         std::cout << "LISTING OBJECTS" << std::endl;
-        Aws::Client::ClientConfiguration clientConfig;
+
         auto objects = m_client.ListObjectsV2(Aws::S3::Model::ListObjectsV2Request().WithBucket(argv[5]).WithPrefix(argv[6]));
         if (!objects.IsSuccess()) {
             std::cerr << "Failed with error: " << objects.GetError() << std::endl;

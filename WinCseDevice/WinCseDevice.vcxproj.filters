@@ -65,7 +65,7 @@
     <ClInclude Include="RuntimeEnv.hpp">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="CSDeviceCommon.h">
+    <ClInclude Include="CSDeviceInternal.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="IApiClient.hpp">

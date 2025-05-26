@@ -1,13 +1,13 @@
 #pragma once
 
-#include "CSDeviceCommon.h"
+#include "CSDeviceInternal.h"
 
 namespace CSEDVC {
 
 struct IApiClient
 {
 	virtual ~IApiClient() = default;
-	virtual bool canAccessRegion(CALLER_ARG const std::wstring& argRegion) = 0;
+	virtual bool canAccessRegion(CALLER_ARG const std::wstring& argBucketRegion) = 0;
 
 	virtual bool ListBuckets(CALLER_ARG CSELIB::DirEntryListType* pDirEntryList) = 0;
 	virtual bool GetBucketRegion(CALLER_ARG const std::wstring& argBucket, std::wstring* pRegion) = 0;

@@ -1,9 +1,4 @@
-﻿# -----------------
-# Arguments
-#
-param([string]$DllType = "aws-s3")
-
-Set-StrictMode -Version 3.0
+﻿Set-StrictMode -Version 3.0
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -14,6 +9,7 @@ $Error.Clear();
 # Vars
 #
 $CurrentDir      = Get-Location
+$DllType         = "aws-s3"
 $AppName         = "WinCse"
 $ExeFileName     = "${AppName}.exe"
 $ConfFileName    = "${AppName}.conf"
@@ -209,35 +205,10 @@ $chk_encrypt = New-Object System.Windows.Forms.CheckBox -Property @{
 }
 
 # -----------------
-# Namespace
-#
-$lbl_ns = New-Object System.Windows.Forms.Label -Property @{
-    Location = "50,115"
-    Size = "130,24"
-    BorderStyle = "Fixed3D"
-    #Text = "Namespace"
-    Font = $FontM
-    TextAlign = $LblTextAlign
-}
-
-$tbx_ns = New-Object System.Windows.Forms.TextBox -Property @{
-    Location = "200,115"
-    Size = "170,24"
-    BorderStyle = "Fixed3D"
-    Font = $FontL
-    Enabled = $false
-}
-
-if ($DllType -eq "oci-os") {
-    $lbl_ns.Text = "Namespace"
-    $tbx_ns.Enabled = $true
-}
-
-# -----------------
 # Region
 #
 $lbl_region = New-Object System.Windows.Forms.Label -Property @{
-    Location = "50,155"
+    Location = "50,115"
     Size = "130,24"
     BorderStyle = "Fixed3D"
     Text = "Region"
@@ -246,10 +217,30 @@ $lbl_region = New-Object System.Windows.Forms.Label -Property @{
 }
 
 $tbx_region = New-Object System.Windows.Forms.TextBox -Property @{
+    Location = "200,115"
+    Size = "170,24"
+    BorderStyle = "Fixed3D"
+    Font = $FontL
+}
+
+# -----------------
+# Namespace
+#
+$lbl_ns = New-Object System.Windows.Forms.Label -Property @{
+    Location = "50,155"
+    Size = "130,24"
+    BorderStyle = "Fixed3D"
+    #Text = "Namespace"
+    Font = $FontM
+    TextAlign = $LblTextAlign
+}
+
+$tbx_ns = New-Object System.Windows.Forms.TextBox -Property @{
     Location = "200,155"
     Size = "170,24"
     BorderStyle = "Fixed3D"
     Font = $FontL
+    Enabled = $false
 }
 
 # -----------------
@@ -441,22 +432,13 @@ $btn_reg.Add_Click({
         return
     }
 
-    if ([string]::IsNullOrEmpty($tbx_region.Text.Trim())) {
-        # リージョンは必須
+    # リージョンは必須
 
-        Msg-Warn -Text "The region value cannot be left empty."
+    if ([string]::IsNullOrEmpty($tbx_region.Text.Trim())) {
+
+        Msg-Warn -Text "The Region value cannot be left empty."
         $tbx_region.Focus()
         return
-    }
-
-    if ($DllType -eq "oci-os") {
-        # oci の場合は namespace と region を使って URL を作るので必須
-
-        if ([string]::IsNullOrEmpty($tbx_ns.Text.Trim())) {
-            Msg-Warn -Text "The namespace value cannot be left empty."
-            $tbx_ns.Focus()
-            return
-        }
     }
 
     # Values
@@ -468,11 +450,6 @@ $btn_reg.Add_Click({
     $workdir_drive = $workdir.Substring(0, 1)
     $workdir_dir = $workdir.Substring(3)
     $info_log_dir = ";"
-    $ns_text = ""
-
-    if (-not [string]::IsNullOrEmpty($tbx_ns.Text.Trim())) {
-        $ns_text = "namespace=" + $tbx_ns.Text.Trim()
-    }
 
     if ($chk_encrypt.Checked) {
         if (-not [string]::IsNullOrEmpty($keyid)) {
@@ -648,7 +625,6 @@ type=${DllType}
 ; Note: Only valid on the computer it was created on.
 aws_access_key_id=${keyid}
 aws_secret_access_key=${secret}
-${ns_text}
 region=${region}
 
 ; Client Identifier
@@ -690,7 +666,7 @@ region=${region}
 
 ; Specifies the number of threads used for file I/O operations.
 ; valid range: 1 to 32
-; default: Equal to the number of CPU cores
+; default: Calculated based on the number of CPU cores
 #file_io_threads=8
 
 ; Maximum retry count for API execution
@@ -801,9 +777,11 @@ $form = New-Object System.Windows.Forms.Form -Property @{
     AcceptButton = $btn_exit
 }
 
-$ctrls = $lbl_keyid,  $tbx_keyid,  $lbl_secret, $tbx_secret,
+$ctrls = $lbl_keyid,  $tbx_keyid, 
+         $lbl_secret, $tbx_secret,
+         $lbl_region, $tbx_region,
          $lbl_ns,     $tbx_ns,
-         $lbl_region, $tbx_region, $chk_encrypt,
+         $chk_encrypt,
          $lbl_drive,  $cbx_drive,
          $lbl_wkdir,  $txt_wkdir,  $btn_wkdir,                             `
          $lbl_exe,    $txt_exe,    $btn_exe,                                 `

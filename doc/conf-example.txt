@@ -42,8 +42,14 @@ region=ap-northeast-1
 
 ; Specifies the number of threads used for file I/O operations.
 ; valid range: 1 to 32
-; default: 4
-#file_io_threads=4
+; default: Calculated based on the number of CPU cores
+#file_io_threads=8
+
+; Maximum retry count for API execution
+; Note: Added after v0.250512.1345
+; valid range: 0 to 5
+; default: 3
+#max_api_retry_count=3
 
 ; Maximum number of display buckets.
 ; valid range: 0 (No restrictions) to INT_MAX

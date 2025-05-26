@@ -11,7 +11,7 @@ int listBuckets_main(int argc, char **argv);
 int listObjects_main(int argc, char **argv);
 int putObject_main(int argc, char **argv);
 
-int main(int argc, char **argv)
+int main(int, char **argv)
 {
     //
     // https://github.com/tonymarkel/OCI_AWS_CPP_SDK_S3_Examples

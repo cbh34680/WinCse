@@ -42,15 +42,12 @@ bool SdkS3Client::uploadSimple(CALLER_ARG const ObjectKey& argObjKey, const FSP_
         // ディレクトリの場合は空のコンテンツ
 
         APP_ASSERT(!argInputPath);
+
+        request.SetContentLength(0);
     }
     else
     {
         APP_ASSERT(argInputPath);
-
-        // Content-Type の設定
-
-        const auto contentType{ getContentType(CONT_CALLER argInputPath, argObjKey.key()) };
-        request.SetContentType(WC2MB(contentType));
 
         // ファイルの場合はローカル・キャッシュの内容をアップロードする
 
@@ -62,6 +59,17 @@ bool SdkS3Client::uploadSimple(CALLER_ARG const ObjectKey& argObjKey, const FSP_
         }
 
         APP_ASSERT(body->good());
+
+        // Content-Type
+
+        const auto contentType{ getContentType(CONT_CALLER argFileInfo.FileSize, argInputPath, argObjKey.key()) };
+        request.SetContentType(WC2MB(contentType));
+
+        // Content-Length
+
+        request.SetContentLength(argFileInfo.FileSize);
+
+        // Body
 
         request.SetBody(body);
     }
@@ -162,6 +170,12 @@ std::optional<Aws::String> SdkS3Client::uploadPart(CALLER_ARG
         return nullptr;
     }
 
+    // Content-Length
+
+    //uploadRequest.SetContentLength(argFilePart->mLength);
+
+    // Body
+
     uploadRequest.SetBody(body);
 
     const auto uploadOutcome = executeWithRetry(mS3Client, &Aws::S3::S3Client::UploadPart, uploadRequest, mRuntimeEnv->MaxApiRetryCount);
@@ -238,9 +252,9 @@ bool SdkS3Client::PutObjectInternal(CALLER_ARG const ObjectKey& argObjKey, const
     setMetadataFromFileInfo(CONT_CALLER argFileInfo, &metadata);
     createRequest.SetMetadata(metadata);
 
-    // Content-Type の設定
+    // Content-Type
 
-    const auto contentType{ getContentType(CONT_CALLER argInputPath, argObjKey.key()) };
+    const auto contentType{ getContentType(CONT_CALLER argFileInfo.FileSize, argInputPath, argObjKey.key()) };
     createRequest.SetContentType(WC2MB(contentType));
 
     const auto createOutcome = mS3Client->CreateMultipartUpload(createRequest);

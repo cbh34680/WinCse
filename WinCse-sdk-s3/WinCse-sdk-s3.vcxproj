@@ -121,6 +121,10 @@
       <EnableUAC>false</EnableUAC>
       <AdditionalLibraryDirectories>$(MSBuildProgramFiles32)\WinFsp\lib;$(SolutionDir)aws-sdk-cpp\dest\$(Configuration)\bin;$(OutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
+    <PreBuildEvent>
+      <Command>
+      </Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -143,19 +147,20 @@
       <EnableUAC>false</EnableUAC>
       <AdditionalLibraryDirectories>$(MSBuildProgramFiles32)\WinFsp\lib;$(SolutionDir)aws-sdk-cpp\dest\$(Configuration)\bin;$(OutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
+    <PreBuildEvent>
+      <Command>
+      </Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="SdkS3Client.cpp" />
     <ClCompile Include="SdkS3ClientUpload.cpp" />
-    <ClCompile Include="SdkS3Device.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="aws_sdk_s3.h" />
     <ClInclude Include="aws_sdk_s3_client.h" />
     <ClInclude Include="SdkS3Client.hpp" />
-    <ClInclude Include="SdkS3Common.h" />
-    <ClInclude Include="SdkS3Device.hpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="cpp.hint" />

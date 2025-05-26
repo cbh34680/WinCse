@@ -18,6 +18,7 @@ std::wstring RuntimeEnv::str() const
         KV_TO_WSTR(BucketCacheExpiryMin),
         KV_WSTR(ClientGuid),
         KV_TO_WSTR(DefaultCommonPrefixTime),
+        KV_BOOL(IgnoreBucketRegion),
         KV_TO_WSTR(MaxApiRetryCount),
         KV_TO_WSTR(MaxDisplayBuckets),
         KV_TO_WSTR(MaxDisplayObjects),

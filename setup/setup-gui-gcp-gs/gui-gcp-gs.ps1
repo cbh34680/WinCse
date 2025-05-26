@@ -655,7 +655,7 @@ ${projid_text}
 
 ; Specifies the number of threads used for file I/O operations.
 ; valid range: 1 to 32
-; Default: Equal to the number of CPU cores
+; default: Calculated based on the number of CPU cores
 #file_io_threads=8
 
 ; Maximum retry count for API execution
