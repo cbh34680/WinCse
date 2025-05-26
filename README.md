@@ -12,7 +12,7 @@ WinCse is an application that integrates object storage into Windows Explorer, a
 ## System Requirements
 - Windows 11 or later recommended
 - [WinFsp](http://www.secfs.net/winfsp/)
-- Required SDKs:
+- Required SDKs (included in the application)
   - [AWS SDK for C++](https://github.com/aws/aws-sdk-cpp)
   - [Google Cloud Platform C++ Client Libraries](https://github.com/googleapis/google-cloud-cpp)
 

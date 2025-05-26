@@ -12,7 +12,7 @@ WinCse は、オブジェクトストレージを Windows Explorer に統合し�
 ## システム要件
 - Windows 11 以上を推奨  
 - [WinFsp](http://www.secfs.net/winfsp/)  
-- 必要な SDK:  
+- 必要な SDK (アプリケーションに含まれています)  
   - [AWS SDK for C++](https://github.com/aws/aws-sdk-cpp)  
   - [Google Cloud Platform C++ Client Libraries](https://github.com/googleapis/google-cloud-cpp)  
 
