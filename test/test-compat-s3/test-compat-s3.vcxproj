@@ -139,6 +139,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="getBucketRegion.cpp" />
     <ClCompile Include="listBuckets.cpp" />
     <ClCompile Include="listObjects.cpp" />
     <ClCompile Include="putObject.cpp" />

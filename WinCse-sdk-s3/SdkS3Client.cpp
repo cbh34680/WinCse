@@ -132,9 +132,19 @@ bool SdkS3Client::HeadObject(CALLER_ARG const ObjectKey& argObjKey, DirEntryType
 
     if (!IsSuccess(outcome))
     {
-        // HeadObject の実行時エラー、またはオブジェクトが見つからない
+        if (OutcomeIsHttpCode404(outcome))
+        {
+            // "dir/subdir/file.txt/" の存在チェック
 
-        traceW(L"fault: HeadObject argObjKey=%s", argObjKey.c_str());
+            traceW(L"fault: HeadObject argObjKey=%s", argObjKey.c_str());
+        }
+        else
+        {
+            // HeadObject の実行時エラー
+
+            errorW(L"fault: HeadObject argObjKey=%s", argObjKey.c_str());
+        }
+
         return false;
     }
 
@@ -208,7 +218,17 @@ bool SdkS3Client::ListObjects(CALLER_ARG const ObjectKey& argObjKey, DirEntryLis
 
         if (!IsSuccess(outcome))
         {
-            errorW(L"fault: ListObjectsV2 argObjKey=%s", argObjKey.c_str());
+            if (OutcomeIsHttpCode404(outcome))
+            {
+                // 以前接続したネットワーク・ドライブを参照されエラー出力になることを抑止
+
+                traceW(L"fault: ListObjectsV2 argObjKey=%s", argObjKey.c_str());
+            }
+            else
+            {
+                errorW(L"fault: ListObjectsV2 argObjKey=%s", argObjKey.c_str());
+            }
+
             return false;
         }
 

@@ -9,6 +9,7 @@
 #pragma comment(lib, "aws-cpp-sdk-s3.lib")
 
 int listBuckets_main(const char* endpoint, const char* region, const char* accessKey, const char* secretKey);
+int getBucketRegion_main(const char* endpoint, const char* region, const char* accessKey, const char* secretKey, const char* bucket);
 int listObjects_main(const char* endpoint, const char* region, const char* accessKey, const char* secretKey, const char* bucket, const char* prefix);
 int putObject_main(const char* endpoint, const char* region, const char* accessKey, const char* secretKey, const char* bucket, const char* prefix, const char* inputFile);
 
@@ -31,16 +32,17 @@ int main(int, char **argv)
     assert(endpoint && region && key_id && secret && bucket);
 
     std::cout << endpoint << std::endl;
-    std::cout << region << std::endl;
-    std::cout << key_id << std::endl;
-    std::cout << secret << std::endl;
+    //std::cout << region << std::endl;
+    //std::cout << key_id << std::endl;
+    //std::cout << secret << std::endl;
     std::cout << bucket << std::endl;
-    std::cout << prefix << std::endl;
+    //std::cout << prefix << std::endl;
 
-    listBuckets_main(endpoint, region, key_id, secret);
-    listObjects_main(endpoint, region, key_id, secret, bucket, prefix);
-    putObject_main(endpoint, region, key_id, secret, bucket, prefix, __FILE__);
-    putObject_main(endpoint, region, key_id, secret, bucket, prefix, "C:\\WORK\\0byte.txt");
+    //listBuckets_main(endpoint, region, key_id, secret);
+    getBucketRegion_main(endpoint, region, key_id, secret, bucket);
+    //listObjects_main(endpoint, region, key_id, secret, bucket, prefix);
+    //putObject_main(endpoint, region, key_id, secret, bucket, prefix, __FILE__);
+    //putObject_main(endpoint, region, key_id, secret, bucket, prefix, "C:\\WORK\\0byte.txt");
 
     free(endpoint);
     free(region);

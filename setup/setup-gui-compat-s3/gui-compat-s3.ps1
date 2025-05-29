@@ -507,6 +507,12 @@ $btn_reg.Add_Click({
 
         $ignore_bucket_region = 1
     }
+    elseif ($endpoint -match "s3.tebi.io") {
+        # tebi はバケットのリージョンが取得できない
+        # --> region=us-east-1 でも可
+
+        $ignore_bucket_region = 1
+    }
 
     $info_log_dir = "# log:          [${logdir}]"
 

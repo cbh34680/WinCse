@@ -81,15 +81,25 @@ public:
 
 }	// namespace CSESS3
 
-template<typename T>
-bool IsSuccess(const T& outcome)
+template<typename OutcomeT>
+bool OutcomeIsHttpCode404(const OutcomeT& outcome)
+{
+	return outcome.GetError().GetResponseCode() == Aws::Http::HttpResponseCode::NOT_FOUND;
+}
+
+template<typename OutcomeT>
+bool IsSuccess(const OutcomeT& outcome)
 {
 	NEW_LOG_BLOCK();
 
 	const bool isSuccess = outcome.IsSuccess();
 	traceA("isSuccess=%s name=%s", BOOL_CSTRA(isSuccess), typeid(outcome).name());
 
-	if (!isSuccess)
+	if (isSuccess)
+	{
+		traceW(L"success");
+	}
+	else
 	{
 		const auto& err{ outcome.GetError() };
 
@@ -98,18 +108,13 @@ bool IsSuccess(const T& outcome)
 		const auto type{ err.GetErrorType() };
 		const auto name{ err.GetExceptionName().c_str() };
 
-		switch (static_cast<int>(code))
+		if (OutcomeIsHttpCode404(outcome))
 		{
-			case 404:
-			{
-				traceA("warn: type=%d, code=%d, name=%s, message=%s", type, code, name, mesg);
-				break;
-			}
-			default:
-			{
-				errorA("error: type=%d, code=%d, name=%s, message=%s", type, code, name, mesg);
-				break;
-			}
+			traceA("warn: type=%d, code=%d, name=%s, message=%s", type, code, name, mesg);
+		}
+		else
+		{
+			errorA("error: type=%d, code=%d, name=%s, message=%s", type, code, name, mesg);
 		}
 	}
 
@@ -127,42 +132,16 @@ ReturnT executeWithRetry(
 
 	ReturnT outcome;
 
-	bool shouldRetry = true;
 	DWORD waitSec = 1;
 	int i = 0;
 
 	do
 	{
 		outcome = (argClient->*argMethod)(argRequest);
-		if (outcome.IsSuccess())
-		{
-			traceW(L"success");
-			shouldRetry = false;
-		}
-		else
-		{
-			const auto& err{ outcome.GetError() };
 
-			const auto mesg{ err.GetMessage().c_str() };
-			const auto code{ err.GetResponseCode() };
-			const auto type{ err.GetErrorType() };
-			const auto name{ err.GetExceptionName().c_str() };
-			shouldRetry = err.ShouldRetry();
+		bool shouldRetry = IsSuccess(outcome) ? false : outcome.GetError().ShouldRetry();
 
-			switch (static_cast<int>(code))
-			{
-				case 404:
-				{
-					traceA("fault: type=%d code=%d name=%s message=%s retry=%s", type, code, name, mesg, BOOL_CSTRA(shouldRetry));
-					break;
-				}
-				default:
-				{
-					errorA("fault: type=%d code=%d name=%s message=%s retry=%s", type, code, name, mesg, BOOL_CSTRA(shouldRetry));
-					break;
-				}
-			}
-		}
+		traceW(L"shouldRetry=%s", BOOL_CSTRW(shouldRetry));
 
 		if (!shouldRetry)
 		{
