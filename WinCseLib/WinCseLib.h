@@ -100,6 +100,8 @@ WINCSELIB_API std::wstring FileTypeEnumToStringW(FileTypeEnum argFileType);
 WINCSELIB_API std::wstring FileAttributesToStringW(DWORD dwFlagsAndAttributes);
 WINCSELIB_API std::wstring FileInfoToStringW(const FSP_FSCTL_FILE_INFO& argFileInfo);
 
+WINCSELIB_API BOOL TruncateFileByHandle(HANDLE argHandle);
+WINCSELIB_API BOOL TruncateFile(const std::filesystem::path& argPath);
 WINCSELIB_API FILESIZE_T GetFileSize(const std::filesystem::path& argPath);
 WINCSELIB_API BOOL DeleteFilePassively(const std::filesystem::path& argPath);
 WINCSELIB_API bool GetFileNameFromHandle(HANDLE hFile, std::filesystem::path* pPath);

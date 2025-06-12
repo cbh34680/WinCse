@@ -513,6 +513,16 @@ $btn_reg.Add_Click({
 
         $ignore_bucket_region = 1
     }
+    elseif ($endpoint -match "fly.storage.tigris.dev") {
+        # tigris はバケットのリージョンが取得できない
+
+        $ignore_bucket_region = 1
+    }
+    elseif ($endpoint -match "t3.storage.dev") {
+        # tigris はバケットのリージョンが取得できない
+
+        $ignore_bucket_region = 1
+    }
 
     $info_log_dir = "# log:          [${logdir}]"
 
@@ -678,7 +688,7 @@ region=${region}
 #bucket_filters=my-bucket-1 my-bucket-2*
 
 ; Delete the cache files after the upload is completed.
-; valid value: 0 (Do not delete), 1 (Delete after upload)
+; valid value: 0 (Do not delete), 1 (Delete after upload), 2 (Truncate after upload)
 ; default: 0 
 #delete_after_upload=0
 

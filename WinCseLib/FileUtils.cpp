@@ -4,6 +4,59 @@
 
 namespace CSELIB {
 
+BOOL TruncateFileByHandle(HANDLE argHandle)
+{
+	if (::SetFilePointer(argHandle, 0, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER)
+	{
+		return FALSE;
+	}
+
+	// ÉtÉ@ÉCÉãÇêÿÇËãlÇﬂÇÈ
+
+	if (!::SetEndOfFile(argHandle))
+	{
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+BOOL TruncateFile(const std::filesystem::path& argPath)
+{
+	FileHandle file = ::CreateFileW(
+		argPath.c_str(),
+		GENERIC_WRITE,
+		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+		NULL,
+		OPEN_ALWAYS,
+		FILE_ATTRIBUTE_NORMAL,
+		NULL);
+
+	if (file.invalid())
+	{
+		return FALSE;
+	}
+
+	FILETIME ftCreate, ftAccess, ftWrite;
+
+	if (!::GetFileTime(file.handle(), &ftCreate, &ftAccess, &ftWrite))
+	{
+		return FALSE;
+	}
+
+	if (!TruncateFileByHandle(file.handle()))
+	{
+		return FALSE;
+	}
+
+	if (!::SetFileTime(file.handle(), &ftCreate, &ftAccess, &ftWrite))
+	{
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
 FILESIZE_T GetFileSize(const std::filesystem::path& argPath)
 {
 	NEW_LOG_BLOCK();

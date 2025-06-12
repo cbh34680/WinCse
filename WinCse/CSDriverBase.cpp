@@ -200,7 +200,7 @@ NTSTATUS CSDriverBase::OnSvcStart(PCWSTR argWorkDir, FSP_FILE_SYSTEM* FileSystem
 		cacheReportDir,
 		STCTimeToWinFileTime100nsW(argWorkDir),
 		defaultFileAttributes,
-		GetIniBoolW(confPath,   mIniSection,    L"delete_after_upload",         false),
+		GetIniIntW(confPath,    mIniSection,    L"delete_after_upload",              0,     0,         2),
 		GetIniIntW(confPath,    mIniSection,    L"delete_dir_condition",             2,		1,		   2),
 		std::move(dirSecRef),
 		std::move(fileSecRef),

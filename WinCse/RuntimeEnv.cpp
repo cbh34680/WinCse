@@ -20,7 +20,7 @@ std::wstring RuntimeEnv::str() const
         KV_FSSTR(CacheReportDir),
         KV_TO_WSTR(DefaultCommonPrefixTime),
         KV_TO_WSTR(DefaultFileAttributes),
-        KV_BOOL(DeleteAfterUpload),
+        KV_TO_WSTR(DeleteAfterUpload),
         KV_TO_WSTR(DeleteDirCondition),
         KV_BOOL(ReadOnly),
         KV_TO_WSTR(TransferReadSizeMib)

@@ -50,7 +50,7 @@ WinCse is an application that integrates object storage into Windows Explorer, a
 ## Notes
 - Only tested on Windows 11, compatibility with other versions is not guaranteed  
 - Refer to [OCI_AWS_CPP_SDK_S3_Examples](https://github.com/tonymarkel/OCI_AWS_CPP_SDK_S3_Examples) for OCI Object Storage credentials  
-- S3-compatible storage has been tested with [OCI Object Storage](./doc/example-oci.png), [Wasabi Hot Cloud Storage](./doc/example-wasabi.png), [Cloudflare R2](./doc/example-cloudflare.png), [Backblaze B2](./doc/example-backblaze.png), [Storj DCS](./doc/example-storj.png) and [IDrive e2](./doc/example-idrive.png)
+- S3-compatible storage has been tested with [OCI Object Storage](./doc/example-oci.png), [Wasabi Hot Cloud Storage](./doc/example-wasabi.png), [Cloudflare R2](./doc/example-cloudflare.png), [Backblaze B2](./doc/example-backblaze.png), [Storj DCS](./doc/example-storj.png), [Tigris](./doc/example-tigris.png) and [IDrive e2](./doc/example-idrive.png)
 
 ## License
 This project is licensed under [GPLv3](https://www.gnu.org/licenses/gpl-3.0.html) and [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).

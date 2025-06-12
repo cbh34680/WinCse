@@ -1,4 +1,0 @@
-build-after-Debug.bat:call "%ProgramFiles(x86)%\WinFsp\bin\fsreg.bat" %REGKEY% %~dp0..\x64\Debug\WinCse.exe "-u %%%%1 -m %%%%2 -d -1 -D %~dp0..\trace\winfsp.log -T %~dp0..\trace" "D:P(A;;RPWPLC;;;WD)"
-build-after-Release.bat:call "%ProgramFiles(x86)%\WinFsp\bin\fsreg.bat" %REGKEY% %~dp0..\x64\Release\WinCse.exe "-u %%%%1 -m %%%%2 -d -1 -D %~dp0..\trace\winfsp.log -T %~dp0..\trace" "D:P(A;;RPWPLC;;;WD)"
-reg-add-debug.bat:call "%ProgramFiles(x86)%\WinFsp\bin\fsreg.bat" %REGKEY% %~dp0..\x64\Debug\WinCse.exe "-u %%%%1 -m %%%%2 -d -1 -D %~dp0..\trace\winfsp.log -T %~dp0..\trace" "D:P(A;;RPWPLC;;;WD)"
-reg-add-release.bat:call "%ProgramFiles(x86)%\WinFsp\bin"\fsreg.bat %REGKEY% %~dp0..\x64\Release\WinCse.exe "-u %%%%1 -m %%%%2 -d -1 -D %~dp0..\trace\winfsp.log -T %~dp0..\trace" "D:P(A;;RPWPLC;;;WD)"

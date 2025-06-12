@@ -38,7 +38,7 @@ int main(int, char **argv)
     std::cout << bucket << std::endl;
     //std::cout << prefix << std::endl;
 
-    //listBuckets_main(endpoint, region, key_id, secret);
+    listBuckets_main(endpoint, region, key_id, secret);
     getBucketRegion_main(endpoint, region, key_id, secret, bucket);
     //listObjects_main(endpoint, region, key_id, secret, bucket, prefix);
     //putObject_main(endpoint, region, key_id, secret, bucket, prefix, __FILE__);

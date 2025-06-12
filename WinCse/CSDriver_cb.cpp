@@ -415,17 +415,40 @@ void CSDriver::UploadWhenClosing(CALLER_ARG FileContext* ctx)
 
             mDevice->headObject(START_CALLER objKey, nullptr);
 
-            if (mRuntimeEnv->DeleteAfterUpload)
+            switch (mRuntimeEnv->DeleteAfterUpload)
             {
-                // アップロード後にファイルを削除
-
-                if (!::DeleteFileW(cacheFilePath.c_str()))
+                case 1:
                 {
-                    const auto lerr = ::GetLastError();
-                    errorW(L"fault: DeleteFileW lerr=%lu cacheFilePath=%s", lerr, cacheFilePath.c_str());
+                    // アップロード後にファイルを削除
+
+                    if (::DeleteFileW(cacheFilePath.c_str()))
+                    {
+                        traceW(L"success: DeleteFileW cacheFilePath=%s", cacheFilePath.c_str());
+                    }
+                    {
+                        const auto lerr = ::GetLastError();
+                        errorW(L"fault: DeleteFileW lerr=%lu cacheFilePath=%s", lerr, cacheFilePath.c_str());
+                    }
+
+                    break;
                 }
 
-                traceW(L"success: DeleteFileW cacheFilePath=%s", cacheFilePath.c_str());
+                case 2:
+                {
+                    // アップロード後にファイルを切り詰める (あまり意味はないかな、、)
+
+                    if (TruncateFile(cacheFilePath.c_str()))
+                    {
+                        traceW(L"success: TruncateFile cacheFilePath=%s", cacheFilePath.c_str());
+                    }
+                    else
+                    {
+                        const auto lerr = ::GetLastError();
+                        errorW(L"fault: TruncateFile lerr=%lu cacheFilePath=%s", lerr, cacheFilePath.c_str());
+                    }
+
+                    break;
+                }
             }
 
             break;

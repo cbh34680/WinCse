@@ -158,6 +158,7 @@ NTSTATUS syncAttributes(const DirEntryType& remoteDirEntry, const std::filesyste
         {
             // ファイルポインタを先頭に移動 (必要ないけど、念のため)
 
+#if 0
             if (::SetFilePointer(file.handle(), 0, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER)
             {
                 const auto lerr = ::GetLastError();
@@ -175,6 +176,17 @@ NTSTATUS syncAttributes(const DirEntryType& remoteDirEntry, const std::filesyste
                 errorW(L"fault: SetEndOfFile lerr=%lu file=%s", lerr, file.str().c_str());
                 return FspNtStatusFromWin32(lerr);
             }
+
+#else
+            if (!TruncateFileByHandle(file.handle()))
+            {
+                const auto lerr = ::GetLastError();
+
+                errorW(L"fault: SetEndOfFile lerr=%lu file=%s", lerr, file.str().c_str());
+                return FspNtStatusFromWin32(lerr);
+            }
+
+#endif
         }
 
         // タイムスタンプを同期

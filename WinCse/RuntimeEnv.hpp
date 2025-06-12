@@ -13,7 +13,7 @@ struct RuntimeEnv final
 		const std::filesystem::path&		argCacheReportDir,
 		CSELIB::FILETIME_100NS_T			argDefaultCommonPrefixTime,
 		UINT32								argDefaultFileAttributes,
-		bool								argDeleteAfterUpload,
+		int									argDeleteAfterUpload,
 		int									argDeleteDirCondition,
 		CSELIB::FileHandle&&				argDirSecurityRef,
 		CSELIB::FileHandle&&				argFileSecurityRef,
@@ -39,7 +39,7 @@ struct RuntimeEnv final
 	const std::filesystem::path				CacheReportDir;
 	const CSELIB::FILETIME_100NS_T			DefaultCommonPrefixTime;
 	const UINT32							DefaultFileAttributes;
-	const bool								DeleteAfterUpload;
+	const int								DeleteAfterUpload;
 	const int								DeleteDirCondition;
 	const CSELIB::FileHandle				DirSecurityRef;
 	const CSELIB::FileHandle				FileSecurityRef;
